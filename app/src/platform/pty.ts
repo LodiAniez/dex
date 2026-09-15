@@ -7,6 +7,7 @@ export type PtyEvent =
 
 export interface SpawnOptions {
   paneId: string;
+  workspaceId?: string;
   cwd?: string;
   cols: number;
   rows: number;
@@ -23,10 +24,13 @@ export async function spawnPty(options: SpawnOptions): Promise<void> {
   const onEvent = new Channel<PtyEvent>();
   onEvent.onmessage = options.onEvent;
   await invoke("pty_spawn", {
-    paneId: options.paneId,
-    cwd: options.cwd ?? null,
-    cols: options.cols,
-    rows: options.rows,
+    pane: {
+      paneId: options.paneId,
+      workspaceId: options.workspaceId ?? null,
+      cwd: options.cwd ?? null,
+      cols: options.cols,
+      rows: options.rows,
+    },
     onOutput,
     onEvent,
   });

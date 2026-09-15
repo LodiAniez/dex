@@ -1,19 +1,37 @@
 import { useSyncExternalStore } from "react";
 import { request } from "../../platform/daemon";
+import { onDaemonChange } from "../../platform/events";
 import type { Layout } from "../../platform/generated/Layout";
 import type { WorkspaceList } from "../../platform/generated/WorkspaceList";
+import { showError } from "../../platform/notices";
 import { disposeTerminal } from "../../platform/terminalRegistry";
 
 /**
  * The workspace list as the daemon last reported it. Every workspace command
  * answers with the full list, so this store only ever replaces its snapshot.
+ *
+ * Two rules keep it honest:
+ * - Responses can arrive out of order (Tauri runs commands concurrently), so a
+ *   snapshot older than the current one — lower `revision` — is ignored.
+ * - A pane that disappears from the list, however it went (closed here, from
+ *   the CLI, or with its workspace), has its terminal disposed.
  */
 let snapshot: WorkspaceList | null = null;
 const listeners = new Set<() => void>();
+let watching = false;
 
 function publish(next: WorkspaceList): void {
+  const before = snapshot;
+  if (before && next.revision < before.revision) return;
   snapshot = next;
   for (const listener of listeners) listener();
+  if (!before) return;
+  const alive = new Set(next.workspaces.flatMap((ws) => ws.panes.map((pane) => pane.id)));
+  for (const ws of before.workspaces) {
+    for (const pane of ws.panes) {
+      if (!alive.has(pane.id)) disposeTerminal(pane.id);
+    }
+  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -33,8 +51,19 @@ export function useWorkspaces(): WorkspaceList | null {
   return useSyncExternalStore(subscribe, getWorkspaces);
 }
 
-/** Loads saved workspaces; a fresh install gets a first workspace at the home folder. */
+async function refresh(): Promise<void> {
+  publish(await request<WorkspaceList>("workspace.list"));
+}
+
+/**
+ * Loads saved workspaces (a fresh install gets a first workspace at the home
+ * folder) and follows changes made elsewhere, such as from the `dex` CLI.
+ */
 export async function loadWorkspaces(): Promise<void> {
+  if (!watching) {
+    watching = true;
+    void onDaemonChange("workspaces", () => void refresh().catch(showError));
+  }
   const list = await request<WorkspaceList>("workspace.list");
   publish(list.workspaces.length > 0 ? list : await request<WorkspaceList>("workspace.create"));
 }
@@ -75,11 +104,9 @@ export async function reorderWorkspaces(order: string[]): Promise<void> {
   publish(await request<WorkspaceList>("workspace.reorder", { order }));
 }
 
-/** Deletes a workspace and ends its terminals for good. */
+/** Deletes a workspace; its terminals are disposed as its panes leave the list. */
 export async function deleteWorkspace(id: string): Promise<void> {
-  const panes = snapshot?.workspaces.find((ws) => ws.id === id)?.panes ?? [];
   publish(await request<WorkspaceList>("workspace.delete", { workspace: id }));
-  for (const pane of panes) disposeTerminal(pane.id);
 }
 
 /** Splits a pane; the new pane starts in the same folder and takes focus. */
@@ -87,10 +114,9 @@ export async function splitPane(pane: string, direction: "right" | "down"): Prom
   publish(await request<WorkspaceList>("pane.split", { pane, direction }));
 }
 
-/** Closes a pane and ends its terminal. The daemon refuses to close a workspace's last pane. */
+/** Closes a pane. The daemon refuses to close a workspace's last pane. */
 export async function closePane(pane: string): Promise<void> {
   publish(await request<WorkspaceList>("pane.close", { pane }));
-  disposeTerminal(pane);
 }
 
 /** Focuses a pane immediately on screen, then records it. */

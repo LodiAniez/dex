@@ -57,7 +57,7 @@ pub enum WorkspaceError {
     #[error("the new order must list every workspace exactly once")]
     InvalidOrder,
     /// No pane has this id (or, for a swap, the other pane is not in the same workspace).
-    #[error("no pane with id {0} in this workspace")]
+    #[error("no pane matches {0:?}")]
     NoSuchPane(String),
     /// Closing the only pane of a workspace.
     #[error("a workspace keeps at least one pane")]
@@ -65,6 +65,26 @@ pub enum WorkspaceError {
     /// A client-sent layout that does not show exactly the workspace's panes.
     #[error("the layout must show every pane of the workspace exactly once")]
     LayoutMismatch,
+    /// A target that names more than one pane or workspace (PRD §6.3).
+    #[error("{target:?} matches more than one: {}", .candidates.join(", "))]
+    AmbiguousTarget {
+        /// What was asked for.
+        target: String,
+        /// Everything it matched, as "name (id)".
+        candidates: Vec<String>,
+    },
+    /// A pane whose shell has not started: shells start when a pane is first shown.
+    #[error("pane {0} has no running shell yet")]
+    PaneNotStarted(String),
+    /// Writing to a pane's shell failed.
+    #[error("writing to the pane failed: {0}")]
+    Pty(String),
+    /// A label another pane of the same workspace already has.
+    #[error("label {0:?} is already used in this workspace")]
+    LabelTaken(String),
+    /// An empty or over-long label, or one with whitespace.
+    #[error("pane labels must be 1 to 32 characters with no spaces")]
+    InvalidLabel,
     /// The root is not an existing absolute directory.
     #[error("{0:?} is not an existing directory")]
     InvalidRoot(String),

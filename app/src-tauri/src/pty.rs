@@ -1,12 +1,14 @@
-//! Tauri commands bridging the frontend's terminals to `dex-core`'s PTY supervisor.
+//! Tauri commands bridging the frontend's terminals to the daemon's PTY supervisor.
 //!
 //! Output travels over per-pane Tauri Channels as raw bytes: events evaluate
 //! JavaScript per message and would choke on terminal throughput (PRD §7.1).
 
 use std::path::PathBuf;
 
-use dex_core::platform::pty::{PtyOutput, PtySupervisor, SpawnRequest, resolve_shell};
-use serde::Serialize;
+use dex_core::app::AppState;
+use dex_core::platform::pipe;
+use dex_core::platform::pty::{PtyOutput, SpawnRequest, resolve_shell};
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
@@ -20,32 +22,53 @@ pub enum PtyEvent {
     Exited { code: Option<u32> },
 }
 
-/// Starts the default shell in a new PTY for `pane_id`.
-#[tauri::command]
-pub async fn pty_spawn(
-    supervisor: State<'_, PtySupervisor>,
+/// Which pane to start, and at what size.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpawnPane {
     pane_id: String,
+    workspace_id: Option<String>,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
+}
+
+/// Starts the default shell in a new PTY for a pane. The shell learns where it
+/// is through `DEX_PANE_ID` / `DEX_WORKSPACE_ID`, and how to reach the daemon
+/// through `DEX_SOCKET`, so `dex` commands run inside it just work.
+#[tauri::command]
+pub async fn pty_spawn(
+    state: State<'_, AppState>,
+    pane: SpawnPane,
     on_output: Channel<InvokeResponseBody>,
     on_event: Channel<PtyEvent>,
 ) -> Result<(), String> {
     let program = resolve_shell(None)
         .ok_or("no shell found: pwsh.exe, powershell.exe and cmd.exe are all missing from PATH")?;
-    let cwd = cwd
+    let cwd = pane
+        .cwd
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
         .unwrap_or_else(std::env::temp_dir);
+    let mut env = vec![
+        ("DEX_PANE_ID".to_owned(), pane.pane_id.clone()),
+        (
+            "DEX_SOCKET".to_owned(),
+            format!("pipe:{}", pipe::default_name()),
+        ),
+    ];
+    if let Some(workspace_id) = pane.workspace_id {
+        env.push(("DEX_WORKSPACE_ID".to_owned(), workspace_id));
+    }
 
     let request = SpawnRequest {
-        env: vec![("DEX_PANE_ID".into(), pane_id.clone())],
-        pane_id,
+        pane_id: pane.pane_id,
         program,
         args: Vec::new(),
         cwd,
-        cols,
-        rows,
+        env,
+        cols: pane.cols,
+        rows: pane.rows,
     };
     let sink = Box::new(move |output: PtyOutput| {
         // A send only fails once the window is gone; nobody is left to tell.
@@ -55,7 +78,8 @@ pub async fn pty_spawn(
             PtyOutput::Exited { code } => on_event.send(PtyEvent::Exited { code }),
         };
     });
-    supervisor
+    state
+        .pty
         .spawn(request, sink)
         .map_err(|err| err.to_string())
 }
@@ -63,11 +87,12 @@ pub async fn pty_spawn(
 /// Sends keyboard input to a pane.
 #[tauri::command]
 pub async fn pty_write(
-    supervisor: State<'_, PtySupervisor>,
+    state: State<'_, AppState>,
     pane_id: String,
     data: String,
 ) -> Result<(), String> {
-    supervisor
+    state
+        .pty
         .write(&pane_id, data.as_bytes())
         .map_err(|err| err.to_string())
 }
@@ -75,12 +100,13 @@ pub async fn pty_write(
 /// Resizes a pane (already debounced by the frontend).
 #[tauri::command]
 pub async fn pty_resize(
-    supervisor: State<'_, PtySupervisor>,
+    state: State<'_, AppState>,
     pane_id: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    supervisor
+    state
+        .pty
         .resize(&pane_id, cols, rows)
         .map_err(|err| err.to_string())
 }
@@ -88,17 +114,18 @@ pub async fn pty_resize(
 /// Acknowledges output the terminal has finished rendering (flow control).
 #[tauri::command]
 pub async fn pty_ack(
-    supervisor: State<'_, PtySupervisor>,
+    state: State<'_, AppState>,
     pane_id: String,
     bytes: usize,
 ) -> Result<(), String> {
-    supervisor
+    state
+        .pty
         .ack(&pane_id, bytes)
         .map_err(|err| err.to_string())
 }
 
 /// Kills a pane's process.
 #[tauri::command]
-pub async fn pty_kill(supervisor: State<'_, PtySupervisor>, pane_id: String) -> Result<(), String> {
-    supervisor.kill(&pane_id).map_err(|err| err.to_string())
+pub async fn pty_kill(state: State<'_, AppState>, pane_id: String) -> Result<(), String> {
+    state.pty.kill(&pane_id).map_err(|err| err.to_string())
 }

@@ -155,16 +155,6 @@ pub fn list_panes(conn: &Connection, workspace_id: &str) -> rusqlite::Result<Vec
     rows.collect()
 }
 
-/// One pane, if it exists.
-pub fn find_pane(conn: &Connection, id: &str) -> rusqlite::Result<Option<Pane>> {
-    conn.query_row(
-        &format!("SELECT {PANE_COLUMNS} FROM pane WHERE id = ?1"),
-        [id],
-        pane_from_row,
-    )
-    .optional()
-}
-
 /// Deletes a pane. False if there is no such pane.
 pub fn delete_pane(conn: &Connection, id: &str) -> rusqlite::Result<bool> {
     Ok(conn.execute("DELETE FROM pane WHERE id = ?1", [id])? > 0)
@@ -197,6 +187,35 @@ pub fn update_active_pane(
         params![workspace_id, pane_id, now],
     )?;
     Ok(())
+}
+
+/// A number that grows with every row this connection changes. All writes go
+/// through the daemon's single connection, so it orders snapshots.
+pub fn revision(conn: &Connection) -> rusqlite::Result<i64> {
+    conn.query_row("SELECT total_changes()", [], |row| row.get(0))
+}
+
+/// Every pane of every workspace, for resolving `--target` labels.
+pub fn list_all_panes(conn: &Connection) -> rusqlite::Result<Vec<Pane>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {PANE_COLUMNS} FROM pane ORDER BY created_at, rowid"
+    ))?;
+    let rows = stmt.query_map([], pane_from_row)?;
+    rows.collect()
+}
+
+/// Sets or clears a pane's label. A label another pane of the workspace
+/// already has fails with a constraint violation (`pane_label_unique`).
+pub fn update_label(
+    conn: &Connection,
+    pane_id: &str,
+    label: Option<&str>,
+) -> rusqlite::Result<bool> {
+    let changed = conn.execute(
+        "UPDATE pane SET label = ?2 WHERE id = ?1",
+        params![pane_id, label],
+    )?;
+    Ok(changed > 0)
 }
 
 /// The recorded active workspace id. May name a workspace deleted since.

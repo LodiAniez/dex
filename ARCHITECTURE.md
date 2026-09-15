@@ -2,7 +2,7 @@
 
 Living map of the codebase, updated at the end of every milestone. For what Dex does, see `docs/prd.md`; for how code is organized, `docs/conventions.md`.
 
-**Current milestone:** M3 workspaces in progress, built ahead of M2 at the owner's request (sidebar, colors, persistence). M1 still awaits the owner's end-to-end throughput check.
+**Current milestone:** M4 done (pipe, handshake, `dex doctor`, `dex workspace`/`dex pane`). M0–M3 done; M1 still awaits the owner's end-to-end throughput check, M2 the owner's divider-drag check. Deferred from M4: `dex pane capture` (needs the UI to hand the daemon a terminal's buffer).
 
 ## Crates
 
@@ -23,9 +23,9 @@ Living map of the codebase, updated at the end of every milestone. For what Dex 
 | `db` | Connection, pragmas, migrations, `test_db()`, and `Db` — the async handle that runs every query on tokio's blocking pool | Done |
 | `pty` | ConPTY children; per-pane reader, coalescer and waiter threads; watermark flow control; shell resolution | Done (M1) |
 | `job` | Kill-on-close Job Object containing the app and all descendants | Done (M1) |
-| `pipe` | Named pipe / TCP listeners, framing | Stub — M4 |
-| `auth` | Token and HMAC handshake | Stub — M4 |
-| `bus` | Broadcast event bus | Stub |
+| `pipe` | Per-user named pipe (`dex-<username>`), refuse-to-start on a taken name, handshake, NDJSON framing. TCP (WSL fallback) not built — only needed if WSL interop fails | Done (M4) |
+| `auth` | Token file (`%APPDATA%\Dex\token`, written only after the pipe is bound) and the mutual HMAC-SHA256 handshake | Done (M4) |
+| `bus` | Lossy broadcast of change topics; the app forwards them to the UI as `dex://changed` | Done (M4) |
 | `proc` | Subprocess runner for `git.exe` | Stub — M7 |
 | `paths` | Forward-slash normalization, `%APPDATA%\Dex`, home dir. WSL translation and reserved names still to come | Partial |
 | `clock` | `now_millis()`; becomes injectable when time-dependent logic lands (M5) | Partial |
@@ -78,7 +78,8 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 | What | Result | Machine / date |
 |---|---|---|
 | Hook no-op path (spawn + early exit) | median 5.7 ms, p95 6.8 ms | Ryzen 5 7600, Defender real-time on, 2026-09-15 |
-| Hook round trip (spawn + pipe request/response, no handshake yet) | median 5.5 ms, p95 6.1 ms | same; re-measure with handshake in M4 |
+| Hook round trip (spawn + pipe request/response, no handshake yet) | median 5.5 ms, p95 6.1 ms | same (M0) |
+| Hook round trip with the real handshake (`dex workspace list --json`) | median 5.5 ms, p95 6.2 ms | same, 2026-09-16 (M4): the handshake adds no measurable cost over process start |
 | 50MB `type` benchmark, backend only (ConPTY → coalescer → instant ack) | 24.2 s (~2 MB/s; ConPTY's own rendering is the bottleneck) | Ryzen 5 7600, 2026-09-15 |
 | 50MB `type` benchmark, end to end in the UI | — owner check pending (M1 gate) | |
 

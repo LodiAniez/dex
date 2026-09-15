@@ -125,7 +125,7 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
           {""}
         </button>
       </div>
-      <TerminalPane paneId={pane.id} cwd={pane.cwd} active={active} />
+      <TerminalPane paneId={pane.id} workspaceId={workspace.id} cwd={pane.cwd} active={active} />
     </div>
   );
 }

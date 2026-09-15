@@ -1,12 +1,18 @@
-//! `dex`: the command-line client. Thin by design — parse, send one request
-//! over the pipe, print the response. All logic lives in the daemon.
+//! `dex`: the command-line client. Thin by design — parse, send requests over
+//! the pipe, print the responses. All logic lives in the daemon.
 #![forbid(unsafe_code)]
 
+mod client;
 mod commands;
+mod output;
 
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
+
+use commands::pane::PaneCommand;
+use commands::workspace::WorkspaceCommand;
+use output::Format;
 
 /// Command-line interface to the running Dex app.
 #[derive(Debug, Parser)]
@@ -19,19 +25,26 @@ use clap::{Args, Parser, Subcommand};
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    /// Print machine-readable JSON.
+    #[arg(long, global = true)]
+    json: bool,
+    /// Leave out the header row of tables.
+    #[arg(long, global = true)]
+    no_header: bool,
 }
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Check that Dex is running and reachable, and what is set up.
+    Doctor,
+    /// List, create, switch, and delete workspaces.
+    #[command(subcommand)]
+    Workspace(WorkspaceCommand),
+    /// List, create, split, and close panes; type into them; label them.
+    #[command(subcommand)]
+    Pane(PaneCommand),
     /// Claude Code hook entry point. Always exits 0; a no-op outside a Dex pane.
     Event(EventArgs),
-    /// Measures one pipe round trip (scripts/bench-hooks.ps1). Replaced by the real client in M4.
-    #[command(hide = true)]
-    BenchPing {
-        /// Pipe name, without the `\\.\pipe\` prefix.
-        #[arg(long)]
-        pipe: String,
-    },
 }
 
 #[derive(Debug, Args)]
@@ -52,18 +65,31 @@ fn main() -> ExitCode {
     }
 
     let cli = Cli::parse();
-    match cli.command {
+    let format = Format {
+        json: cli.json,
+        header: !cli.no_header,
+    };
+    let result = match cli.command {
         Command::Event(args) => {
             commands::event::run(&args.kind);
-            ExitCode::SUCCESS
+            return ExitCode::SUCCESS;
         }
-        Command::BenchPing { pipe } => match commands::bench::ping(&pipe) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(err) => {
-                eprintln!("dex: {err:#}");
+        Command::Doctor => {
+            return if commands::doctor::run(format) {
+                ExitCode::SUCCESS
+            } else {
                 ExitCode::FAILURE
-            }
-        },
+            };
+        }
+        Command::Workspace(command) => commands::workspace::run(command, format),
+        Command::Pane(command) => commands::pane::run(command, format),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            output::print_error(&err, format);
+            ExitCode::FAILURE
+        }
     }
 }
 

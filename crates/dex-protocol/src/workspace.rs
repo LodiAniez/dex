@@ -86,6 +86,10 @@ pub struct WorkspaceList {
     pub workspaces: Vec<WorkspaceView>,
     /// Id of the active workspace; `None` only when there are no workspaces.
     pub active: Option<String>,
+    /// Grows with every change to the daemon's state. Responses can arrive
+    /// out of order, so a client keeps whichever snapshot has the highest.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub revision: i64,
 }
 
 /// Args for `workspace.create`. All optional: a bare create gets the next
@@ -165,6 +169,12 @@ pub struct SplitPaneArgs {
     /// Where the new pane goes; right by default.
     #[serde(default)]
     pub direction: SplitDirection,
+    /// Working directory; the split pane's by default.
+    #[serde(default)]
+    pub cwd: Option<String>,
+    /// Label for the new pane.
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 /// Args naming one pane (`pane.close`, `pane.focus`).

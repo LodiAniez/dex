@@ -13,4 +13,9 @@ workspaces: Array<WorkspaceView>,
 /**
  * Id of the active workspace; `None` only when there are no workspaces.
  */
-active: string | null, };
+active: string | null, 
+/**
+ * Grows with every change to the daemon's state. Responses can arrive
+ * out of order, so a client keeps whichever snapshot has the highest.
+ */
+revision: number, };

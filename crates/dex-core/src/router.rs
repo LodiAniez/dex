@@ -3,7 +3,7 @@
 //! The only module that knows every slice exists (docs/conventions.md §1.2).
 //! One line per command. It is also the single place where every error gets
 //! its protocol code and repair string (§4.3), so no error can reach a client
-//! without an actionable `repair`.
+//! without an actionable `repair`, and where changes are announced to the UI.
 
 use dex_protocol::{ErrorBody, ErrorCode, Request, Response};
 use serde::Serialize;
@@ -14,12 +14,21 @@ use thiserror::Error;
 use crate::app::AppState;
 use crate::features::workspace::{self, WorkspaceError};
 
+/// Commands that change nothing the UI shows. Every other successful command
+/// tells the UI to re-read the workspaces.
+const READ_ONLY: [&str; 4] = ["workspace.list", "pane.list", "pane.send", "pane.send_key"];
+
 /// Runs one request and wraps the outcome in a response. Never fails: every
 /// error becomes an error response.
 pub async fn dispatch(state: &AppState, request: Request) -> Response {
     let id = request.id.clone();
     match route(state, &request).await {
-        Ok(data) => Response::success(id, data),
+        Ok(data) => {
+            if !READ_ONLY.contains(&request.cmd.as_str()) {
+                state.bus.publish("workspaces");
+            }
+            Response::success(id, data)
+        }
         Err(err) => Response::failure(id, error_body(&err)),
     }
 }
@@ -35,10 +44,15 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "workspace.delete" => encode(workspace::delete(state, args(req)?).await?),
         "workspace.set_layout" => encode(workspace::set_layout(state, args(req)?).await?),
         "workspace.cycle_layout" => encode(workspace::cycle_layout(state, args(req)?).await?),
+        "pane.list" => encode(workspace::list_panes(state, args(req)?).await?),
+        "pane.create" => encode(workspace::create_pane(state, args(req)?).await?),
         "pane.split" => encode(workspace::split_pane(state, args(req)?).await?),
         "pane.close" => encode(workspace::close_pane(state, args(req)?).await?),
         "pane.focus" => encode(workspace::focus_pane(state, args(req)?).await?),
         "pane.swap" => encode(workspace::swap_panes(state, args(req)?).await?),
+        "pane.label" => encode(workspace::label_pane(state, args(req)?).await?),
+        "pane.send" => encode(workspace::send(state, args(req)?).await?),
+        "pane.send_key" => encode(workspace::send_key(state, args(req)?).await?),
         _ => Err(CoreError::UnknownCommand(req.cmd.clone())),
     }
 }
@@ -75,27 +89,45 @@ fn error_body(err: &CoreError) -> ErrorBody {
     let (code, repair) = match err {
         CoreError::UnknownCommand(_) => (
             ErrorCode::InvalidArgs,
-            "Check the command name; `dex --help` lists every command.",
+            "Check the command name; `dex --help` lists every command.".to_owned(),
         ),
         CoreError::InvalidArgs { .. } => (
             ErrorCode::InvalidArgs,
-            "Check the arguments; `dex <command> --help` lists what the command accepts.",
+            "Check the arguments; `dex <command> --help` lists what the command accepts."
+                .to_owned(),
         ),
-        CoreError::Encode(_) => (ErrorCode::Internal, REPAIR_BUG),
-        CoreError::Workspace(err) => workspace_code(err),
+        CoreError::Encode(_) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
+        CoreError::Workspace(err) => workspace_repair(err),
     };
     ErrorBody {
         code,
         message: err.to_string(),
-        repair: repair.to_owned(),
+        repair,
     }
 }
 
-fn workspace_code(err: &WorkspaceError) -> (ErrorCode, &'static str) {
-    match err {
+fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
+    let (code, repair) = match err {
         WorkspaceError::NoSuchWorkspace(_) => (
             ErrorCode::NoSuchWorkspace,
             "Run `dex workspace list` to see the workspaces that exist.",
+        ),
+        WorkspaceError::NoSuchPane(_) => (
+            ErrorCode::NoSuchPane,
+            "Run `dex pane list` to see the panes that exist.",
+        ),
+        WorkspaceError::AmbiguousTarget { candidates, .. } => {
+            return (
+                ErrorCode::AmbiguousTarget,
+                format!(
+                    "Target one of them by id instead: {}.",
+                    candidates.join("; ")
+                ),
+            );
+        }
+        WorkspaceError::PaneNotStarted(_) => (
+            ErrorCode::NoSuchPane,
+            "A pane's shell starts when the pane is first shown: switch to its workspace in Dex, then retry.",
         ),
         WorkspaceError::InvalidColor(_) => (
             ErrorCode::InvalidArgs,
@@ -111,11 +143,7 @@ fn workspace_code(err: &WorkspaceError) -> (ErrorCode, &'static str) {
         ),
         WorkspaceError::InvalidRoot(_) => (
             ErrorCode::InvalidArgs,
-            "Choose an existing folder as the workspace root.",
-        ),
-        WorkspaceError::NoSuchPane(_) => (
-            ErrorCode::NoSuchPane,
-            "Run `dex pane list` to see the panes that exist.",
+            "Choose an existing folder, as an absolute path.",
         ),
         WorkspaceError::LastPane => (
             ErrorCode::InvalidArgs,
@@ -125,8 +153,19 @@ fn workspace_code(err: &WorkspaceError) -> (ErrorCode, &'static str) {
             ErrorCode::InvalidArgs,
             "Send a layout that shows every pane of the workspace exactly once.",
         ),
-        WorkspaceError::Layout(_) | WorkspaceError::Db(_) => (ErrorCode::Internal, REPAIR_BUG),
-    }
+        WorkspaceError::LabelTaken(_) => (
+            ErrorCode::InvalidArgs,
+            "Pick another label, or clear the other pane's label first.",
+        ),
+        WorkspaceError::InvalidLabel => (
+            ErrorCode::InvalidArgs,
+            "Use a short label without spaces, like `server` or `tests`.",
+        ),
+        WorkspaceError::Pty(_) | WorkspaceError::Layout(_) | WorkspaceError::Db(_) => {
+            (ErrorCode::Internal, REPAIR_BUG)
+        }
+    };
+    (code, repair.to_owned())
 }
 
 #[cfg(test)]
@@ -190,14 +229,43 @@ mod tests {
 
         let split = dispatch(&state, request("pane.split", json!({"pane": pane}))).await;
         assert!(split.ok, "{:?}", split.error);
+        let panes = dispatch(&state, request("pane.list", json!({}))).await;
         assert_eq!(
-            split.data.unwrap()["workspaces"][0]["panes"]
-                .as_array()
-                .map(Vec::len),
+            panes.data.unwrap()["panes"].as_array().map(Vec::len),
             Some(2)
         );
 
         let missing = dispatch(&state, request("pane.close", json!({"pane": "gone"}))).await;
         assert_eq!(missing.error.unwrap().code, ErrorCode::NoSuchPane);
+    }
+
+    #[tokio::test]
+    async fn changes_are_announced_to_the_ui_and_reads_are_not() {
+        let (_dir, state) = AppState::for_tests();
+        let mut changes = state.bus.subscribe();
+
+        dispatch(&state, request("workspace.create", json!({}))).await;
+        assert_eq!(changes.try_recv().unwrap().topic, "workspaces");
+
+        dispatch(&state, request("workspace.list", json!({}))).await;
+        assert!(
+            changes.try_recv().is_err(),
+            "a read must not announce a change"
+        );
+    }
+
+    #[tokio::test]
+    async fn ambiguous_targets_list_the_candidates_in_the_repair() {
+        let (_dir, state) = AppState::for_tests();
+        dispatch(&state, request("workspace.create", json!({"name": "dup"}))).await;
+        dispatch(&state, request("workspace.create", json!({"name": "dup"}))).await;
+        let response = dispatch(
+            &state,
+            request("workspace.switch", json!({"workspace": "dup"})),
+        )
+        .await;
+        let error = response.error.unwrap();
+        assert_eq!(error.code, ErrorCode::AmbiguousTarget);
+        assert_eq!(error.repair.matches("dup (").count(), 2);
     }
 }

@@ -1,5 +1,6 @@
 //! One handler per `workspace.*` command. Every handler answers with the full
 //! `WorkspaceList`, so clients replace their state instead of patching it.
+//! Workspace arguments are targets: an id or a name (PRD §6.3).
 
 use std::path::PathBuf;
 
@@ -12,8 +13,13 @@ use rusqlite::Connection;
 use super::logic;
 use super::model::{Pane, Workspace, WorkspaceError};
 use super::store;
+use super::targets::resolve_workspace;
 use crate::app::AppState;
 use crate::platform::{clock, ids, paths};
+
+/// What a database closure returns: SQL failures in the outer `Result`, rule
+/// violations (unknown target, last pane, ...) in the inner one.
+pub(super) type Outcome = rusqlite::Result<Result<WorkspaceList, WorkspaceError>>;
 
 /// `workspace.list`: every workspace with its panes, and which one is active.
 pub async fn list(state: &AppState) -> Result<WorkspaceList, WorkspaceError> {
@@ -80,7 +86,7 @@ pub async fn rename(
     let name = logic::clean_name(&args.name).ok_or(WorkspaceError::InvalidName)?;
     let now = clock::now_millis();
     update_one(state, args.workspace, move |conn, id| {
-        store::update_name(conn, id, &name, now)
+        store::update_name(conn, id, &name, now).map(|_| ())
     })
     .await
 }
@@ -93,7 +99,7 @@ pub async fn recolor(
     let color = args.color.map(parse_color).transpose()?;
     let now = clock::now_millis();
     update_one(state, args.workspace, move |conn, id| {
-        store::update_color(conn, id, color.as_deref(), now)
+        store::update_color(conn, id, color.as_deref(), now).map(|_| ())
     })
     .await
 }
@@ -104,11 +110,7 @@ pub async fn switch(
     args: WorkspaceArgs,
 ) -> Result<WorkspaceList, WorkspaceError> {
     update_one(state, args.workspace, |conn, id| {
-        if store::find_workspace(conn, id)?.is_none() {
-            return Ok(false);
-        }
-        store::update_active_workspace(conn, id)?;
-        Ok(true)
+        store::update_active_workspace(conn, id)
     })
     .await
 }
@@ -120,7 +122,7 @@ pub async fn delete(
     args: WorkspaceArgs,
 ) -> Result<WorkspaceList, WorkspaceError> {
     update_one(state, args.workspace, |conn, id| {
-        store::delete_workspace(conn, id)
+        store::delete_workspace(conn, id).map(|_| ())
     })
     .await
 }
@@ -148,27 +150,26 @@ pub async fn reorder(
     outcome.ok_or(WorkspaceError::InvalidOrder)
 }
 
-/// Runs a single-workspace update, then reloads the list. The update returns
-/// false when no row matched, which becomes `NoSuchWorkspace`.
+/// Resolves `target`, runs `update` on that workspace, then reloads the list.
 async fn update_one<F>(
     state: &AppState,
-    id: String,
+    target: String,
     update: F,
 ) -> Result<WorkspaceList, WorkspaceError>
 where
-    F: FnOnce(&mut Connection, &str) -> rusqlite::Result<bool> + Send + 'static,
+    F: FnOnce(&mut Connection, &str) -> rusqlite::Result<()> + Send + 'static,
 {
-    let key = id.clone();
-    let outcome = state
+    state
         .db
-        .call(move |conn| {
-            if !update(conn, &key)? {
-                return Ok(None);
-            }
-            load_list(conn).map(Some)
+        .call(move |conn| -> Outcome {
+            let workspace = match resolve_workspace(conn, &target)? {
+                Ok(workspace) => workspace,
+                Err(err) => return Ok(Err(err)),
+            };
+            update(conn, &workspace.id)?;
+            load_list(conn).map(Ok)
         })
-        .await?;
-    outcome.ok_or(WorkspaceError::NoSuchWorkspace(id))
+        .await?
 }
 
 /// Reads the whole workspace state and shapes it for the wire.
@@ -182,7 +183,11 @@ pub(super) fn load_list(conn: &mut Connection) -> rusqlite::Result<WorkspaceList
     let active = store::find_active_workspace(conn)?
         .filter(|id| workspaces.iter().any(|ws| &ws.id == id))
         .or_else(|| workspaces.first().map(|ws| ws.id.clone()));
-    Ok(WorkspaceList { workspaces, active })
+    Ok(WorkspaceList {
+        workspaces,
+        active,
+        revision: store::revision(conn)?,
+    })
 }
 
 fn view(workspace: Workspace, panes: Vec<Pane>) -> WorkspaceView {
@@ -212,17 +217,25 @@ fn parse_color(input: String) -> Result<String, WorkspaceError> {
     logic::normalize_color(&input).ok_or(WorkspaceError::InvalidColor(input))
 }
 
+/// `path` in stored form, if it is an existing absolute directory.
+pub(super) fn existing_dir(path: &str) -> Result<String, WorkspaceError> {
+    let native = PathBuf::from(path.trim());
+    let stored = paths::normalize(&native);
+    if native.is_absolute() && native.is_dir() {
+        Ok(stored)
+    } else {
+        Err(WorkspaceError::InvalidRoot(stored))
+    }
+}
+
 /// The workspace root as stored: the requested directory, or the home directory.
 fn resolve_root(requested: Option<String>) -> Result<String, WorkspaceError> {
-    let path = match requested {
-        Some(path) => PathBuf::from(path.trim()),
+    match requested {
+        Some(path) => existing_dir(&path),
         None => {
-            paths::home_dir().ok_or_else(|| WorkspaceError::InvalidRoot("%USERPROFILE%".into()))?
+            let home = paths::home_dir()
+                .ok_or_else(|| WorkspaceError::InvalidRoot("%USERPROFILE%".into()))?;
+            existing_dir(&home.to_string_lossy())
         }
-    };
-    let stored = paths::normalize(&path);
-    if !path.is_absolute() || !path.is_dir() {
-        return Err(WorkspaceError::InvalidRoot(stored));
     }
-    Ok(stored)
 }

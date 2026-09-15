@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use dex_protocol::pane::Key;
 use dex_protocol::workspace::Layout;
 
 use super::layout;
@@ -54,6 +55,71 @@ pub fn reorder(existing: &[String], requested: &[String]) -> Option<Vec<(String,
         return None;
     }
     Some(requested.iter().cloned().zip(0..).collect())
+}
+
+/// Longest pane label accepted, in characters.
+const MAX_LABEL_CHARS: usize = 32;
+
+/// `input` trimmed, if it is a usable pane label: 1–32 characters and no
+/// whitespace, because labels are typed as `--target` values.
+pub fn clean_label(input: &str) -> Option<String> {
+    let label = input.trim();
+    let usable = !label.is_empty()
+        && label.chars().count() <= MAX_LABEL_CHARS
+        && !label.chars().any(char::is_whitespace);
+    usable.then(|| label.to_owned())
+}
+
+/// What a target names among `candidates` (id, optional name).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Resolved {
+    /// Exactly one candidate, at this index.
+    One(usize),
+    /// None.
+    Nothing,
+    /// Several, at these indexes.
+    Many(Vec<usize>),
+}
+
+/// Resolves a target the way PRD §6.3 prescribes: an exact id, else exact
+/// names, else case-insensitive names. Several matches are ambiguous.
+pub fn resolve(target: &str, candidates: &[(&str, Option<&str>)]) -> Resolved {
+    if let Some(index) = candidates.iter().position(|(id, _)| *id == target) {
+        return Resolved::One(index);
+    }
+    let matching = |same: &dyn Fn(&str) -> bool| -> Vec<usize> {
+        candidates
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, name))| name.is_some_and(same))
+            .map(|(index, _)| index)
+            .collect()
+    };
+    let exact = matching(&|name| name == target);
+    let found = if exact.is_empty() {
+        matching(&|name| name.to_lowercase() == target.to_lowercase())
+    } else {
+        exact
+    };
+    match found.as_slice() {
+        [] => Resolved::Nothing,
+        [one] => Resolved::One(*one),
+        _ => Resolved::Many(found),
+    }
+}
+
+/// The bytes a named key sends to a shell: what a terminal sends for it.
+pub fn key_bytes(key: Key) -> &'static [u8] {
+    match key {
+        Key::Enter => b"\r",
+        Key::Tab => b"\t",
+        Key::Escape => b"\x1b",
+        Key::CtrlC => b"\x03",
+        Key::Up => b"\x1b[A",
+        Key::Down => b"\x1b[B",
+        Key::Right => b"\x1b[C",
+        Key::Left => b"\x1b[D",
+    }
 }
 
 /// The stored layout if it shows exactly the workspace's panes; otherwise a
@@ -135,5 +201,29 @@ mod tests {
             Some(leaf("p3"))
         );
         assert_eq!(layout_or_default(&stored, &[]), None);
+    }
+
+    #[test]
+    fn labels_are_trimmed_short_and_space_free() {
+        assert_eq!(clean_label(" server "), Some("server".into()));
+        assert_eq!(clean_label("two words"), None);
+        assert_eq!(clean_label(""), None);
+        assert_eq!(clean_label(&"x".repeat(33)), None);
+    }
+
+    #[test]
+    fn targets_resolve_by_id_then_exact_then_case_insensitive_name() {
+        let candidates = [("id-1", Some("Api")), ("id-2", Some("api")), ("id-3", None)];
+        assert_eq!(resolve("id-3", &candidates), Resolved::One(2));
+        assert_eq!(resolve("Api", &candidates), Resolved::One(0));
+        assert_eq!(resolve("API", &candidates), Resolved::Many(vec![0, 1]));
+        assert_eq!(resolve("web", &candidates), Resolved::Nothing);
+    }
+
+    #[test]
+    fn keys_send_what_a_terminal_would() {
+        assert_eq!(key_bytes(Key::Enter), b"\r");
+        assert_eq!(key_bytes(Key::CtrlC), b"\x03");
+        assert_eq!(key_bytes(Key::Up), b"\x1b[A");
     }
 }

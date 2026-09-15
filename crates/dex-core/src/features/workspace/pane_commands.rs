@@ -1,24 +1,23 @@
-//! One handler per `pane.*` command, plus the workspace commands that edit the
-//! whole tree (`workspace.set_layout`, `workspace.cycle_layout`). The tree
-//! edits themselves are pure functions in `layout.rs`; these load, apply, save.
+//! `pane.*` commands that change the tree — split, create, close, focus,
+//! swap, label — plus the workspace commands that edit the whole tree
+//! (`workspace.set_layout`, `workspace.cycle_layout`). Tree edits are pure
+//! functions in `layout.rs`; these resolve targets, apply, and save.
 
+use dex_protocol::pane::{CreatePaneArgs, Created, LabelPaneArgs};
 use dex_protocol::workspace::{
     Layout, PaneArgs, SetLayoutArgs, SplitDir, SplitDirection, SplitPaneArgs, SwapPanesArgs,
     WorkspaceArgs, WorkspaceList,
 };
 use rusqlite::Connection;
 
-use super::commands::load_list;
+use super::commands::{Outcome, existing_dir, load_list};
 use super::layout::{self, Closed};
 use super::logic;
 use super::model::{Pane, WorkspaceError};
 use super::store;
+use super::targets::{resolve_pane, resolve_workspace, target_workspace};
 use crate::app::AppState;
 use crate::platform::{clock, ids};
-
-/// What a database closure returns: SQL failures in the outer `Result`, rule
-/// violations (unknown pane, last pane, ...) in the inner one.
-type Outcome = rusqlite::Result<Result<WorkspaceList, WorkspaceError>>;
 
 /// A pane, and its workspace's tree and focus as they are right now.
 struct Located {
@@ -27,19 +26,29 @@ struct Located {
     active: Option<String>,
 }
 
-/// Finds a pane and its workspace's current tree; `None` if the pane is gone.
-fn locate(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<Located>> {
-    let Some(pane) = store::find_pane(conn, pane_id)? else {
-        return Ok(None);
+/// A pane about to be created by a split.
+struct NewPane {
+    id: String,
+    cwd: Option<String>,
+    label: Option<String>,
+    dir: SplitDir,
+    now: i64,
+}
+
+/// Resolves a pane and loads its workspace's current tree.
+fn locate(conn: &Connection, target: &str) -> rusqlite::Result<Result<Located, WorkspaceError>> {
+    let pane = match resolve_pane(conn, target)? {
+        Ok(pane) => pane,
+        Err(err) => return Ok(Err(err)),
     };
     let Some(workspace) = store::find_workspace(conn, &pane.workspace_id)? else {
-        return Ok(None);
+        return Ok(Err(WorkspaceError::NoSuchPane(target.to_owned())));
     };
     let pane_ids = pane_ids(conn, &workspace.id)?;
     let Some(layout) = logic::layout_or_default(&workspace.layout_json, &pane_ids) else {
-        return Ok(None);
+        return Ok(Err(WorkspaceError::NoSuchPane(target.to_owned())));
     };
-    Ok(Some(Located {
+    Ok(Ok(Located {
         pane,
         layout,
         active: workspace.active_pane,
@@ -58,49 +67,123 @@ fn to_json(tree: &Layout) -> Result<String, WorkspaceError> {
     Ok(serde_json::to_string(tree)?)
 }
 
-fn no_such_pane(id: String) -> Outcome {
-    Ok(Err(WorkspaceError::NoSuchPane(id)))
+/// Whether a write hit a uniqueness constraint (here: a duplicate pane label).
+fn is_constraint(err: &rusqlite::Error) -> bool {
+    matches!(err, rusqlite::Error::SqliteFailure(failure, _)
+        if failure.code == rusqlite::ErrorCode::ConstraintViolation)
 }
 
-/// `pane.split`: a new terminal pane beside `pane`, in the same folder and
-/// runtime. The new pane takes focus.
+fn label_arg(label: Option<String>) -> Result<Option<String>, WorkspaceError> {
+    label
+        .map(|label| logic::clean_label(&label).ok_or(WorkspaceError::InvalidLabel))
+        .transpose()
+}
+
+fn split_dir(direction: SplitDirection) -> SplitDir {
+    match direction {
+        SplitDirection::Right => SplitDir::Horizontal,
+        SplitDirection::Down => SplitDir::Vertical,
+    }
+}
+
+/// Splits `found.pane`, inserting `new` beside it; the new pane takes focus.
+fn split_located(conn: &mut Connection, found: Located, new: NewPane) -> Outcome {
+    let Some(tree) = layout::split_pane(&found.layout, &found.pane.id, &new.id, new.dir) else {
+        return Ok(Err(WorkspaceError::NoSuchPane(found.pane.id)));
+    };
+    let json = match to_json(&tree) {
+        Ok(json) => json,
+        Err(err) => return Ok(Err(err)),
+    };
+    let pane = Pane {
+        id: new.id.clone(),
+        workspace_id: found.pane.workspace_id.clone(),
+        label: new.label.clone(),
+        cwd: new.cwd.unwrap_or_else(|| found.pane.cwd.clone()),
+        kind: "terminal".into(),
+        runtime: found.pane.runtime.clone(),
+    };
+    let tx = conn.transaction()?;
+    match store::insert_pane(&tx, &pane, new.now) {
+        Err(err) if is_constraint(&err) => {
+            return Ok(Err(WorkspaceError::LabelTaken(
+                new.label.unwrap_or_default(),
+            )));
+        }
+        other => other?,
+    }
+    store::update_layout(&tx, &pane.workspace_id, &json, Some(&new.id), new.now)?;
+    tx.commit()?;
+    load_list(conn).map(Ok)
+}
+
+/// `pane.split`: a new terminal pane beside `pane`, in its folder (or `cwd`)
+/// and runtime. The new pane takes focus.
 pub async fn split_pane(
     state: &AppState,
     args: SplitPaneArgs,
 ) -> Result<WorkspaceList, WorkspaceError> {
-    let new_id = ids::new_id();
-    let now = clock::now_millis();
-    let dir = match args.direction {
-        SplitDirection::Right => SplitDir::Horizontal,
-        SplitDirection::Down => SplitDir::Vertical,
+    let new = NewPane {
+        id: ids::new_id(),
+        cwd: args.cwd.as_deref().map(existing_dir).transpose()?,
+        label: label_arg(args.label)?,
+        dir: split_dir(args.direction),
+        now: clock::now_millis(),
     };
     state
         .db
         .call(move |conn| -> Outcome {
-            let Some(found) = locate(conn, &args.pane)? else {
-                return no_such_pane(args.pane);
-            };
-            let Some(tree) = layout::split_pane(&found.layout, &found.pane.id, &new_id, dir) else {
-                return no_such_pane(args.pane);
-            };
-            let json = match to_json(&tree) {
-                Ok(json) => json,
+            let found = match locate(conn, &args.pane)? {
+                Ok(found) => found,
                 Err(err) => return Ok(Err(err)),
             };
-            let pane = Pane {
-                id: new_id.clone(),
-                workspace_id: found.pane.workspace_id.clone(),
-                label: None,
-                cwd: found.pane.cwd.clone(),
-                kind: "terminal".into(),
-                runtime: found.pane.runtime.clone(),
-            };
-            let tx = conn.transaction()?;
-            store::insert_pane(&tx, &pane, now)?;
-            store::update_layout(&tx, &pane.workspace_id, &json, Some(&new_id), now)?;
-            tx.commit()?;
-            load_list(conn).map(Ok)
+            split_located(conn, found, new)
         })
+        .await?
+}
+
+/// `pane.create`: a new pane in a workspace — `workspace`, else the one
+/// holding `pane`, else the active one — split right from its focused pane.
+pub async fn create_pane(
+    state: &AppState,
+    args: CreatePaneArgs,
+) -> Result<Created, WorkspaceError> {
+    let new = NewPane {
+        id: ids::new_id(),
+        cwd: args.cwd.as_deref().map(existing_dir).transpose()?,
+        label: label_arg(args.label)?,
+        dir: SplitDir::Horizontal,
+        now: clock::now_millis(),
+    };
+    let new_id = new.id.clone();
+    state
+        .db
+        .call(
+            move |conn| -> rusqlite::Result<Result<Created, WorkspaceError>> {
+                let workspace = match target_workspace(
+                    conn,
+                    args.workspace.as_deref(),
+                    args.pane.as_deref(),
+                )? {
+                    Ok(workspace) => workspace,
+                    Err(err) => return Ok(Err(err)),
+                };
+                let ids = pane_ids(conn, &workspace.id)?;
+                let focus = workspace
+                    .active_pane
+                    .clone()
+                    .filter(|id| ids.contains(id))
+                    .or_else(|| ids.first().cloned());
+                let Some(focus) = focus else {
+                    return Ok(Err(WorkspaceError::NoSuchPane(workspace.name)));
+                };
+                let found = match locate(conn, &focus)? {
+                    Ok(found) => found,
+                    Err(err) => return Ok(Err(err)),
+                };
+                Ok(split_located(conn, found, new)?.map(|_| Created { pane: new_id }))
+            },
+        )
         .await?
 }
 
@@ -112,13 +195,14 @@ pub async fn close_pane(state: &AppState, args: PaneArgs) -> Result<WorkspaceLis
     state
         .db
         .call(move |conn| -> Outcome {
-            let Some(found) = locate(conn, &args.pane)? else {
-                return no_such_pane(args.pane);
+            let found = match locate(conn, &args.pane)? {
+                Ok(found) => found,
+                Err(err) => return Ok(Err(err)),
             };
             let tree = match layout::close_pane(&found.layout, &found.pane.id) {
                 Closed::Remaining(tree) => tree,
                 Closed::WasLast => return Ok(Err(WorkspaceError::LastPane)),
-                Closed::NotFound => return no_such_pane(args.pane),
+                Closed::NotFound => return Ok(Err(WorkspaceError::NoSuchPane(args.pane))),
             };
             let focus = if found.active.as_deref() == Some(found.pane.id.as_str()) {
                 layout::leaves(&tree).into_iter().next()
@@ -144,8 +228,9 @@ pub async fn focus_pane(state: &AppState, args: PaneArgs) -> Result<WorkspaceLis
     state
         .db
         .call(move |conn| -> Outcome {
-            let Some(pane) = store::find_pane(conn, &args.pane)? else {
-                return no_such_pane(args.pane);
+            let pane = match resolve_pane(conn, &args.pane)? {
+                Ok(pane) => pane,
+                Err(err) => return Ok(Err(err)),
             };
             store::update_active_pane(conn, &pane.workspace_id, &pane.id, now)?;
             load_list(conn).map(Ok)
@@ -162,18 +247,55 @@ pub async fn swap_panes(
     state
         .db
         .call(move |conn| -> Outcome {
-            let Some(found) = locate(conn, &args.a)? else {
-                return no_such_pane(args.a);
+            let found = match locate(conn, &args.a)? {
+                Ok(found) => found,
+                Err(err) => return Ok(Err(err)),
             };
-            // Fails if `b` is missing, in another workspace, or `a` itself.
-            let Some(tree) = layout::swap_panes(&found.layout, &args.a, &args.b) else {
-                return no_such_pane(args.b);
+            let other = match resolve_pane(conn, &args.b)? {
+                Ok(pane) => pane,
+                Err(err) => return Ok(Err(err)),
+            };
+            // None if `b` is in another workspace, or is `a` itself.
+            let Some(tree) = layout::swap_panes(&found.layout, &found.pane.id, &other.id) else {
+                return Ok(Err(WorkspaceError::NoSuchPane(args.b)));
             };
             let json = match to_json(&tree) {
                 Ok(json) => json,
                 Err(err) => return Ok(Err(err)),
             };
-            store::update_layout(conn, &found.pane.workspace_id, &json, Some(&args.a), now)?;
+            store::update_layout(
+                conn,
+                &found.pane.workspace_id,
+                &json,
+                Some(&found.pane.id),
+                now,
+            )?;
+            load_list(conn).map(Ok)
+        })
+        .await?
+}
+
+/// `pane.label`: sets (or clears) a pane's label, unique within its workspace.
+pub async fn label_pane(
+    state: &AppState,
+    args: LabelPaneArgs,
+) -> Result<WorkspaceList, WorkspaceError> {
+    let label = label_arg(args.label)?;
+    state
+        .db
+        .call(move |conn| -> Outcome {
+            let pane = match resolve_pane(conn, &args.pane)? {
+                Ok(pane) => pane,
+                Err(err) => return Ok(Err(err)),
+            };
+            match store::update_label(conn, &pane.id, label.as_deref()) {
+                Err(err) if is_constraint(&err) => {
+                    return Ok(Err(WorkspaceError::LabelTaken(label.unwrap_or_default())));
+                }
+                other => {
+                    other?;
+                }
+            }
             load_list(conn).map(Ok)
         })
         .await?
@@ -191,8 +313,9 @@ pub async fn set_layout(
     state
         .db
         .call(move |conn| -> Outcome {
-            let Some(workspace) = store::find_workspace(conn, &args.workspace)? else {
-                return Ok(Err(WorkspaceError::NoSuchWorkspace(args.workspace)));
+            let workspace = match resolve_workspace(conn, &args.workspace)? {
+                Ok(workspace) => workspace,
+                Err(err) => return Ok(Err(err)),
             };
             let mut shown = layout::leaves(&tree);
             let mut expected = pane_ids(conn, &workspace.id)?;
@@ -223,12 +346,13 @@ pub async fn cycle_layout(
     state
         .db
         .call(move |conn| -> Outcome {
-            let Some(workspace) = store::find_workspace(conn, &args.workspace)? else {
-                return Ok(Err(WorkspaceError::NoSuchWorkspace(args.workspace)));
+            let workspace = match resolve_workspace(conn, &args.workspace)? {
+                Ok(workspace) => workspace,
+                Err(err) => return Ok(Err(err)),
             };
-            let pane_ids = pane_ids(conn, &workspace.id)?;
-            let current = logic::layout_or_default(&workspace.layout_json, &pane_ids);
-            let Some(next) = current.and_then(|tree| layout::next_preset(&tree, &pane_ids)) else {
+            let ids = pane_ids(conn, &workspace.id)?;
+            let current = logic::layout_or_default(&workspace.layout_json, &ids);
+            let Some(next) = current.and_then(|tree| layout::next_preset(&tree, &ids)) else {
                 // No panes: nothing to arrange.
                 return load_list(conn).map(Ok);
             };

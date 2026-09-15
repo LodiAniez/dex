@@ -29,6 +29,7 @@ const RESIZE_DEBOUNCE_MS = 100;
 
 interface Entry {
   paneId: string;
+  workspaceId?: string;
   cwd?: string;
   term: Terminal;
   fit: FitAddon;
@@ -68,7 +69,7 @@ function parking(): HTMLDivElement {
 }
 
 /** Creates the pane's terminal if it does not exist yet. Idempotent. */
-export function openTerminal(paneId: string, cwd?: string): void {
+export function openTerminal(paneId: string, cwd?: string, workspaceId?: string): void {
   if (entries.has(paneId)) return;
 
   const term = new Terminal({
@@ -91,7 +92,7 @@ export function openTerminal(paneId: string, cwd?: string): void {
   term.attachCustomKeyEventHandler((event) => !(shortcutFilter?.(event) ?? false));
 
   const entry: Entry = {
-    paneId, cwd, term, fit, serialize, element,
+    paneId, workspaceId, cwd, term, fit, serialize, element,
     webgl: null, spawned: false, dead: false, pendingAck: 0, ackTimer: null, resizeTimer: null,
     pendingInput: "", writing: false,
   };
@@ -113,6 +114,7 @@ export function attachTerminal(paneId: string, host: HTMLElement): void {
     // Spawned only after the first fit, so the shell starts at the real size.
     void spawnPty({
       paneId,
+      workspaceId: entry.workspaceId,
       cwd: entry.cwd,
       cols: entry.term.cols,
       rows: entry.term.rows,

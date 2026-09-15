@@ -6,6 +6,7 @@
 
 pub mod error;
 pub mod handshake;
+pub mod pane;
 pub mod request;
 pub mod response;
 pub mod workspace;
