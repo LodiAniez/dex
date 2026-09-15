@@ -1,0 +1,22 @@
+[package]
+name = "dex-app"
+description = "The Dex desktop app: UI host and embedded daemon."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "dex-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+dex-core.workspace = true
+dex-protocol.workspace = true
+serde.workspace = true
+tauri.workspace = true
+tauri-plugin-dialog.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

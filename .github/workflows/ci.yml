@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # The frontend must be built first: the Tauri crate embeds app/dist at compile time.
+      - name: Frontend install
+        working-directory: app
+        run: npm ci
+
+      - name: Frontend build
+        working-directory: app
+        run: npm run build
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # Includes the structural checks in crates/dex-core/tests/structure.rs.
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Size check (warning only)
+        shell: pwsh
+        run: ./scripts/check-sizes.ps1

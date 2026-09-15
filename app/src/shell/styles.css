@@ -1,0 +1,472 @@
+:root {
+  --bg: #16181d;
+  --bg-raised: #1d2027;
+  --border: #2a2e37;
+  --text: #d7dae0;
+  --text-dim: #8a909c;
+  --close-hover: #c42b1c;
+  --accent: #4f8cff;
+  --hover: rgba(255, 255, 255, 0.06);
+  --selected: rgba(255, 255, 255, 0.1);
+  --bg-popover: #232730;
+  --titlebar-height: 32px;
+  color-scheme: dark;
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--titlebar-height);
+  flex: none;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.titlebar-title {
+  padding-left: 12px;
+  color: var(--text-dim);
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.titlebar-buttons {
+  display: flex;
+  height: 100%;
+}
+
+.titlebar-buttons button {
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  font-size: 10px;
+  cursor: default;
+}
+
+.titlebar-buttons button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.titlebar-buttons button.close:hover {
+  background: var(--close-hover);
+  color: #fff;
+}
+
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.workspace-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.split,
+.split-child {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.split {
+  flex: 1;
+}
+
+/* ---- Sidebar ---- */
+
+.sidebar {
+  width: 224px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  user-select: none;
+}
+
+.sidebar.collapsed {
+  width: 44px;
+  align-items: center;
+  padding-top: 6px;
+  gap: 4px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 6px 6px 14px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.icon-button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  font-size: 12px;
+}
+
+.icon-button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.workspace-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 8px;
+}
+
+.workspace-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 5px;
+}
+
+.workspace-item:hover {
+  background: var(--hover);
+}
+
+.workspace-item.active {
+  background: var(--selected);
+}
+
+.workspace-item.dragging {
+  opacity: 0.4;
+}
+
+.workspace-item.drop-target {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.workspace-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-item.active .workspace-name {
+  color: #fff;
+}
+
+.shortcut {
+  font: inherit;
+  font-size: 10px;
+  color: var(--text-dim);
+  opacity: 0;
+}
+
+.workspace-item:hover .shortcut {
+  opacity: 1;
+}
+
+.color-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex: none;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+}
+
+button.color-dot {
+  cursor: pointer;
+}
+
+button.color-dot:hover {
+  box-shadow: 0 0 0 3px var(--hover);
+}
+
+.color-dot.empty {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--text-dim);
+}
+
+.rename-input,
+.new-workspace input:not([type="color"]) {
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.rename-input {
+  flex: 1;
+  border-color: var(--accent);
+  outline: none;
+}
+
+.workspace-dots {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.dot-button {
+  width: 32px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+}
+
+.dot-button:hover {
+  background: var(--hover);
+}
+
+.dot-button.active {
+  background: var(--selected);
+}
+
+/* ---- Popovers ---- */
+
+.popover {
+  position: fixed;
+  z-index: 100;
+  padding: 6px;
+  background: var(--bg-popover);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.color-picker {
+  width: 152px;
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 22px);
+  gap: 8px;
+  padding: 4px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.swatch:hover {
+  transform: scale(1.1);
+}
+
+.swatch.selected {
+  border-color: var(--text);
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.picker-row:hover {
+  background: var(--hover);
+}
+
+.picker-row input[type="color"] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.context-menu {
+  min-width: 160px;
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.context-menu button:hover {
+  background: var(--hover);
+}
+
+.context-menu button.danger {
+  color: #ff7b72;
+}
+
+/* ---- New workspace form ---- */
+
+.new-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 8px 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+}
+
+.new-workspace .swatches {
+  padding: 0;
+}
+
+.folder-row {
+  display: flex;
+  gap: 6px;
+}
+
+.folder-row input {
+  flex: 1;
+}
+
+.new-workspace button:not(.swatch) {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+}
+
+.new-workspace button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.new-workspace button:disabled {
+  opacity: 0.6;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* ---- Notices ---- */
+
+.notice-bar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+  background: var(--bg-popover);
+  border: 1px solid var(--border);
+  border-left: 3px solid #f25f5c;
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.notice-repair {
+  margin-top: 4px;
+  color: var(--text-dim);
+}
+
+.terminal-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 0 0 6px;
+  background: var(--bg);
+}
+
+.terminal-host {
+  width: 100%;
+  height: 100%;
+}
+
+/* Detached terminals keep running here: in the DOM, invisible, never refit. */
+.terminal-parking {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  width: 800px;
+  height: 600px;
+  visibility: hidden;
+  pointer-events: none;
+}

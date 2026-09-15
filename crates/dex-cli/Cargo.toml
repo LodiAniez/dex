@@ -1,0 +1,14 @@
+[package]
+name = "dex-cli"
+description = "The `dex` command-line client and Claude Code hook entry point."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "dex"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true

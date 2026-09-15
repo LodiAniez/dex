@@ -1,0 +1,7 @@
+# dex-core denies unwrap/expect/panic/dbg/print (docs/conventions.md §4.1);
+# tests are exempt, because a panic is how a test fails.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+allow-print-in-tests = true

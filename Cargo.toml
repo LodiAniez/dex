@@ -1,0 +1,38 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/dex-protocol",
+    "crates/dex-core",
+    "crates/dex-cli",
+    "crates/dex-mcp",
+    "app/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Exact pins (docs/prd.md §3): versions change deliberately, never as a side
+# effect of a fresh lockfile. Crates add what they use with `workspace = true`.
+[workspace.dependencies]
+dex-core = { path = "crates/dex-core" }
+dex-protocol = { path = "crates/dex-protocol" }
+anyhow = "=1.0.104"
+clap = { version = "=4.6.7", features = ["derive"] }
+portable-pty = "=0.9.0"
+rusqlite = { version = "=0.40.2", features = ["bundled"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+# Tauri 2 is locked (PRD §3); crates.io's newest is a 3.0 alpha, so never take "latest" blindly.
+tauri = "=2.11.5"
+tauri-build = "=2.6.3"
+tauri-plugin-dialog = "=2.7.3"
+tempfile = "=3.27.0"
+thiserror = "=2.0.20"
+tokio = { version = "=1.53.1", features = ["full"] }
+tracing = "=0.1.44"
+tracing-subscriber = "=0.3.23"
+ts-rs = "=12.0.1"
+uuid = { version = "=1.26.1", features = ["v4"] }
+win32job = "=2.0.3"

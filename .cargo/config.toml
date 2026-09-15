@@ -1,0 +1,4 @@
+[env]
+# Where ts-rs writes the TypeScript mirrors of dex-protocol's wire types
+# (`cargo test -p dex-protocol --features ts`). Relative to the repo root.
+TS_RS_EXPORT_DIR = { value = "app/src/platform/generated", relative = true }

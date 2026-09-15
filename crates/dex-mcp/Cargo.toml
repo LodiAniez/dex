@@ -1,0 +1,8 @@
+[package]
+name = "dex-mcp"
+description = "Stdio MCP server exposing the Dex context store to Claude Code."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]

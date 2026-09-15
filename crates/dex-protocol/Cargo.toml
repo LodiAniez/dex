@@ -1,0 +1,16 @@
+[package]
+name = "dex-protocol"
+description = "Wire types shared by the Dex app, CLI, and MCP server."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[features]
+# Generates TypeScript mirrors of the wire types for the frontend. Optional so
+# the crate's normal dependencies stay serde-only (docs/conventions.md §1.4).
+ts = ["dep:ts-rs"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+ts-rs = { workspace = true, optional = true }
