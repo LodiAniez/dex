@@ -136,6 +136,53 @@ pub struct ReorderWorkspacesArgs {
     pub order: Vec<String>,
 }
 
+/// Args for `workspace.set_layout`: the same panes in a new arrangement.
+/// Ratios outside 0.1–0.9 are clamped.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetLayoutArgs {
+    /// Workspace id.
+    pub workspace: String,
+    /// The new tree; must show exactly the workspace's panes.
+    pub layout: Layout,
+}
+
+/// Where `pane.split` puts the new pane.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SplitDirection {
+    /// To the right of the pane.
+    #[default]
+    Right,
+    /// Below the pane.
+    Down,
+}
+
+/// Args for `pane.split`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SplitPaneArgs {
+    /// The pane to split.
+    pub pane: String,
+    /// Where the new pane goes; right by default.
+    #[serde(default)]
+    pub direction: SplitDirection,
+}
+
+/// Args naming one pane (`pane.close`, `pane.focus`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneArgs {
+    /// Pane id.
+    pub pane: String,
+}
+
+/// Args for `pane.swap`: two panes of the same workspace trade places.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SwapPanesArgs {
+    /// One pane.
+    pub a: String,
+    /// The other pane.
+    pub b: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

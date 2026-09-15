@@ -40,6 +40,9 @@ interface Entry {
   pendingAck: number;
   ackTimer: number | null;
   resizeTimer: number | null;
+  /** Input typed while a write was in flight; sent as the next write. */
+  pendingInput: string;
+  writing: boolean;
 }
 
 const entries = new Map<string, Entry>();
@@ -90,12 +93,11 @@ export function openTerminal(paneId: string, cwd?: string): void {
   const entry: Entry = {
     paneId, cwd, term, fit, serialize, element,
     webgl: null, spawned: false, dead: false, pendingAck: 0, ackTimer: null, resizeTimer: null,
+    pendingInput: "", writing: false,
   };
   entries.set(paneId, entry);
 
-  term.onData((data) => {
-    if (!entry.dead) void writePty(paneId, data);
-  });
+  term.onData((data) => sendInput(entry, data));
   term.onResize(({ cols, rows }) => scheduleResize(entry, cols, rows));
 }
 
@@ -118,7 +120,11 @@ export function attachTerminal(paneId: string, host: HTMLElement): void {
       onEvent: (event) => handleEvent(entry, event),
     }).catch((err) => entry.term.write(`\r\n\x1b[31mCould not start a shell: ${err}\x1b[0m\r\n`));
   }
-  entry.term.focus();
+}
+
+/** Gives the pane's terminal keyboard focus. */
+export function focusTerminal(paneId: string): void {
+  entries.get(paneId)?.term.focus();
 }
 
 /** Hides the pane's terminal without disposing it. Its PTY keeps running. */
@@ -164,6 +170,35 @@ function loadWebgl(entry: Entry): void {
   } catch (err) {
     // No WebGL: xterm.js keeps rendering with its DOM renderer, just slower.
     console.warn(`WebGL renderer unavailable for pane ${entry.paneId}`, err);
+  }
+}
+
+/**
+ * Sends keyboard input to the PTY, strictly in order. Tauri runs async
+ * commands concurrently, so back-to-back `pty_write` calls can reach the PTY
+ * out of order ("echo" arrives as "ehco"). One write is in flight per pane;
+ * whatever is typed meanwhile goes out, batched, as the next write.
+ */
+function sendInput(entry: Entry, data: string): void {
+  if (entry.dead) return;
+  entry.pendingInput += data;
+  if (!entry.writing) void flushInput(entry);
+}
+
+async function flushInput(entry: Entry): Promise<void> {
+  entry.writing = true;
+  try {
+    while (entry.pendingInput && !entry.dead) {
+      const chunk = entry.pendingInput;
+      entry.pendingInput = "";
+      try {
+        await writePty(entry.paneId, chunk);
+      } catch {
+        // The process has exited; its exit notice already explains why input goes nowhere.
+      }
+    }
+  } finally {
+    entry.writing = false;
   }
 }
 

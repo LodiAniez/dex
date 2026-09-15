@@ -4,6 +4,8 @@ use std::collections::HashSet;
 
 use dex_protocol::workspace::Layout;
 
+use super::layout;
+
 /// Colors offered by the picker; new workspaces take them in turn.
 /// Mirrored in `app/src/features/workspaces/palette.ts`.
 pub const PALETTE: [&str; 8] = [
@@ -58,30 +60,18 @@ pub fn reorder(existing: &[String], requested: &[String]) -> Option<Vec<(String,
 /// single leaf with the first pane. A tree naming a missing pane would render
 /// as blank space, so a stale tree is replaced rather than trusted.
 pub fn layout_or_default(layout_json: &str, pane_ids: &[String]) -> Option<Layout> {
-    if let Ok(layout) = serde_json::from_str::<Layout>(layout_json) {
-        let mut shown = leaves(&layout);
+    if let Ok(stored) = serde_json::from_str::<Layout>(layout_json) {
+        let mut shown = layout::leaves(&stored);
         let mut all = pane_ids.to_vec();
         shown.sort();
         all.sort();
         if shown == all {
-            return Some(layout);
+            return Some(stored);
         }
     }
     pane_ids.first().map(|id| Layout::Leaf {
         pane_id: id.clone(),
     })
-}
-
-/// Pane ids in a layout, left to right.
-fn leaves(layout: &Layout) -> Vec<String> {
-    match layout {
-        Layout::Leaf { pane_id } => vec![pane_id.clone()],
-        Layout::Split { a, b, .. } => {
-            let mut ids = leaves(a);
-            ids.extend(leaves(b));
-            ids
-        }
-    }
 }
 
 #[cfg(test)]

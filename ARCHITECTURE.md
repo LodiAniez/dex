@@ -35,7 +35,7 @@ Living map of the codebase, updated at the end of every milestone. For what Dex 
 
 | Slice | Tables | Status |
 |---|---|---|
-| `workspace` | `workspace`, `pane`, `app_state` | Workspace list/create/rename/recolor/reorder/switch/delete (M3); pane commands in M2 |
+| `workspace` | `workspace`, `pane`, `app_state` | `workspace.*` in `commands.rs`; `pane.split/close/focus/swap` and `workspace.set_layout/cycle_layout` in `pane_commands.rs`; pure tree operations and the five presets in `layout.rs` |
 | `repo` | `repo`, `workspace_repo` | Stub |
 | `agent` | `agent` | Stub |
 | `context` | `context_entry`, `context_entry_fts`, `context_event`, `context_cursor` | Stub |
@@ -47,7 +47,7 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 
 | Path | Owns |
 |---|---|
-| `shell/` | `App` (root, app shortcuts), `TitleBar`, `Sidebar`, `LayoutView` (renders the pane tree), `NoticeBar`, `keybindings` |
+| `shell/` | `App` (root, app shortcuts, zoom), `TitleBar`, `Sidebar`, `LayoutView` (pane tree, draggable dividers, pane headers), `paneGeometry` (on-screen neighbor for Alt+Arrow), `NoticeBar`, `keybindings` |
 | `platform/` | `daemon.ts` (the `dex_request` envelope), `pty.ts`, `terminalRegistry.ts` (terminals outside React), `notices.ts`, `generated/` (ts-rs wire types) |
 | `features/workspaces/` | `workspaceStore` (snapshot of the daemon's `WorkspaceList`), sidebar rows, color picker, context menu, new-workspace form |
 | `features/panes/` | `TerminalPane` (a layout box that attaches a registry terminal) |
@@ -70,6 +70,8 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 | `portable-pty` 0.9.0 | The cloned Windows child killer returns `Err(last_os_error())` when `TerminateProcess` *succeeds* (OS error 0), and `Ok` when it fails. | `PtySupervisor::kill` treats OS error 0 as success. |
 | `portable-pty` 0.9.0 | Arguments containing `"` are escaped as `\"`, which `cmd.exe` does not understand. | Pass paths as separate arguments rather than quoting inside one. |
 | `win32job` 2.0.3 | Dropping the `Job` closes its handle; with kill-on-close and the app assigned, that kills the app. | `main` holds the job in a binding that lives until exit. |
+| Tauri 2 | Async commands run concurrently on a thread pool, so consecutive `invoke`s can complete out of order — keystrokes sent one `pty_write` each arrived reordered ("ehco"). | `terminalRegistry` keeps one write in flight per pane and batches input typed meanwhile. Apply the same pattern to any other order-sensitive command stream. |
+| WebView2 / `SendKeys` | Synthetic key events often carry no scan code, so `KeyboardEvent.code` is empty. | `shell/keybindings.ts` falls back to `event.key`. |
 
 ## Measurements
 

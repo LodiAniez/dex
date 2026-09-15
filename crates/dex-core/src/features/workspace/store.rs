@@ -133,23 +133,70 @@ pub fn insert_pane(conn: &Connection, pane: &Pane, now: i64) -> rusqlite::Result
     Ok(())
 }
 
+const PANE_COLUMNS: &str = "id, workspace_id, label, cwd, kind, runtime";
+
+fn pane_from_row(row: &Row<'_>) -> rusqlite::Result<Pane> {
+    Ok(Pane {
+        id: row.get(0)?,
+        workspace_id: row.get(1)?,
+        label: row.get(2)?,
+        cwd: row.get(3)?,
+        kind: row.get(4)?,
+        runtime: row.get(5)?,
+    })
+}
+
 /// A workspace's panes, oldest first.
 pub fn list_panes(conn: &Connection, workspace_id: &str) -> rusqlite::Result<Vec<Pane>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, label, cwd, kind, runtime
-           FROM pane WHERE workspace_id = ?1 ORDER BY created_at, rowid",
-    )?;
-    let rows = stmt.query_map([workspace_id], |row| {
-        Ok(Pane {
-            id: row.get(0)?,
-            workspace_id: row.get(1)?,
-            label: row.get(2)?,
-            cwd: row.get(3)?,
-            kind: row.get(4)?,
-            runtime: row.get(5)?,
-        })
-    })?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {PANE_COLUMNS} FROM pane WHERE workspace_id = ?1 ORDER BY created_at, rowid"
+    ))?;
+    let rows = stmt.query_map([workspace_id], pane_from_row)?;
     rows.collect()
+}
+
+/// One pane, if it exists.
+pub fn find_pane(conn: &Connection, id: &str) -> rusqlite::Result<Option<Pane>> {
+    conn.query_row(
+        &format!("SELECT {PANE_COLUMNS} FROM pane WHERE id = ?1"),
+        [id],
+        pane_from_row,
+    )
+    .optional()
+}
+
+/// Deletes a pane. False if there is no such pane.
+pub fn delete_pane(conn: &Connection, id: &str) -> rusqlite::Result<bool> {
+    Ok(conn.execute("DELETE FROM pane WHERE id = ?1", [id])? > 0)
+}
+
+/// Stores a workspace's layout tree and focused pane together.
+pub fn update_layout(
+    conn: &Connection,
+    workspace_id: &str,
+    layout_json: &str,
+    active_pane: Option<&str>,
+    now: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE workspace SET layout_json = ?2, active_pane = ?3, updated_at = ?4 WHERE id = ?1",
+        params![workspace_id, layout_json, active_pane, now],
+    )?;
+    Ok(())
+}
+
+/// Records which pane of a workspace has focus.
+pub fn update_active_pane(
+    conn: &Connection,
+    workspace_id: &str,
+    pane_id: &str,
+    now: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE workspace SET active_pane = ?2, updated_at = ?3 WHERE id = ?1",
+        params![workspace_id, pane_id, now],
+    )?;
+    Ok(())
 }
 
 /// The recorded active workspace id. May name a workspace deleted since.

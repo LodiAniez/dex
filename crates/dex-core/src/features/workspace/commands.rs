@@ -172,7 +172,7 @@ where
 }
 
 /// Reads the whole workspace state and shapes it for the wire.
-fn load_list(conn: &mut Connection) -> rusqlite::Result<WorkspaceList> {
+pub(super) fn load_list(conn: &mut Connection) -> rusqlite::Result<WorkspaceList> {
     let mut workspaces = Vec::new();
     for workspace in store::list_workspaces(conn)? {
         let panes = store::list_panes(conn, &workspace.id)?;

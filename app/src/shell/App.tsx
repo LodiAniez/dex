@@ -1,10 +1,22 @@
 import { useEffect, useState } from "react";
-import { getWorkspaces, loadWorkspaces, switchWorkspace, useWorkspaces } from "../features/workspaces";
+import {
+  closePane,
+  cycleLayout,
+  focusPane,
+  getWorkspaces,
+  loadWorkspaces,
+  splitPane,
+  swapPanes,
+  switchWorkspace,
+  useWorkspaces,
+} from "../features/workspaces";
+import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { showError } from "../platform/notices";
 import { setShortcutFilter } from "../platform/terminalRegistry";
 import { appActionFor, type AppAction } from "./keybindings";
-import { LayoutView } from "./LayoutView";
+import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
+import { neighborPane } from "./paneGeometry";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
 
@@ -18,13 +30,28 @@ function readSidebarPref(): boolean {
   }
 }
 
+function activeWorkspace(): WorkspaceView | undefined {
+  const list = getWorkspaces();
+  return list?.workspaces.find((ws) => ws.id === list.active);
+}
+
+/** The focused pane of the active workspace (its first pane if none is recorded). */
+function activePane(): string | undefined {
+  const ws = activeWorkspace();
+  return ws?.active_pane ?? ws?.panes[0]?.id;
+}
+
+function run(action: Promise<unknown> | undefined): void {
+  void action?.catch(showError);
+}
+
 /** Switches to the workspace `offset` places from the active one, wrapping around. */
 function switchBy(offset: number): void {
   const list = getWorkspaces();
   if (!list || list.workspaces.length === 0) return;
   const count = list.workspaces.length;
   const current = Math.max(0, list.workspaces.findIndex((ws) => ws.id === list.active));
-  void switchWorkspace(list.workspaces[(current + offset + count) % count].id).catch(showError);
+  run(switchWorkspace(list.workspaces[(current + offset + count) % count].id));
 }
 
 /** Window root: title bar, sidebar, and the active workspace's panes. */
@@ -32,9 +59,10 @@ export function App() {
   const list = useWorkspaces();
   const [sidebarOpen, setSidebarOpen] = useState(readSidebarPref);
   const [creating, setCreating] = useState(false);
+  const [zoomed, setZoomed] = useState<string | null>(null);
 
   useEffect(() => {
-    void loadWorkspaces().catch(showError);
+    run(loadWorkspaces());
   }, []);
 
   useEffect(() => {
@@ -47,6 +75,7 @@ export function App() {
 
   useEffect(() => {
     const perform = (action: AppAction) => {
+      const pane = activePane();
       switch (action.kind) {
         case "new-workspace":
           setSidebarOpen(true);
@@ -56,14 +85,39 @@ export function App() {
           setSidebarOpen((open) => !open);
           return;
         case "next-workspace":
-          switchBy(1);
-          return;
+          return switchBy(1);
         case "previous-workspace":
-          switchBy(-1);
-          return;
+          return switchBy(-1);
         case "switch-workspace": {
           const target = getWorkspaces()?.workspaces[action.index];
-          if (target) void switchWorkspace(target.id).catch(showError);
+          if (target) run(switchWorkspace(target.id));
+          return;
+        }
+        case "split-pane":
+          setZoomed(null);
+          if (pane) run(splitPane(pane, action.direction));
+          return;
+        case "close-pane":
+          setZoomed(null);
+          if (pane) run(closePane(pane));
+          return;
+        case "focus-pane": {
+          const next = pane && neighborPane(pane, action.direction);
+          if (next) run(focusPane(next));
+          return;
+        }
+        case "move-pane": {
+          const next = pane && neighborPane(pane, action.direction);
+          if (pane && next) run(swapPanes(pane, next));
+          return;
+        }
+        case "toggle-zoom":
+          setZoomed((current) => (current ? null : (pane ?? null)));
+          return;
+        case "cycle-layout": {
+          setZoomed(null);
+          const ws = activeWorkspace();
+          if (ws) run(cycleLayout(ws.id));
           return;
         }
       }
@@ -81,6 +135,8 @@ export function App() {
   }, []);
 
   const active = list?.workspaces.find((ws) => ws.id === list.active);
+  // Zoom belongs to one pane of the active workspace; anywhere else it is off.
+  const zoomedHere = active?.panes.some((pane) => pane.id === zoomed) ? zoomed : null;
 
   return (
     <div className="app">
@@ -92,9 +148,7 @@ export function App() {
           onToggle={() => setSidebarOpen((open) => !open)}
           onCreatingChange={setCreating}
         />
-        <main className="workspace-area">
-          {active?.layout && <LayoutView layout={active.layout} workspace={active} />}
-        </main>
+        <main className="workspace-area">{active && <WorkspaceLayout workspace={active} zoomed={zoomedHere} />}</main>
       </div>
       <NoticeBar />
     </div>

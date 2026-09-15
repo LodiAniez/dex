@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { request } from "../../platform/daemon";
+import type { Layout } from "../../platform/generated/Layout";
 import type { WorkspaceList } from "../../platform/generated/WorkspaceList";
 import { disposeTerminal } from "../../platform/terminalRegistry";
 
@@ -79,4 +80,42 @@ export async function deleteWorkspace(id: string): Promise<void> {
   const panes = snapshot?.workspaces.find((ws) => ws.id === id)?.panes ?? [];
   publish(await request<WorkspaceList>("workspace.delete", { workspace: id }));
   for (const pane of panes) disposeTerminal(pane.id);
+}
+
+/** Splits a pane; the new pane starts in the same folder and takes focus. */
+export async function splitPane(pane: string, direction: "right" | "down"): Promise<void> {
+  publish(await request<WorkspaceList>("pane.split", { pane, direction }));
+}
+
+/** Closes a pane and ends its terminal. The daemon refuses to close a workspace's last pane. */
+export async function closePane(pane: string): Promise<void> {
+  publish(await request<WorkspaceList>("pane.close", { pane }));
+  disposeTerminal(pane);
+}
+
+/** Focuses a pane immediately on screen, then records it. */
+export async function focusPane(pane: string): Promise<void> {
+  if (snapshot) {
+    publish({
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((ws) =>
+        ws.panes.some((p) => p.id === pane) ? { ...ws, active_pane: pane } : ws,
+      ),
+    });
+  }
+  publish(await request<WorkspaceList>("pane.focus", { pane }));
+}
+
+export async function swapPanes(a: string, b: string): Promise<void> {
+  publish(await request<WorkspaceList>("pane.swap", { a, b }));
+}
+
+/** Saves a rearranged tree (after a divider drag). */
+export async function setLayout(workspace: string, layout: Layout): Promise<void> {
+  publish(await request<WorkspaceList>("workspace.set_layout", { workspace, layout }));
+}
+
+/** Rebuilds the workspace as the next of the five preset layouts. */
+export async function cycleLayout(workspace: string): Promise<void> {
+  publish(await request<WorkspaceList>("workspace.cycle_layout", { workspace }));
 }

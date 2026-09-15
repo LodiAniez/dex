@@ -1,21 +1,131 @@
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { TerminalPane } from "../features/panes/TerminalPane";
+import { closePane, focusPane, setLayout } from "../features/workspaces";
 import type { Layout } from "../platform/generated/Layout";
+import type { PaneView } from "../platform/generated/PaneView";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
+import { showError } from "../platform/notices";
 
-/** Renders a workspace's pane tree. Splits are created from M2; rendering them is already here. */
-export function LayoutView({ layout, workspace }: { layout: Layout; workspace: WorkspaceView }) {
+type Side = "a" | "b";
+
+/** The workspace's pane tree, or just the zoomed pane. */
+export function WorkspaceLayout({ workspace, zoomed }: { workspace: WorkspaceView; zoomed: string | null }) {
+  const zoomedPane = zoomed ? workspace.panes.find((pane) => pane.id === zoomed) : undefined;
+  if (zoomedPane) return <PaneBox pane={zoomedPane} workspace={workspace} zoomed />;
+  if (!workspace.layout) return null;
+  return <Node layout={workspace.layout} path={[]} workspace={workspace} />;
+}
+
+interface NodeProps {
+  layout: Layout;
+  path: Side[];
+  workspace: WorkspaceView;
+}
+
+function Node({ layout, path, workspace }: NodeProps) {
   if (layout.type === "leaf") {
     const pane = workspace.panes.find((p) => p.id === layout.pane_id);
-    return pane ? <TerminalPane key={pane.id} paneId={pane.id} cwd={pane.cwd} /> : null;
+    return pane ? <PaneBox pane={pane} workspace={workspace} zoomed={false} /> : null;
   }
+  return <SplitNode layout={layout} path={path} workspace={workspace} />;
+}
+
+function SplitNode({ layout, path, workspace }: NodeProps & { layout: Extract<Layout, { type: "split" }> }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  // While dragging, the divider follows the pointer locally; one request commits on release.
+  const [dragRatio, setDragRatio] = useState<number | null>(null);
+  useEffect(() => setDragRatio(null), [layout.ratio]);
+  const ratio = dragRatio ?? layout.ratio;
+  const horizontal = layout.dir === "horizontal";
+
+  const startDrag = (event: PointerEvent<HTMLDivElement>) => {
+    const container = containerRef.current;
+    if (!container || !workspace.layout) return;
+    event.preventDefault();
+    const divider = event.currentTarget;
+    divider.setPointerCapture(event.pointerId);
+    const bounds = container.getBoundingClientRect();
+    const root = workspace.layout;
+    let latest = layout.ratio;
+
+    const onMove = (move: globalThis.PointerEvent) => {
+      const position = horizontal
+        ? (move.clientX - bounds.left) / bounds.width
+        : (move.clientY - bounds.top) / bounds.height;
+      latest = Math.min(0.9, Math.max(0.1, position));
+      setDragRatio(latest);
+    };
+    const onUp = () => {
+      divider.removeEventListener("pointermove", onMove);
+      divider.removeEventListener("pointerup", onUp);
+      if (latest !== layout.ratio) {
+        void setLayout(workspace.id, withRatio(root, path, latest)).catch(showError);
+      }
+    };
+    divider.addEventListener("pointermove", onMove);
+    divider.addEventListener("pointerup", onUp);
+  };
+
   return (
-    <div className="split" style={{ flexDirection: layout.dir === "horizontal" ? "row" : "column" }}>
-      <div className="split-child" style={{ flex: layout.ratio }}>
-        <LayoutView layout={layout.a} workspace={workspace} />
+    <div ref={containerRef} className={`split ${horizontal ? "row" : "column"}`}>
+      <div className="split-child" style={{ flex: `${ratio} 1 0` }}>
+        <Node layout={layout.a} path={[...path, "a"]} workspace={workspace} />
       </div>
-      <div className="split-child" style={{ flex: 1 - layout.ratio }}>
-        <LayoutView layout={layout.b} workspace={workspace} />
+      <div
+        className="divider"
+        role="separator"
+        aria-orientation={horizontal ? "vertical" : "horizontal"}
+        onPointerDown={startDrag}
+      />
+      <div className="split-child" style={{ flex: `${1 - ratio} 1 0` }}>
+        <Node layout={layout.b} path={[...path, "b"]} workspace={workspace} />
       </div>
+    </div>
+  );
+}
+
+/** `layout` with the split at `path` set to `ratio`. */
+function withRatio(layout: Layout, path: Side[], ratio: number): Layout {
+  if (layout.type === "leaf") return layout;
+  const [step, ...rest] = path;
+  if (step === undefined) return { ...layout, ratio };
+  return step === "a"
+    ? { ...layout, a: withRatio(layout.a, rest, ratio) }
+    : { ...layout, b: withRatio(layout.b, rest, ratio) };
+}
+
+/** The last two segments of a path: enough to tell panes apart. */
+function shortPath(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts.length <= 2 ? path : `…/${parts.slice(-2).join("/")}`;
+}
+
+function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: WorkspaceView; zoomed: boolean }) {
+  const active = workspace.active_pane === pane.id;
+  return (
+    <div
+      className={`pane${active ? " active" : ""}`}
+      data-pane-id={pane.id}
+      onPointerDown={() => {
+        if (!active) void focusPane(pane.id).catch(showError);
+      }}
+    >
+      <div className="pane-header">
+        <span className="pane-cwd" title={pane.cwd}>
+          {shortPath(pane.cwd)}
+        </span>
+        {zoomed && <span className="pane-badge">zoomed</span>}
+        <button
+          type="button"
+          className="icon-button pane-close"
+          title="Close pane (Ctrl+Shift+W)"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => void closePane(pane.id).catch(showError)}
+        >
+          {""}
+        </button>
+      </div>
+      <TerminalPane paneId={pane.id} cwd={pane.cwd} active={active} />
     </div>
   );
 }

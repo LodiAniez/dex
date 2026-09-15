@@ -33,6 +33,12 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "workspace.reorder" => encode(workspace::reorder(state, args(req)?).await?),
         "workspace.switch" => encode(workspace::switch(state, args(req)?).await?),
         "workspace.delete" => encode(workspace::delete(state, args(req)?).await?),
+        "workspace.set_layout" => encode(workspace::set_layout(state, args(req)?).await?),
+        "workspace.cycle_layout" => encode(workspace::cycle_layout(state, args(req)?).await?),
+        "pane.split" => encode(workspace::split_pane(state, args(req)?).await?),
+        "pane.close" => encode(workspace::close_pane(state, args(req)?).await?),
+        "pane.focus" => encode(workspace::focus_pane(state, args(req)?).await?),
+        "pane.swap" => encode(workspace::swap_panes(state, args(req)?).await?),
         _ => Err(CoreError::UnknownCommand(req.cmd.clone())),
     }
 }
@@ -107,6 +113,18 @@ fn workspace_code(err: &WorkspaceError) -> (ErrorCode, &'static str) {
             ErrorCode::InvalidArgs,
             "Choose an existing folder as the workspace root.",
         ),
+        WorkspaceError::NoSuchPane(_) => (
+            ErrorCode::NoSuchPane,
+            "Run `dex pane list` to see the panes that exist.",
+        ),
+        WorkspaceError::LastPane => (
+            ErrorCode::InvalidArgs,
+            "A workspace keeps at least one pane; delete the workspace to close it.",
+        ),
+        WorkspaceError::LayoutMismatch => (
+            ErrorCode::InvalidArgs,
+            "Send a layout that shows every pane of the workspace exactly once.",
+        ),
         WorkspaceError::Layout(_) | WorkspaceError::Db(_) => (ErrorCode::Internal, REPAIR_BUG),
     }
 }
@@ -162,5 +180,24 @@ mod tests {
         let error = missing.error.unwrap();
         assert_eq!(error.code, ErrorCode::NoSuchWorkspace);
         assert!(error.repair.contains("dex workspace list"));
+    }
+
+    #[tokio::test]
+    async fn pane_commands_are_routed() {
+        let (_dir, state) = AppState::for_tests();
+        let created = dispatch(&state, request("workspace.create", json!({}))).await;
+        let pane = created.data.unwrap()["workspaces"][0]["panes"][0]["id"].clone();
+
+        let split = dispatch(&state, request("pane.split", json!({"pane": pane}))).await;
+        assert!(split.ok, "{:?}", split.error);
+        assert_eq!(
+            split.data.unwrap()["workspaces"][0]["panes"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
+
+        let missing = dispatch(&state, request("pane.close", json!({"pane": "gone"}))).await;
+        assert_eq!(missing.error.unwrap().code, ErrorCode::NoSuchPane);
     }
 }

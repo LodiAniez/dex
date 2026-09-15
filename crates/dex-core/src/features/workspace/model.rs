@@ -56,6 +56,15 @@ pub enum WorkspaceError {
     /// A reorder that did not list every workspace exactly once.
     #[error("the new order must list every workspace exactly once")]
     InvalidOrder,
+    /// No pane has this id (or, for a swap, the other pane is not in the same workspace).
+    #[error("no pane with id {0} in this workspace")]
+    NoSuchPane(String),
+    /// Closing the only pane of a workspace.
+    #[error("a workspace keeps at least one pane")]
+    LastPane,
+    /// A client-sent layout that does not show exactly the workspace's panes.
+    #[error("the layout must show every pane of the workspace exactly once")]
+    LayoutMismatch,
     /// The root is not an existing absolute directory.
     #[error("{0:?} is not an existing directory")]
     InvalidRoot(String),
