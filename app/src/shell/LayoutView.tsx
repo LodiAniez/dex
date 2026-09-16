@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { ActivityPane } from "../features/activity";
 import { AgentBadge, agentInPane, useAgents } from "../features/agents";
 import { TerminalPane } from "../features/panes/TerminalPane";
 import { closePane, focusPane, setLayout } from "../features/workspaces";
@@ -116,7 +117,7 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
         {agent && <AgentBadge agent={agent} />}
         {pane.label && <span className="pane-label">{pane.label}</span>}
         <span className="pane-cwd" title={pane.cwd}>
-          {shortPath(pane.cwd)}
+          {pane.kind === "activity" ? "activity" : shortPath(pane.cwd)}
         </span>
         {zoomed && <span className="pane-badge">zoomed</span>}
         <button
@@ -129,7 +130,12 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
           {""}
         </button>
       </div>
-      <TerminalPane paneId={pane.id} workspaceId={workspace.id} cwd={pane.cwd} active={active} />
+      {/* A non-terminal pane never mounts a terminal, so no shell is spawned. */}
+      {pane.kind === "activity" ? (
+        <ActivityPane workspaceId={workspace.id} />
+      ) : (
+        <TerminalPane paneId={pane.id} workspaceId={workspace.id} cwd={pane.cwd} active={active} />
+      )}
     </div>
   );
 }

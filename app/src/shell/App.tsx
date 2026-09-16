@@ -7,6 +7,7 @@ import {
   focusPane,
   getWorkspaces,
   loadWorkspaces,
+  showActivity,
   splitPane,
   swapPanes,
   switchWorkspace,
@@ -167,7 +168,12 @@ export function App() {
 
   return (
     <div className="app">
-      <TitleBar title={active?.name} color={active?.color} counts={agentCounts(agents)} />
+      <TitleBar
+        title={active?.name}
+        color={active?.color}
+        counts={agentCounts(agents)}
+        onShowActivity={active ? () => run(showActivity(active)) : undefined}
+      />
       <div className="app-body">
         <Sidebar
           open={sidebarOpen}

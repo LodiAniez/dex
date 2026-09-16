@@ -7,6 +7,7 @@ export {
   getWorkspaces,
   loadWorkspaces,
   setLayout,
+  showActivity,
   splitPane,
   swapPanes,
   switchWorkspace,

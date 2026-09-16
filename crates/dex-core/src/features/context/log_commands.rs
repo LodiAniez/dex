@@ -17,6 +17,36 @@ use crate::platform::clock;
 /// Most events the activity pane asks for at once.
 const DEFAULT_EVENT_LIMIT: u32 = 200;
 
+/// For the agent slice: records a status change in the workspace log, so the
+/// activity pane shows what the agents are doing and not only what they say
+/// (PRD §10.1). Best-effort — a status change is not worth failing a hook over.
+///
+/// These rows are deliberately left out of delta digests (`digest_commands`):
+/// they are for the human watching the stream, and a sibling changing status
+/// several times a turn would eat the delta budget without telling an agent
+/// anything it needs.
+pub fn record_status(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+    agent_id: &str,
+    body: String,
+    now: i64,
+) -> rusqlite::Result<()> {
+    store::insert_event(
+        conn,
+        &NewEvent {
+            workspace_id: workspace_id.to_owned(),
+            agent_id: Some(agent_id.to_owned()),
+            kind: "status",
+            key: None,
+            body,
+            target_agent: None,
+            created_at: now,
+        },
+    )?;
+    Ok(())
+}
+
 /// `context.note`: append a freeform line to the workspace log.
 pub async fn note(state: &AppState, args: NoteArgs) -> Result<Appended, ContextError> {
     let now = clock::now_millis();

@@ -7,12 +7,14 @@ interface Props {
   color?: string | null;
   /** Agents in each state, across all workspaces (PRD §9.5). */
   counts: { running: number; waiting: number; error: number };
+  /** Opens the workspace's activity stream; absent when no workspace is open. */
+  onShowActivity?: () => void;
 }
 
 // Window decorations are off (PRD §13), so the app draws its own title bar.
 // `data-tauri-drag-region` must be on the exact element under the cursor, so
 // the title text carries it too; the buttons deliberately do not.
-export function TitleBar({ title, color, counts }: Props) {
+export function TitleBar({ title, color, counts, onShowActivity }: Props) {
   const win = getCurrentWindow();
   return (
     <header className="titlebar" data-tauri-drag-region>
@@ -24,6 +26,13 @@ export function TitleBar({ title, color, counts }: Props) {
         {counts.waiting > 0 && <span className="count waiting">{counts.waiting} need you</span>}
         {counts.error > 0 && <span className="count error">{counts.error} stopped</span>}
         {counts.running > 0 && <span className="count running">{counts.running} working</span>}
+        {/* The counts say how many agents need something; this says what they
+            are all doing, which is the question they prompt. */}
+        {onShowActivity && (
+          <button type="button" className="activity-open" title="Show workspace activity" onClick={onShowActivity}>
+            activity
+          </button>
+        )}
       </span>
       <div className="titlebar-buttons">
         {/* Glyphs from Segoe Fluent Icons, matching native Windows 11 caption buttons. */}

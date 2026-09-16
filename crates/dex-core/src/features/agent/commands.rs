@@ -10,12 +10,12 @@ use dex_protocol::agent::{
 use dex_protocol::pane::{Key, SendKeyArgs};
 use rusqlite::Connection;
 
-use super::identity::find_target;
+use super::identity::{self, find_target};
 use super::logic::{self, HookInput, HookKind, SessionStart};
 use super::model::{Agent, AgentError};
 use super::store;
 use crate::app::AppState;
-use crate::features::workspace;
+use crate::features::{context, workspace};
 use crate::platform::{clock, ids};
 
 /// A running agent with no hook event and no output for this long is `unknown`.
@@ -192,7 +192,22 @@ fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<
         detail.as_deref(),
         hook.args.stamp,
         ended,
-    )
+    )?;
+    record_status(conn, agent, hook, next, detail.as_deref())
+}
+
+/// Puts a status change in the workspace log, for the activity pane (PRD §10.1).
+fn record_status(
+    conn: &Connection,
+    agent: &Agent,
+    hook: &Hook<'_>,
+    next: AgentStatus,
+    detail: Option<&str>,
+) -> rusqlite::Result<()> {
+    let label = identity::label_of(conn, &agent.id)?.unwrap_or_else(|| "an agent".into());
+    let because = detail.map(|why| format!(" ({why})")).unwrap_or_default();
+    let body = format!("{label} is {}{because}", logic::status_name(next));
+    context::record_status(conn, &hook.workspace_id, &agent.id, body, hook.now)
 }
 
 fn register(conn: &Connection, hook: &Hook<'_>, status: AgentStatus) -> rusqlite::Result<Agent> {

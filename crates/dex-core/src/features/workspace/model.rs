@@ -85,6 +85,9 @@ pub enum WorkspaceError {
     /// An empty or over-long label, or one with whitespace.
     #[error("pane labels must be 1 to 32 characters with no spaces")]
     InvalidLabel,
+    /// A pane kind no renderer understands.
+    #[error("{0:?} is not a pane kind Dex can show")]
+    InvalidKind(String),
     /// The root is not an existing absolute directory.
     #[error("{0:?} is not an existing directory")]
     InvalidRoot(String),

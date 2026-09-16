@@ -31,6 +31,7 @@ struct NewPane {
     id: String,
     cwd: Option<String>,
     label: Option<String>,
+    kind: &'static str,
     dir: SplitDir,
     now: i64,
 }
@@ -79,6 +80,10 @@ fn label_arg(label: Option<String>) -> Result<Option<String>, WorkspaceError> {
         .transpose()
 }
 
+fn kind_arg(kind: Option<&str>) -> Result<&'static str, WorkspaceError> {
+    logic::pane_kind(kind).ok_or_else(|| WorkspaceError::InvalidKind(kind.unwrap_or("").to_owned()))
+}
+
 fn split_dir(direction: SplitDirection) -> SplitDir {
     match direction {
         SplitDirection::Right => SplitDir::Horizontal,
@@ -100,7 +105,7 @@ fn split_located(conn: &mut Connection, found: Located, new: NewPane) -> Outcome
         workspace_id: found.pane.workspace_id.clone(),
         label: new.label.clone(),
         cwd: new.cwd.unwrap_or_else(|| found.pane.cwd.clone()),
-        kind: "terminal".into(),
+        kind: new.kind.into(),
         runtime: found.pane.runtime.clone(),
     };
     let tx = conn.transaction()?;
@@ -127,6 +132,7 @@ pub async fn split_pane(
         id: ids::new_id(),
         cwd: args.cwd.as_deref().map(existing_dir).transpose()?,
         label: label_arg(args.label)?,
+        kind: kind_arg(args.kind.as_deref())?,
         dir: split_dir(args.direction),
         now: clock::now_millis(),
     };
@@ -152,6 +158,7 @@ pub async fn create_pane(
         id: ids::new_id(),
         cwd: args.cwd.as_deref().map(existing_dir).transpose()?,
         label: label_arg(args.label)?,
+        kind: kind_arg(args.kind.as_deref())?,
         dir: SplitDir::Horizontal,
         now: clock::now_millis(),
     };

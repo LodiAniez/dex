@@ -44,6 +44,7 @@ async fn second_pane(state: &AppState, pane: &str) -> String {
             direction: dex_protocol::workspace::SplitDirection::Right,
             cwd: None,
             label: None,
+            kind: None,
         },
     )
     .await

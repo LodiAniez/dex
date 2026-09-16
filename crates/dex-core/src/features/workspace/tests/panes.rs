@@ -26,6 +26,14 @@ fn split_args(pane: &str, direction: SplitDirection) -> SplitPaneArgs {
         direction,
         cwd: None,
         label: None,
+        kind: None,
+    }
+}
+
+fn activity_args(pane: &str) -> SplitPaneArgs {
+    SplitPaneArgs {
+        kind: Some("activity".into()),
+        ..split_args(pane, SplitDirection::Right)
     }
 }
 
@@ -200,4 +208,33 @@ async fn set_layout_clamps_ratios_and_rejects_trees_with_other_panes() {
     )
     .await;
     assert!(matches!(rejected, Err(WorkspaceError::LayoutMismatch)));
+}
+
+#[tokio::test]
+async fn a_pane_can_be_created_as_an_activity_stream_and_nothing_else() {
+    let (_dir, state) = AppState::for_tests();
+    let (_, first) = one_workspace(&state).await;
+
+    let list = split_pane(&state, activity_args(&first)).await.unwrap();
+    let kinds: Vec<&str> = list.workspaces[0]
+        .panes
+        .iter()
+        .map(|pane| pane.kind.as_str())
+        .collect();
+    assert!(kinds.contains(&"activity"), "{kinds:?}");
+    assert!(kinds.contains(&"terminal"), "the original is untouched");
+
+    // A kind no renderer understands would be an empty box with no explanation.
+    let refused = split_pane(
+        &state,
+        SplitPaneArgs {
+            kind: Some("hologram".into()),
+            ..split_args(&first, SplitDirection::Right)
+        },
+    )
+    .await;
+    assert!(
+        matches!(refused, Err(WorkspaceError::InvalidKind(ref kind)) if kind == "hologram"),
+        "{refused:?}"
+    );
 }

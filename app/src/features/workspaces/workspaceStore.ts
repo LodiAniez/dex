@@ -3,6 +3,7 @@ import { request } from "../../platform/daemon";
 import { onDaemonChange } from "../../platform/events";
 import type { Layout } from "../../platform/generated/Layout";
 import type { WorkspaceList } from "../../platform/generated/WorkspaceList";
+import type { WorkspaceView } from "../../platform/generated/WorkspaceView";
 import { showError } from "../../platform/notices";
 import { disposeTerminal } from "../../platform/terminalRegistry";
 
@@ -110,8 +111,24 @@ export async function deleteWorkspace(id: string): Promise<void> {
 }
 
 /** Splits a pane; the new pane starts in the same folder and takes focus. */
-export async function splitPane(pane: string, direction: "right" | "down"): Promise<void> {
-  publish(await request<WorkspaceList>("pane.split", { pane, direction }));
+export async function splitPane(
+  pane: string,
+  direction: "right" | "down",
+  kind?: "terminal" | "activity",
+): Promise<void> {
+  publish(await request<WorkspaceList>("pane.split", { pane, direction, kind }));
+}
+
+/**
+ * Shows the workspace's activity stream: focuses the pane already showing it,
+ * or splits one off the focused pane. One is enough — a second would show the
+ * same thing.
+ */
+export async function showActivity(workspace: WorkspaceView): Promise<void> {
+  const existing = workspace.panes.find((pane) => pane.kind === "activity");
+  if (existing) return focusPane(existing.id);
+  const from = workspace.active_pane ?? workspace.panes[0]?.id;
+  if (from) await splitPane(from, "right", "activity");
 }
 
 /** Closes a pane. The daemon refuses to close a workspace's last pane. */

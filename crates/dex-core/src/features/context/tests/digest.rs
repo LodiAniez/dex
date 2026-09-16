@@ -176,6 +176,52 @@ async fn a_prompt_delta_does_not_start_the_batch_clock() {
 }
 
 #[tokio::test]
+async fn status_changes_reach_the_activity_log_but_not_another_agents_delta() {
+    use dex_protocol::context::ScopeArgs;
+
+    use crate::features::context::events;
+
+    let (_root, _dir, state, a) = workspace_at().await;
+    let b = second_pane(&state, &a).await;
+    start_agent(&state, &a, "s-a").await;
+    start_agent(&state, &b, "s-b").await;
+
+    // A goes to work: a status change, and nothing an agent said.
+    crate::features::agent::event(
+        &state,
+        dex_protocol::agent::AgentEventArgs {
+            kind: "prompt".into(),
+            pane: a.clone(),
+            agent: None,
+            stamp: 2,
+            input: serde_json::json!({ "session_id": "s-a" }),
+        },
+    )
+    .await
+    .unwrap();
+
+    let log = events(&state, ScopeArgs::for_caller(from(&a)))
+        .await
+        .unwrap();
+    let statuses: Vec<&str> = log
+        .events
+        .iter()
+        .filter(|event| event.kind == "status")
+        .map(|event| event.body.as_str())
+        .collect();
+    assert!(
+        statuses.iter().any(|body| body.contains("is running")),
+        "the human watching the stream sees it: {statuses:?}"
+    );
+
+    assert_eq!(
+        digest(&state, delta(from(&b), false)).await.unwrap().text,
+        None,
+        "but a sibling's status churn must not spend B's delta budget"
+    );
+}
+
+#[tokio::test]
 async fn a_full_digest_names_the_workspace_and_the_other_agents() {
     let (_root, _dir, state, a) = workspace_at().await;
     let b = second_pane(&state, &a).await;

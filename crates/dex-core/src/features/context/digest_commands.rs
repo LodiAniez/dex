@@ -123,6 +123,12 @@ fn delta_for(
             }
             continue;
         }
+        // Status changes belong to the activity pane, not to another agent's
+        // context: a sibling going idle and running several times a turn would
+        // spend the delta budget saying nothing actionable.
+        if event.kind == "status" {
+            continue;
+        }
         changes.push(Change {
             author: author(conn, event.agent_id.as_deref())?,
             kind: event.kind.clone(),

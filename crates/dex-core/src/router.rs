@@ -246,6 +246,10 @@ fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
             ErrorCode::InvalidArgs,
             "Use a short label without spaces, like `server` or `tests`.",
         ),
+        WorkspaceError::InvalidKind(_) => (
+            ErrorCode::InvalidArgs,
+            "Use `terminal` for a shell, or `activity` for the workspace's live event stream.",
+        ),
         WorkspaceError::Pty(_) | WorkspaceError::Layout(_) | WorkspaceError::Db(_) => {
             (ErrorCode::Internal, REPAIR_BUG)
         }

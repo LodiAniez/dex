@@ -254,6 +254,111 @@ body,
 .agent-counts .count.error { color: #ff8f8c; }
 .agent-counts .count.running { color: #f5c46b; }
 
+.activity-open {
+  border: 1px solid #333842;
+  border-radius: 4px;
+  background: transparent;
+  color: #9aa3b2;
+  font: inherit;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+
+.activity-open:hover {
+  border-color: #4a515e;
+  color: #e6e9ef;
+}
+
+/* ---- Activity pane (PRD §10.4) ---- */
+
+.activity {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: #0f1116;
+}
+
+.activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #1d2028;
+}
+
+.activity-chip {
+  border: 1px solid #2a2f3a;
+  border-radius: 10px;
+  background: transparent;
+  color: #9aa3b2;
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.activity-chip.on {
+  border-color: #4f8cff;
+  color: #cfe0ff;
+}
+
+.activity-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  /* Newest at the bottom, like a log being tailed. */
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-line {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  gap: 8px;
+  padding: 2px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.activity-line:hover { background: #161922; }
+
+.activity-time {
+  color: #5d6675;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-kind {
+  color: #7f8896;
+  text-transform: lowercase;
+}
+
+.activity-kind.kind-note { color: #8fd6a0; }
+.activity-kind.kind-write { color: #f5c46b; }
+.activity-kind.kind-message { color: #8fb4ff; }
+
+.activity-author {
+  color: #b9c1cf;
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-body {
+  color: #e6e9ef;
+  overflow-wrap: anywhere;
+}
+
+.activity-empty {
+  margin: 0;
+  padding: 14px 12px;
+  color: #6b7383;
+  font-size: 12px;
+}
+
 /* ---- Sidebar ---- */
 
 .sidebar {

@@ -55,6 +55,9 @@ pub enum PaneCommand {
         /// Workspace name or id (default: the current pane's, else the one on screen).
         #[arg(long)]
         workspace: Option<String>,
+        /// `terminal` (default) or `activity`, the workspace's event stream.
+        #[arg(long)]
+        kind: Option<String>,
     },
     /// Split the current pane.
     Split {
@@ -66,6 +69,9 @@ pub enum PaneCommand {
         /// Label for the new pane.
         #[arg(long)]
         label: Option<String>,
+        /// `terminal` (default) or `activity`, the workspace's event stream.
+        #[arg(long)]
+        kind: Option<String>,
     },
     /// Close a pane.
     Close {
@@ -115,13 +121,14 @@ pub fn run(command: PaneCommand, format: Format) -> Result<(), ErrorBody> {
             path,
             label,
             workspace,
+            kind,
         } => {
             let context = std::env::var("DEX_PANE_ID")
                 .ok()
                 .filter(|id| !id.is_empty());
             let created: Created = client::connect()?.call(
                 "pane.create",
-                json!({ "workspace": workspace, "pane": context, "cwd": path.map(absolute), "label": label }),
+                json!({ "workspace": workspace, "pane": context, "cwd": path.map(absolute), "label": label, "kind": kind }),
             )?;
             print_pane(&created.pane, format);
         }
@@ -129,6 +136,7 @@ pub fn run(command: PaneCommand, format: Format) -> Result<(), ErrorBody> {
             direction,
             path,
             label,
+            kind,
         } => {
             let pane = current_pane()?;
             let direction = match direction {
@@ -137,7 +145,7 @@ pub fn run(command: PaneCommand, format: Format) -> Result<(), ErrorBody> {
             };
             let list: WorkspaceList = client::connect()?.call(
                 "pane.split",
-                json!({ "pane": pane, "direction": direction, "cwd": path.map(absolute), "label": label }),
+                json!({ "pane": pane, "direction": direction, "cwd": path.map(absolute), "label": label, "kind": kind }),
             )?;
             // The new pane takes focus in the split pane's workspace.
             let new = list

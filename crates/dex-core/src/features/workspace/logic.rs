@@ -109,6 +109,23 @@ pub fn resolve(target: &str, candidates: &[(&str, Option<&str>)]) -> Resolved {
 }
 
 /// The bytes a named key sends to a shell: what a terminal sends for it.
+/// Pane kinds the app can render. `markdown` and `diff` are in the schema but
+/// have no renderer yet, so they are not offered.
+const KINDS: [&str; 2] = ["terminal", "activity"];
+
+/// The pane kind a request asked for, defaulting to `terminal`.
+///
+/// An unknown kind is refused rather than stored: a pane whose kind no renderer
+/// understands would show as an empty box with no way to tell why.
+pub fn pane_kind(requested: Option<&str>) -> Option<&'static str> {
+    let Some(requested) = requested else {
+        return Some("terminal");
+    };
+    KINDS
+        .into_iter()
+        .find(|kind| kind.eq_ignore_ascii_case(requested))
+}
+
 pub fn key_bytes(key: Key) -> &'static [u8] {
     match key {
         Key::Enter => b"\r",
