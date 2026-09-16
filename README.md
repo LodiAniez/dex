@@ -24,7 +24,9 @@ It is a terminal first. Every pane is a real shell (PowerShell by default) runni
 ## Where it runs
 
 - **Windows 11**, or Windows 10 1809 or later (ConPTY is required). WebView2 is preinstalled on Windows 11.
-- **Claude Code** installed and signed in with **your own Anthropic account** — a Claude Pro or Max subscription, or an API key with billing. Dex drives Claude Code; it does not replace it, and it has no account, keys or usage of its own. Every agent you run in Dex, including the ones agents spawn, is an ordinary Claude Code session on your plan and counts against your usage exactly as if you had opened a terminal and typed `claude`.
+- **Claude Code** installed and signed in with **your own Anthropic account** — a Claude Pro or Max subscription, or an API key with billing. Dex drives Claude Code; it does not replace it, and it has no account, keys or usage of its own. Every agent you run in Dex, including the ones agents spawn, is an ordinary Claude Code session on your plan and counts against your usage exactly as if you had opened a terminal and typed `claude`. Any account Claude Code accepts works — Pro, Max, API billing, Bedrock or Vertex — because Dex never touches the credentials.
+
+  **Claude Code only.** Status dots, toasts, shared context and spawning all come through Claude Code's hooks and MCP registration. Other coding agents (Codex, Gemini CLI, Aider…) run fine in a Dex pane as plain terminals, but Dex will not know they exist. Supporting them would take an adapter per agent; none is planned for v1.
 - **Git for Windows** on PATH — worktrees and the diff pane need it.
 
 Not on macOS or Linux, by design. Running agents inside WSL from Dex is on the roadmap but not in this release; panes run Windows shells.
