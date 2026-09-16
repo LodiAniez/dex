@@ -89,10 +89,27 @@ pub fn find_unbound_in_pane(conn: &Connection, pane_id: &str) -> rusqlite::Resul
 
 /// How many agents in a workspace have not ended.
 pub fn count_live_in_workspace(conn: &Connection, workspace_id: &str) -> rusqlite::Result<i64> {
+    // An agent whose pane is gone cannot be running anything, whatever its
+    // status says; `end_orphans` catches up with it, but the limit must not
+    // wait for that (ARCHITECTURE.md: stale agents counted toward the limit).
     conn.query_row(
-        "SELECT COUNT(*) FROM agent WHERE workspace_id = ?1 AND status != 'dead'",
+        "SELECT COUNT(*) FROM agent
+         WHERE workspace_id = ?1 AND status != 'dead' AND pane_id IS NOT NULL",
         [workspace_id],
         |row| row.get(0),
+    )
+}
+
+/// Ends every agent whose pane no longer exists. `pane_id` is set null by the
+/// schema when a pane is deleted (closed, or gone with its workspace), which
+/// says nothing about status; this is where status catches up. Returns how
+/// many were ended.
+pub fn end_orphans(conn: &Connection, now: i64) -> rusqlite::Result<usize> {
+    conn.execute(
+        "UPDATE agent SET status = 'dead', status_at = ?1, ended_at = COALESCE(ended_at, ?1),
+                          status_detail = COALESCE(status_detail, 'pane closed')
+         WHERE pane_id IS NULL AND status != 'dead'",
+        params![now],
     )
 }
 

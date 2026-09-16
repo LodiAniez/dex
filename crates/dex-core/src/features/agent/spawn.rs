@@ -299,9 +299,29 @@ fn launch(launch: Launch) {
             }
             tokio::time::sleep(LAUNCH_POLL).await;
         }
-        eprintln!(
-            "dex: agent {agent_id} was created but its pane never started a shell, so it was not launched"
+        // No shell ever appeared, so no Claude Code was launched: the row must
+        // not sit `idle` counting toward the spawn limit as if it might still.
+        tracing::warn!(
+            agent = %agent_id,
+            "the spawned agent's pane never started a shell; ending it unlaunched"
         );
+        let now = clock::now_millis();
+        let ended = state
+            .db
+            .call(move |conn| {
+                store::update_status(
+                    conn,
+                    &agent_id,
+                    dex_protocol::agent::AgentStatus::Dead,
+                    Some("never started"),
+                    now,
+                    Some(now),
+                )
+            })
+            .await;
+        if ended.is_ok() {
+            state.bus.publish("agents");
+        }
     });
 }
 

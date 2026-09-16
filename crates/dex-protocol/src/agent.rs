@@ -160,8 +160,9 @@ pub struct StopAgentArgs {
 pub struct Stopped {
     /// The agent asked to stop.
     pub agent: String,
-    /// The pane it runs in.
-    pub pane: String,
+    /// The pane Ctrl+C was pressed in; `None` when the agent's pane was
+    /// already gone and stopping meant only marking it ended.
+    pub pane: Option<String>,
 }
 
 /// Args for `agent.pane_exited`: a pane's process exited.

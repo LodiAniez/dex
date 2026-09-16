@@ -285,9 +285,24 @@ pub async fn stop(state: &AppState, args: StopAgentArgs) -> Result<Stopped, Agen
         .db
         .call(move |conn| find_target(conn, &target))
         .await??;
-    let pane = match agent.pane_id {
-        Some(pane) if agent.status != AgentStatus::Dead => pane,
-        _ => return Err(AgentError::NotRunning(agent.id)),
+    if agent.status == AgentStatus::Dead {
+        return Err(AgentError::NotRunning(agent.id));
+    }
+    let Some(pane) = agent.pane_id else {
+        // Its pane is gone, so there is nothing to press Ctrl+C in — but the
+        // row still says it is alive, and until this it counted toward the
+        // spawn limit while `stop` refused to touch it. Ending it is the
+        // whole of what stopping can mean here.
+        let now = clock::now_millis();
+        let id = agent.id.clone();
+        state
+            .db
+            .call(move |conn| store::end_agent(conn, &id, now))
+            .await?;
+        return Ok(Stopped {
+            agent: agent.id,
+            pane: None,
+        });
     };
     for press in 0..STOP_PRESSES {
         if press > 0 {
@@ -307,7 +322,7 @@ pub async fn stop(state: &AppState, args: StopAgentArgs) -> Result<Stopped, Agen
         .await?;
     Ok(Stopped {
         agent: agent.id,
-        pane,
+        pane: Some(pane),
     })
 }
 
@@ -325,11 +340,19 @@ pub async fn pane_exited(
     Ok(EventOutcome { applied: ended > 0 })
 }
 
-/// `agent.sweep`: the watchdog. Running agents with no hook event and no pane
-/// output for two minutes become `unknown`, which covers every way hook
-/// delivery can fail. Announces a change only when it made one.
+/// `agent.sweep`: the watchdog. Agents whose pane is gone are ended; running
+/// agents with no hook event and no pane output for two minutes become
+/// `unknown`, which covers every way hook delivery can fail. Announces a
+/// change only when it made one.
 pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
     let now = clock::now_millis();
+    // Orphans first: a pane closed from the UI, or lost with a crashed
+    // session, nulls `pane_id` but leaves status where it was. Left alone,
+    // those rows counted toward the spawn limit for ever.
+    let orphaned = state
+        .db
+        .call(move |conn| store::end_orphans(conn, now))
+        .await?;
     let running = state
         .db
         .call(|conn| store::list_by_status(conn, AgentStatus::Running))
@@ -346,6 +369,10 @@ pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
         .map(|agent| agent.id)
         .collect();
     if silent.is_empty() {
+        if orphaned > 0 {
+            state.bus.publish("agents");
+            return Ok(APPLIED);
+        }
         return Ok(IGNORED);
     }
     state
