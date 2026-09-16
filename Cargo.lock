@@ -727,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "dex-app"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "dex-core",
  "dex-protocol",
@@ -745,7 +745,7 @@ dependencies = [
 
 [[package]]
 name = "dex-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "clap",
  "dex-protocol",
@@ -759,7 +759,7 @@ dependencies = [
 
 [[package]]
 name = "dex-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "dex-protocol",
  "getrandom 0.4.3",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "dex-mcp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "dex-cli",
  "dex-protocol",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "dex-protocol"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
