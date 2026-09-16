@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "sidecars": "cargo build --release -p dex-cli -p dex-mcp",
     "tauri": "tauri"
   },
   "dependencies": {

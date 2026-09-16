@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the MSI adds beyond the app itself (docs/prd.md §14 M8):
+
+  - dex.exe and dex-mcp.exe beside dex-app.exe. Everything that looks for
+    them looks there: the first-run panel runs `dex.exe` from its own
+    directory, and `dex mcp install` registers the `dex-mcp.exe` beside it.
+  - The install directory on the machine PATH, so `dex` works in any new
+    terminal and in Claude Code's hooks, which are exec-form paths anyway.
+  - Dex's AppUserModelID, so Windows shows its toasts. Tauri's own template
+    already stamps the id onto the Start Menu shortcut; this registers it too,
+    which is what an unpackaged desktop app needs for toasts to appear at all.
+
+  The binaries are found relative to the main binary, whose full path Tauri
+  hands candle as SourceDir. `<exe>\..\` is a directory on Windows — path
+  normalisation is lexical — and it is the one path that does not depend on
+  where candle happens to run.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="DexCli" Guid="C92FD253-B728-49A0-AB03-BE0E8207BD69" Win64="yes">
+        <File Id="DexCliExe" Source="$(var.SourceDir)\..\dex.exe" KeyPath="yes" Checksum="yes" />
+        <Environment Id="DexOnPath" Name="PATH" Value="[INSTALLDIR]" Permanent="no" Part="last" Action="set" System="yes" />
+      </Component>
+      <Component Id="DexMcp" Guid="D804B922-BB4C-480E-B7C0-7077B78A0885" Win64="yes">
+        <File Id="DexMcpExe" Source="$(var.SourceDir)\..\dex-mcp.exe" KeyPath="yes" Checksum="yes" />
+      </Component>
+      <Component Id="DexAppUserModelId" Guid="31E544DD-D2DD-4E36-89AB-6FDC9D07490F" Win64="yes">
+        <RegistryKey Root="HKCU" Key="Software\Classes\AppUserModelId\dev.dex.desktop">
+          <RegistryValue Name="DisplayName" Type="string" Value="Dex" KeyPath="yes" />
+          <RegistryValue Name="IconUri" Type="string" Value="[INSTALLDIR]dex-app.exe" />
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+    <ComponentGroup Id="DexSetup">
+      <ComponentRef Id="DexCli" />
+      <ComponentRef Id="DexMcp" />
+      <ComponentRef Id="DexAppUserModelId" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>

@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build && npm run sidecars"
   },
   "app": {
     "windows": [
@@ -28,6 +28,16 @@
   "bundle": {
     "active": true,
     "targets": ["msi"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"]
+    "publisher": "Dex",
+    "shortDescription": "Terminal workspace multiplexer for multi-agent coding",
+    "longDescription": "Dex runs several Claude Code agents side by side in one window, with shared context, worktrees, and a CLI they can drive.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "windows": {
+      "wix": {
+        "upgradeCode": "43840DE1-01B8-4C10-9984-175A26C35B1A",
+        "fragmentPaths": ["wix/dex.wxs"],
+        "componentGroupRefs": ["DexSetup"]
+      }
+    }
   }
 }
