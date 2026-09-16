@@ -226,3 +226,7 @@ npm run tauri build      # release app and the MSI, in target/release/bundle/msi
 ```
 
 For how the code is organised, see `docs/conventions.md` and `ARCHITECTURE.md`.
+
+## License
+
+Apache License 2.0 — see [`LICENSE`](LICENSE). Dex is not affiliated with Anthropic; Claude and Claude Code are their trademarks.

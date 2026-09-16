@@ -4,6 +4,8 @@ description = "Wire types shared by the Dex app, CLI, and MCP server."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [features]
 # Generates TypeScript mirrors of the wire types for the frontend. Optional so

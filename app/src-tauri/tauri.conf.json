@@ -29,6 +29,8 @@
     "active": true,
     "targets": ["msi"],
     "publisher": "Dex",
+    "license": "Apache-2.0",
+    "licenseFile": "../../LICENSE",
     "shortDescription": "Terminal workspace multiplexer for multi-agent coding",
     "longDescription": "Dex runs several Claude Code agents side by side in one window, with shared context, worktrees, and a CLI they can drive.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],

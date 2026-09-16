@@ -4,6 +4,8 @@ description = "The Dex desktop app: UI host and embedded daemon."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "dex-app"

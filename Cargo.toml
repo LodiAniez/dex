@@ -12,6 +12,8 @@ members = [
 version = "0.1.0"
 edition = "2024"
 publish = false
+license = "Apache-2.0"
+repository = "https://github.com/LodiAniez/dex"
 
 # Exact pins (docs/prd.md §3): versions change deliberately, never as a side
 # effect of a fresh lockfile. Crates add what they use with `workspace = true`.
