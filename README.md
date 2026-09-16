@@ -1,3 +1,5 @@
+<img src="app/src-tauri/icons/128x128@2x.png" alt="Dex" width="96" align="right">
+
 # Dex
 
 **One window, several Claude Code agents, and a shared memory between them.**
