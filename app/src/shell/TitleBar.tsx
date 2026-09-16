@@ -1,4 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUpdate, useUpdate } from "../platform/update";
+import { showError } from "../platform/notices";
 
 interface Props {
   /** Active workspace name. */
@@ -16,6 +18,7 @@ interface Props {
 // the title text carries it too; the buttons deliberately do not.
 export function TitleBar({ title, color, counts, onShowActivity }: Props) {
   const win = getCurrentWindow();
+  const update = useUpdate();
   return (
     <header className="titlebar" data-tauri-drag-region>
       <span className="titlebar-title" data-tauri-drag-region>
@@ -31,6 +34,19 @@ export function TitleBar({ title, color, counts, onShowActivity }: Props) {
         {onShowActivity && (
           <button type="button" className="activity-open" title="Show workspace activity" onClick={onShowActivity}>
             activity
+          </button>
+        )}
+        {/* Only while a newer release exists; clicking opens its page. Nothing
+            is downloaded or installed from here — the owner reads the notes
+            and runs the installer themselves. */}
+        {update && (
+          <button
+            type="button"
+            className="update-pill"
+            title={`Dex ${update.version} is available — open the release page`}
+            onClick={() => void openUpdate(update).catch(showError)}
+          >
+            <span className="update-new">new</span> update {update.version}
           </button>
         )}
       </span>

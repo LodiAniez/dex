@@ -50,8 +50,25 @@ pub struct Config {
     pub agents: AgentSettings,
     /// Digest budgets (PRD §10.3).
     pub digest: DigestSettings,
+    /// The update check.
+    pub updates: UpdateSettings,
     /// Keybinding overrides, action to binding. Only what the owner changed.
     pub keys: BTreeMap<String, String>,
+}
+
+/// Whether the app may ask GitHub for the latest release.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct UpdateSettings {
+    /// One GET to GitHub's releases API at startup and every few hours; a
+    /// newer release shows as a pill in the title bar. Nothing is downloaded.
+    pub check: bool,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self { check: true }
+    }
 }
 
 /// Watermarks, in bytes of output the display has not acknowledged.
@@ -99,6 +116,7 @@ impl Default for Config {
             flow: FlowSettings::default(),
             agents: AgentSettings::default(),
             digest: DigestSettings::default(),
+            updates: UpdateSettings::default(),
             keys: BTreeMap::new(),
         }
     }

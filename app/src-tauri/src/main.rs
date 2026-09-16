@@ -8,6 +8,7 @@ mod daemon;
 mod notify;
 mod pty;
 mod setup;
+mod update;
 
 use std::path::PathBuf;
 
@@ -101,6 +102,8 @@ fn main() {
             notify::notify_agent,
             setup::setup_check,
             setup::setup_run,
+            update::update_check,
+            update::update_open,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

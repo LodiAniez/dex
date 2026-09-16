@@ -214,6 +214,15 @@ dex config     path | show | reload
 
 Add `--json` to any command for machine-readable output. Inside a Dex pane, commands know which pane and workspace they are in; elsewhere, `--workspace <name>` says.
 
+## Updates
+
+Dex checks GitHub for a newer release when it starts and every six hours. When there is one, a **new · update x.y.z** pill appears in the title bar; clicking it opens the release page, where you read the notes and run the new installer — Dex never downloads or installs anything by itself. The check is one request to GitHub's public API and sends nothing but Dex's version; turn it off with
+
+```toml
+[updates]
+check = false
+```
+
 ## Uninstall
 
 Settings → Apps → Dex → Uninstall. That removes the program and the PATH entry. It leaves your data (`%APPDATA%\Dex`), your worktrees, and your Claude Code configuration alone; to take the hooks, the MCP registration and the skill out first, run `dex hooks uninstall`, `dex mcp uninstall` and `dex skill uninstall`.

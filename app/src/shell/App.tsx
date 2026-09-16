@@ -19,6 +19,7 @@ import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { currentKeymap, watchConfig } from "../platform/config";
 import { showError } from "../platform/notices";
 import { focusTerminal, setShortcutFilter } from "../platform/terminalRegistry";
+import { watchUpdates } from "../platform/update";
 import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
 import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
@@ -113,6 +114,7 @@ export function App() {
     run(loadWorkspaces());
     run(loadAgents());
     watchConfig();
+    watchUpdates();
     // First run: if hooks or the MCP server are missing, say so and offer to
     // fix it. A doctor that cannot run at all is logged, not shown — the app
     // is usable without it and the palette can ask again.

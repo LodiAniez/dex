@@ -190,3 +190,11 @@ fn the_watcher_reloads_a_saved_edit() {
     assert_eq!(handle.get().agents.max_concurrent, 9);
     assert_eq!(changes.try_recv().map(|c| c.topic), Ok("config"));
 }
+
+#[test]
+fn the_update_check_is_on_by_default_and_can_be_turned_off() {
+    assert!(Config::default().updates.check);
+    let (config, problems) = parse("[updates]\ncheck = false\n");
+    assert!(!config.updates.check);
+    assert!(problems.is_empty(), "{problems:?}");
+}
