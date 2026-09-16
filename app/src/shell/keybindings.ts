@@ -13,7 +13,8 @@ export type AppAction =
   | { kind: "move-pane"; direction: Direction }
   | { kind: "toggle-zoom" }
   | { kind: "cycle-layout" }
-  | { kind: "command-palette" };
+  | { kind: "command-palette" }
+  | { kind: "open-diff" };
 
 const DIRECTIONS: Direction[] = ["left", "right", "up", "down"];
 
@@ -35,6 +36,8 @@ export const ACTIONS: Record<string, AppAction> = {
   "close-pane": { kind: "close-pane" },
   "toggle-zoom": { kind: "toggle-zoom" },
   "cycle-layout": { kind: "cycle-layout" },
+  // Palette-only unless the owner binds it: PRD §13 gives it no key.
+  "open-diff": { kind: "open-diff" },
   ...Object.fromEntries(
     DIRECTIONS.flatMap((direction): [string, AppAction][] => [
       [`focus-${direction}`, { kind: "focus-pane", direction }],
@@ -53,7 +56,8 @@ export const ACTIONS: Record<string, AppAction> = {
  * The shipped bindings (PRD §13). App commands avoid plain `Ctrl+<letter>`,
  * which the terminal owns: `Ctrl+D` is EOF, `Ctrl+W` deletes a word, `Ctrl+[`
  * is Escape. An owner may rebind onto those anyway — it is their terminal — but
- * nothing here does it for them.
+ * nothing here does it for them. An action missing from this table has no key
+ * until the owner gives it one; it is still in the palette.
  */
 export const DEFAULT_BINDINGS: Record<string, string> = {
   "command-palette": "Ctrl+Shift+P",

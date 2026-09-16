@@ -12,7 +12,7 @@ mod store;
 mod tests;
 mod worktree_commands;
 
-pub use commands::{add, list, scan, status, workspace_repos};
+pub use commands::{add, diff, list, scan, status, workspace_repos};
 pub use model::RepoError;
 pub use worktree_commands::{
     add as add_worktree, attach_worktree, branch_at, create_for_spawn, list as list_worktrees,

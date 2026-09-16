@@ -29,20 +29,23 @@ function press(code: string, modifiers: Partial<KeyboardEvent> = {}): KeyboardEv
 const shipped: Keymap = buildKeymap().keymap;
 
 describe("the shipped bindings", () => {
-  it("cover every action, and every binding parses", () => {
+  it("name only real actions, and every binding parses", () => {
     for (const [action, binding] of Object.entries(DEFAULT_BINDINGS)) {
       expect(action in ACTIONS, `${action} is bound but is not an action`).toBe(true);
       expect(parseBinding(binding), binding).toHaveProperty("binding");
     }
-    for (const action of Object.keys(ACTIONS)) {
-      expect(action in DEFAULT_BINDINGS, `${action} has no binding`).toBe(true);
-    }
+  });
+
+  it("leave unbound only what the PRD gives no key", () => {
+    // Everything else in the palette is reachable from the keyboard out of the box.
+    const unbound = Object.keys(ACTIONS).filter((action) => !(action in DEFAULT_BINDINGS));
+    expect(unbound).toEqual(["open-diff"]);
   });
 
   it("bind no two actions to the same keys", () => {
     // A collision here would mean one action is unreachable out of the box, and
     // which one survives would depend on object key order.
-    expect(Object.keys(ACTIONS).length).toBe(shipped.size);
+    expect(Object.keys(DEFAULT_BINDINGS).length).toBe(shipped.size);
   });
 
   it("are the table in PRD §13", () => {
@@ -203,7 +206,8 @@ describe("applying the owner's overrides", () => {
     expect(shown.get("new-workspace")).toBe("Ctrl+Alt+T");
     expect(shown.get("close-pane")).toBe("Ctrl+Shift+W");
     expect(shown.get("switch-workspace-3")).toBe("Ctrl+3");
-    expect(shown.size).toBe(Object.keys(ACTIONS).length);
+    expect(shown.has("open-diff")).toBe(false);
+    expect(shown.size).toBe(Object.keys(DEFAULT_BINDINGS).length);
   });
 
   it("will bind onto a terminal key if that is what was asked for", () => {

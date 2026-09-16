@@ -114,7 +114,8 @@ export async function deleteWorkspace(id: string): Promise<void> {
 export async function splitPane(
   pane: string,
   direction: "right" | "down",
-  kind?: "terminal" | "activity",
+  // `markdown` is missing on purpose: it needs a file, which only the CLI supplies.
+  kind?: "terminal" | "activity" | "diff",
 ): Promise<void> {
   publish(await request<WorkspaceList>("pane.split", { pane, direction, kind }));
 }

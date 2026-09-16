@@ -221,3 +221,140 @@ async fn a_root_that_is_not_a_directory_is_rejected() {
         Err(WorkspaceError::InvalidRoot(_))
     ));
 }
+
+mod pane_kinds {
+    use dex_protocol::pane::{CreatePaneArgs, ListPanesArgs, PaneContentArgs};
+
+    use super::super::{create_pane, list_panes, pane_content};
+    use super::*;
+
+    async fn workspace_in(state: &AppState, dir: &std::path::Path) -> String {
+        create(
+            state,
+            CreateWorkspaceArgs {
+                name: Some("kinds".into()),
+                root_path: Some(dir.to_string_lossy().replace('\\', "/")),
+                color: None,
+            },
+        )
+        .await
+        .unwrap()
+        .workspaces
+        .into_iter()
+        .find(|ws| ws.name == "kinds")
+        .unwrap()
+        .id
+    }
+
+    #[tokio::test]
+    async fn a_markdown_pane_needs_a_file_and_shows_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_db, state) = AppState::for_tests();
+        let ws = workspace_in(&state, dir.path()).await;
+        let notes = dir.path().join("notes.md");
+        std::fs::write(&notes, "# Plan\n\n- first\n").unwrap();
+
+        // Without a file there is nothing to show.
+        let missing = create_pane(
+            &state,
+            CreatePaneArgs {
+                workspace: Some(ws.clone()),
+                kind: Some("markdown".into()),
+                ..CreatePaneArgs::default()
+            },
+        )
+        .await;
+        assert!(
+            matches!(missing, Err(WorkspaceError::NeedsFile)),
+            "{missing:?}"
+        );
+
+        // A directory is not a file, even though every other kind wants one.
+        let dir_given = create_pane(
+            &state,
+            CreatePaneArgs {
+                workspace: Some(ws.clone()),
+                kind: Some("markdown".into()),
+                cwd: Some(dir.path().to_string_lossy().into_owned()),
+                ..CreatePaneArgs::default()
+            },
+        )
+        .await;
+        assert!(
+            matches!(dir_given, Err(WorkspaceError::InvalidFile(_))),
+            "{dir_given:?}"
+        );
+
+        let created = create_pane(
+            &state,
+            CreatePaneArgs {
+                workspace: Some(ws.clone()),
+                kind: Some("markdown".into()),
+                cwd: Some(notes.to_string_lossy().into_owned()),
+                ..CreatePaneArgs::default()
+            },
+        )
+        .await
+        .unwrap();
+        let shown = pane_content(
+            &state,
+            PaneContentArgs {
+                pane: created.pane.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(shown.text, "# Plan\n\n- first\n");
+        assert!(!shown.truncated);
+        assert!(shown.modified_at > 0);
+        assert!(shown.path.ends_with("/notes.md"), "{}", shown.path);
+    }
+
+    #[tokio::test]
+    async fn content_is_only_for_markdown_panes() {
+        // The read is tied to a markdown pane on purpose: a terminal pane's cwd
+        // is a directory, and "read any path" is not a capability the pipe offers.
+        let dir = tempfile::tempdir().unwrap();
+        let (_db, state) = AppState::for_tests();
+        let ws = workspace_in(&state, dir.path()).await;
+        let terminal = create_pane(
+            &state,
+            CreatePaneArgs {
+                workspace: Some(ws),
+                ..CreatePaneArgs::default()
+            },
+        )
+        .await
+        .unwrap();
+        let err = pane_content(
+            &state,
+            PaneContentArgs {
+                pane: terminal.pane,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, WorkspaceError::NotMarkdown(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn a_diff_pane_sits_in_a_directory_like_a_terminal() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_db, state) = AppState::for_tests();
+        let ws = workspace_in(&state, dir.path()).await;
+        let created = create_pane(
+            &state,
+            CreatePaneArgs {
+                workspace: Some(ws),
+                kind: Some("diff".into()),
+                ..CreatePaneArgs::default()
+            },
+        )
+        .await
+        .unwrap();
+        let panes = list_panes(&state, ListPanesArgs::default()).await.unwrap();
+        let pane = panes.panes.iter().find(|p| p.id == created.pane).unwrap();
+        assert_eq!(pane.kind, "diff");
+        assert_eq!(pane.cwd, dir.path().to_string_lossy().replace('\\', "/"));
+    }
+}

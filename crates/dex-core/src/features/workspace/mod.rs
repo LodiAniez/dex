@@ -1,13 +1,15 @@
 //! Workspaces, panes, and the pane layout tree.
 //! Tables: `workspace`, `pane`, `app_state`.
 //! Commands: `workspace.*` (`commands.rs`); `pane.*` tree edits (`pane_commands.rs`);
-//! `pane.list/send/send_key` (`pane_io.rs`). Rules and tree operations are pure (`logic.rs`, `layout.rs`).
+//! `pane.list/send/send_key` (`pane_io.rs`); `pane.content` (`pane_content.rs`).
+//! Rules and tree operations are pure (`logic.rs`, `layout.rs`).
 
 mod commands;
 mod layout;
 mod logic;
 mod model;
 mod pane_commands;
+mod pane_content;
 mod pane_io;
 mod store;
 mod targets;
@@ -20,6 +22,7 @@ pub use pane_commands::{
     close_pane, create_pane, cycle_layout, focus_pane, label_pane, set_layout, split_pane,
     swap_panes,
 };
+pub use pane_content::content as pane_content;
 pub use pane_io::{list_panes, send, send_key};
 pub use store::{find_pane_workspace, pane_cwd, pane_label, workspace_name, workspace_root};
 pub use targets::{focused_pane, pane_id, workspace_id};

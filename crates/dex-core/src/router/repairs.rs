@@ -238,7 +238,23 @@ fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
         ),
         WorkspaceError::InvalidKind(_) => (
             ErrorCode::InvalidArgs,
-            "Use `terminal` for a shell, or `activity` for the workspace's live event stream.",
+            "Use `terminal` for a shell, `activity` for the workspace's live event stream, `diff` for a repository's changes, or `markdown` for a file.",
+        ),
+        WorkspaceError::NeedsFile => (
+            ErrorCode::InvalidArgs,
+            "Say which file to show: `--kind markdown --path notes.md`.",
+        ),
+        WorkspaceError::InvalidFile(_) => (
+            ErrorCode::InvalidArgs,
+            "Give an existing file, as an absolute path.",
+        ),
+        WorkspaceError::NotMarkdown(_) => (
+            ErrorCode::InvalidArgs,
+            "Only a markdown pane has content to read; `dex pane list` shows each pane's kind.",
+        ),
+        WorkspaceError::Unreadable { .. } => (
+            ErrorCode::Internal,
+            "Check that the file still exists and that you can open it.",
         ),
         WorkspaceError::Pty(_) | WorkspaceError::Layout(_) | WorkspaceError::Db(_) => {
             (ErrorCode::Internal, REPAIR_BUG)

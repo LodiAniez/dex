@@ -55,7 +55,9 @@ pub enum PaneCommand {
         /// Workspace name or id (default: the current pane's, else the one on screen).
         #[arg(long)]
         workspace: Option<String>,
-        /// `terminal` (default) or `activity`, the workspace's event stream.
+        /// `terminal` (default), `activity` (the workspace's event stream),
+        /// `diff` (the changes in --path's repository), or `markdown` (the
+        /// file at --path, rendered).
         #[arg(long)]
         kind: Option<String>,
     },
@@ -69,7 +71,9 @@ pub enum PaneCommand {
         /// Label for the new pane.
         #[arg(long)]
         label: Option<String>,
-        /// `terminal` (default) or `activity`, the workspace's event stream.
+        /// `terminal` (default), `activity` (the workspace's event stream),
+        /// `diff` (the changes in --path's repository), or `markdown` (the
+        /// file at --path, rendered).
         #[arg(long)]
         kind: Option<String>,
     },

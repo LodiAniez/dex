@@ -228,6 +228,32 @@ pub(super) fn existing_dir(path: &str) -> Result<String, WorkspaceError> {
     }
 }
 
+/// An existing file, as stored (absolute, forward slashes).
+fn existing_file(path: &str) -> Result<String, WorkspaceError> {
+    let native = PathBuf::from(path.trim());
+    let stored = paths::normalize(&native);
+    if native.is_absolute() && native.is_file() {
+        Ok(stored)
+    } else {
+        Err(WorkspaceError::InvalidFile(stored))
+    }
+}
+
+/// What a new pane's `cwd` must be, given its kind: a `markdown` pane shows a
+/// file and must name one; every other kind sits in a directory, inheriting
+/// the split pane's when none is given.
+pub(super) fn pane_target(
+    kind: &str,
+    path: Option<&str>,
+) -> Result<Option<String>, WorkspaceError> {
+    match (kind, path) {
+        ("markdown", Some(path)) => existing_file(path).map(Some),
+        ("markdown", None) => Err(WorkspaceError::NeedsFile),
+        (_, Some(path)) => existing_dir(path).map(Some),
+        (_, None) => Ok(None),
+    }
+}
+
 /// The workspace root as stored: the requested directory, or the home directory.
 fn resolve_root(requested: Option<String>) -> Result<String, WorkspaceError> {
     match requested {

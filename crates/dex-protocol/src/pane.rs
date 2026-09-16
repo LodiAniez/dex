@@ -54,15 +54,39 @@ pub struct CreatePaneArgs {
     /// A pane whose workspace gets the new pane.
     #[serde(default)]
     pub pane: Option<String>,
-    /// Working directory; the split pane's by default.
+    /// Working directory; the split pane's by default. For a `markdown` pane,
+    /// the file to show, which is required.
     #[serde(default)]
     pub cwd: Option<String>,
     /// Label for the new pane.
     #[serde(default)]
     pub label: Option<String>,
-    /// `terminal` (the default) or `activity`. A non-terminal pane runs no shell.
+    /// `terminal` (the default), `activity`, `diff`, or `markdown`. A
+    /// non-terminal pane runs no shell.
     #[serde(default)]
     pub kind: Option<String>,
+}
+
+/// Args for `pane.content`: what a `markdown` pane shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneContentArgs {
+    /// Target pane; must be a `markdown` pane.
+    pub pane: String,
+}
+
+/// Result of `pane.content`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct PaneContent {
+    /// The file shown, forward slashes.
+    pub path: String,
+    /// Its text, or as much of it as Dex will show.
+    pub text: String,
+    /// Whether `text` was cut short.
+    pub truncated: bool,
+    /// When the file last changed, unix millis; 0 if unknown.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub modified_at: i64,
 }
 
 /// Result of `pane.create`.

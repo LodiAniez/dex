@@ -320,3 +320,81 @@ async fn an_unknown_repository_names_what_was_asked_for() {
     );
     assert!(list(&state).await.unwrap().repos.is_empty());
 }
+
+#[tokio::test]
+async fn the_diff_shows_working_tree_changes_and_then_staged_ones() {
+    use dex_protocol::repo::DiffArgs;
+
+    let work = tempfile::tempdir().unwrap();
+    repo_at(work.path());
+    let (_dir, state) = AppState::for_tests();
+    let path = path_of(work.path());
+
+    let clean = super::diff(
+        &state,
+        DiffArgs {
+            path: path.clone(),
+            staged: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(clean.text, "", "a clean tree has no diff");
+    assert_eq!(clean.branch.as_deref(), Some("main"));
+
+    std::fs::write(work.path().join("README.md"), "hello\nworld\n").unwrap();
+    let unstaged = super::diff(
+        &state,
+        DiffArgs {
+            path: path.clone(),
+            staged: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(unstaged.text.contains("+world"), "{}", unstaged.text);
+    assert!(!unstaged.truncated);
+
+    // Staging moves the change from one diff to the other.
+    let ok = Command::new("git")
+        .args(["add", "."])
+        .current_dir(work.path())
+        .status()
+        .unwrap();
+    assert!(ok.success());
+    let after_add = super::diff(
+        &state,
+        DiffArgs {
+            path: path.clone(),
+            staged: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(after_add.text, "");
+    let staged = super::diff(&state, DiffArgs { path, staged: true })
+        .await
+        .unwrap();
+    assert!(staged.text.contains("+world"), "{}", staged.text);
+}
+
+#[tokio::test]
+async fn a_diff_outside_any_repository_says_so() {
+    use dex_protocol::repo::DiffArgs;
+
+    let plain = tempfile::tempdir().unwrap();
+    let (_dir, state) = AppState::for_tests();
+    let err = super::diff(
+        &state,
+        DiffArgs {
+            path: path_of(plain.path()),
+            staged: false,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, RepoError::Git(GitError::NotARepo(_))),
+        "{err:?}"
+    );
+}

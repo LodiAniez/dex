@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ActivityPane } from "../features/activity";
 import { AgentBadge, agentInPane, useAgents } from "../features/agents";
-import { TerminalPane } from "../features/panes/TerminalPane";
+import { DiffPane, MarkdownPane, TerminalPane } from "../features/panes";
 import { closePane, focusPane, setLayout } from "../features/workspaces";
 import type { Layout } from "../platform/generated/Layout";
 import type { PaneView } from "../platform/generated/PaneView";
@@ -117,7 +117,7 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
         {agent && <AgentBadge agent={agent} />}
         {pane.label && <span className="pane-label">{pane.label}</span>}
         <span className="pane-cwd" title={pane.cwd}>
-          {pane.kind === "activity" ? "activity" : shortPath(pane.cwd)}
+          {paneTitle(pane)}
         </span>
         {zoomed && <span className="pane-badge">zoomed</span>}
         <button
@@ -131,11 +131,34 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
         </button>
       </div>
       {/* A non-terminal pane never mounts a terminal, so no shell is spawned. */}
-      {pane.kind === "activity" ? (
-        <ActivityPane workspaceId={workspace.id} />
-      ) : (
-        <TerminalPane paneId={pane.id} workspaceId={workspace.id} cwd={pane.cwd} active={active} />
-      )}
+      <PaneBody pane={pane} workspaceId={workspace.id} active={active} />
     </div>
   );
+}
+
+/** What the header says a pane is: its kind for the special ones, else where it is. */
+function paneTitle(pane: PaneView): string {
+  switch (pane.kind) {
+    case "activity":
+      return "activity";
+    case "diff":
+      return `diff · ${shortPath(pane.cwd)}`;
+    case "markdown":
+      return pane.cwd.split("/").pop() ?? pane.cwd;
+    default:
+      return shortPath(pane.cwd);
+  }
+}
+
+function PaneBody({ pane, workspaceId, active }: { pane: PaneView; workspaceId: string; active: boolean }) {
+  switch (pane.kind) {
+    case "activity":
+      return <ActivityPane workspaceId={workspaceId} />;
+    case "diff":
+      return <DiffPane cwd={pane.cwd} />;
+    case "markdown":
+      return <MarkdownPane paneId={pane.id} />;
+    default:
+      return <TerminalPane paneId={pane.id} workspaceId={workspaceId} cwd={pane.cwd} active={active} />;
+  }
 }

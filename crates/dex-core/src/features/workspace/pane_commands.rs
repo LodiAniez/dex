@@ -10,7 +10,7 @@ use dex_protocol::workspace::{
 };
 use rusqlite::Connection;
 
-use super::commands::{Outcome, existing_dir, load_list};
+use super::commands::{Outcome, load_list, pane_target};
 use super::layout::{self, Closed};
 use super::logic;
 use super::model::{Pane, WorkspaceError};
@@ -130,7 +130,7 @@ pub async fn split_pane(
 ) -> Result<WorkspaceList, WorkspaceError> {
     let new = NewPane {
         id: ids::new_id(),
-        cwd: args.cwd.as_deref().map(existing_dir).transpose()?,
+        cwd: pane_target(kind_arg(args.kind.as_deref())?, args.cwd.as_deref())?,
         label: label_arg(args.label)?,
         kind: kind_arg(args.kind.as_deref())?,
         dir: split_dir(args.direction),
@@ -156,7 +156,7 @@ pub async fn create_pane(
 ) -> Result<Created, WorkspaceError> {
     let new = NewPane {
         id: ids::new_id(),
-        cwd: args.cwd.as_deref().map(existing_dir).transpose()?,
+        cwd: pane_target(kind_arg(args.kind.as_deref())?, args.cwd.as_deref())?,
         label: label_arg(args.label)?,
         kind: kind_arg(args.kind.as_deref())?,
         dir: SplitDir::Horizontal,

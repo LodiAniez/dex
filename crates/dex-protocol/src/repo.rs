@@ -111,3 +111,26 @@ pub struct WorktreeList {
     /// Every checkout git knows for the repo, main first.
     pub worktrees: Vec<WorktreeView>,
 }
+
+/// Args for `repo.diff`: the working-tree or staged diff of the repository
+/// holding `path`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiffArgs {
+    /// A directory inside the repository, forward slashes.
+    pub path: String,
+    /// `git diff --cached` rather than `git diff`.
+    #[serde(default)]
+    pub staged: bool,
+}
+
+/// Result of `repo.diff`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct RepoDiff {
+    /// The unified diff, empty when there are no changes.
+    pub text: String,
+    /// Whether `text` was cut short.
+    pub truncated: bool,
+    /// The checked-out branch, if on one.
+    pub branch: Option<String>,
+}

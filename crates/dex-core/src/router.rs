@@ -26,12 +26,12 @@ use repairs::error_body;
 /// own changes, since most sweeps change nothing.
 fn changes(cmd: &str) -> Option<&'static str> {
     match cmd {
-        "workspace.list" | "pane.list" | "pane.send" | "pane.send_key" => None,
+        "workspace.list" | "pane.list" | "pane.send" | "pane.send_key" | "pane.content" => None,
         "agent.list" | "agent.sweep" => None,
         "context.read" | "context.list" | "context.search" | "context.events" => None,
         // A digest advances the caller's cursor, which no client displays.
         "context.digest" => None,
-        "repo.list" | "repo.status" | "worktree.list" => None,
+        "repo.list" | "repo.status" | "repo.diff" | "worktree.list" => None,
         // `config.reload` may change what is in force, and the UI reads
         // keybindings from it. `config.get` changes nothing.
         "config.get" => None,
@@ -79,6 +79,8 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "pane.label" => encode(workspace::label_pane(state, args(req)?).await?),
         "pane.send" => encode(workspace::send(state, args(req)?).await?),
         "pane.send_key" => encode(workspace::send_key(state, args(req)?).await?),
+        "pane.content" => encode(workspace::pane_content(state, args(req)?).await?),
+        "repo.diff" => encode(repo::diff(state, args(req)?).await?),
         "repo.add" => encode(repo::add(state, args(req)?).await?),
         "repo.list" => encode(repo::list(state).await?),
         "repo.scan" => encode(repo::scan(state, args(req)?).await?),

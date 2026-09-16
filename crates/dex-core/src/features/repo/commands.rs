@@ -6,7 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use dex_protocol::repo::{AddRepoArgs, RepoArgs, RepoList, RepoStatus, RepoView, ScanArgs};
+use dex_protocol::repo::{
+    AddRepoArgs, DiffArgs, RepoArgs, RepoDiff, RepoList, RepoStatus, RepoView, ScanArgs,
+};
 use rusqlite::Connection;
 
 use super::logic;
@@ -114,6 +116,43 @@ pub async fn status(state: &AppState, args: RepoArgs) -> Result<RepoStatus, Repo
             added: counts.added,
             modified: counts.modified,
             deleted: counts.deleted,
+            branch: current_branch(dir),
+        })
+    })
+    .await
+    .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))?
+}
+
+/// The most of a diff the pane will show. Past this it is a review nobody will
+/// read in a pane; the reader is told it was cut and can run git themselves.
+const MAX_DIFF_BYTES: usize = 2 * 1024 * 1024;
+
+/// `repo.diff`: the working-tree (or staged) diff of the repository holding
+/// `path`, for the diff pane. Any directory in the repository will do — git
+/// finds the root — so a pane's cwd is enough, registered or not.
+pub async fn diff(state: &AppState, args: DiffArgs) -> Result<RepoDiff, RepoError> {
+    let _ = state;
+    let dir = existing_dir(&args.path)?;
+    tokio::task::spawn_blocking(move || {
+        let dir = Path::new(&dir);
+        let mut git_args = vec!["diff", "--no-color", "--no-ext-diff"];
+        if args.staged {
+            git_args.push("--cached");
+        }
+        let out = proc::git(dir, &git_args)?;
+        let truncated = out.stdout.len() > MAX_DIFF_BYTES;
+        let text = if truncated {
+            // Cut on a line, so the last thing shown is a whole line.
+            let cut = out.stdout[..MAX_DIFF_BYTES]
+                .rfind('\n')
+                .unwrap_or(MAX_DIFF_BYTES);
+            out.stdout[..cut].to_owned()
+        } else {
+            out.stdout
+        };
+        Ok(RepoDiff {
+            text,
+            truncated,
             branch: current_branch(dir),
         })
     })

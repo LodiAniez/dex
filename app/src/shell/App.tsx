@@ -154,6 +154,11 @@ export function App() {
         if (ws) run(cycleLayout(ws.id));
         return;
       }
+      case "open-diff":
+        // The diff of whatever repository the focused pane is working in.
+        setZoomed(null);
+        if (pane) run(splitPane(pane, "right", "diff"));
+        return;
     }
   };
   // The key handler below is installed once and must not go stale, so it

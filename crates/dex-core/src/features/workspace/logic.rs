@@ -111,7 +111,10 @@ pub fn resolve(target: &str, candidates: &[(&str, Option<&str>)]) -> Resolved {
 /// The bytes a named key sends to a shell: what a terminal sends for it.
 /// Pane kinds the app can render. `markdown` and `diff` are in the schema but
 /// have no renderer yet, so they are not offered.
-const KINDS: [&str; 2] = ["terminal", "activity"];
+/// What a pane's `cwd` means depends on its kind: a directory for `terminal`
+/// (the shell's), `activity` (unused) and `diff` (the repository to diff); the
+/// file to show for `markdown`.
+const KINDS: [&str; 4] = ["terminal", "activity", "diff", "markdown"];
 
 /// The pane kind a request asked for, defaulting to `terminal`.
 ///

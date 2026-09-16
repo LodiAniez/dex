@@ -88,6 +88,18 @@ pub enum WorkspaceError {
     /// A pane kind no renderer understands.
     #[error("{0:?} is not a pane kind Dex can show")]
     InvalidKind(String),
+    /// A `markdown` pane was asked for without saying which file.
+    #[error("a markdown pane needs a file to show")]
+    NeedsFile,
+    /// The path given for a `markdown` pane is not an existing file.
+    #[error("{0:?} is not an existing file")]
+    InvalidFile(String),
+    /// `pane.content` on a pane that is not a `markdown` pane.
+    #[error("pane {0} is not a markdown pane")]
+    NotMarkdown(String),
+    /// The file a `markdown` pane shows could not be read.
+    #[error("cannot read {path}: {reason}")]
+    Unreadable { path: String, reason: String },
     /// The root is not an existing absolute directory.
     #[error("{0:?} is not an existing directory")]
     InvalidRoot(String),

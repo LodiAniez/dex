@@ -50,6 +50,7 @@ export const COMMAND_LABELS: Record<string, string> = {
   "close-pane": "Close pane",
   "toggle-zoom": "Toggle pane zoom",
   "cycle-layout": "Cycle layout",
+  "open-diff": "Show git diff",
   "focus-left": "Focus pane left",
   "focus-right": "Focus pane right",
   "focus-up": "Focus pane up",
