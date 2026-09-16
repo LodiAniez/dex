@@ -51,13 +51,29 @@ pub fn siblings(
     Ok(found)
 }
 
-/// For other slices: where an agent is and what it is doing — its pane, if it
-/// still has one, and its status. `None` for an id nobody has.
-pub fn whereabouts(
-    conn: &Connection,
-    agent_id: &str,
-) -> rusqlite::Result<Option<(Option<String>, dex_protocol::agent::AgentStatus)>> {
-    Ok(store::find_agent(conn, agent_id)?.map(|agent| (agent.pane_id, agent.status)))
+/// For other slices: where an agent is and what it is doing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Whereabouts {
+    /// Its pane, if it still has one.
+    pub pane_id: Option<String>,
+    pub status: dex_protocol::agent::AgentStatus,
+    /// Whether Claude Code has actually started in that pane (`SessionStart`
+    /// has been seen). A spawned row is `idle` from birth; until it has a
+    /// session that means "not started yet", not "sitting at its prompt".
+    pub started: bool,
+}
+
+/// For other slices: where an agent is and what it is doing. `None` for an id
+/// nobody has.
+pub fn whereabouts(conn: &Connection, agent_id: &str) -> rusqlite::Result<Option<Whereabouts>> {
+    let Some(agent) = store::find_agent(conn, agent_id)? else {
+        return Ok(None);
+    };
+    Ok(Some(Whereabouts {
+        pane_id: agent.pane_id,
+        status: agent.status,
+        started: store::has_session(conn, &agent.id)?,
+    }))
 }
 
 /// For other slices: the id of the agent a target names, or `None`.

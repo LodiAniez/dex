@@ -231,3 +231,16 @@ pub fn list_by_status(conn: &Connection, status: AgentStatus) -> rusqlite::Resul
 pub fn revision(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row("SELECT total_changes()", [], |row| row.get(0))
 }
+
+/// Whether Claude Code has started in this agent's pane: `SessionStart` set a
+/// session id. A spawned row has none until then.
+pub fn has_session(conn: &Connection, agent_id: &str) -> rusqlite::Result<bool> {
+    let started: Option<bool> = conn
+        .query_row(
+            "SELECT session_id IS NOT NULL FROM agent WHERE id = ?1",
+            [agent_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(started.unwrap_or(false))
+}

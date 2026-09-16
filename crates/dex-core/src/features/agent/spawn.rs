@@ -70,9 +70,10 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         (None, Some(_)) => return Err(AgentError::WorktreeWithoutRepo),
         (None, None) => (None, caller.cwd.clone(), None),
     };
-    // Whether Dex made this checkout itself, which is what licenses answering
-    // the trust dialog in it — see `launch`.
-    let own_worktree = repo_id.is_some();
+    // Every spawn lands somewhere the owner already chose: the parent's own
+    // folder, a repository they registered, or a worktree Dex made from one.
+    // So the trust dialog is answered for every child — see `launch`.
+    let answer_trust = true;
 
     // Step 3: the pane, split from the caller's, inheriting its runtime.
     let direction = match args.direction.as_deref() {
@@ -146,7 +147,7 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         pane: pane.clone(),
         agent_id: agent_id.clone(),
         mode: settings.agents.spawn_permission_mode.clone(),
-        own_worktree,
+        answer_trust,
     });
     // A spawn changes two things, and the router only announces one. Without
     // this the new pane never reaches the UI, so no terminal mounts, so no
@@ -255,14 +256,16 @@ async fn repo_path(state: &AppState, target: &str) -> Result<String, AgentError>
 /// carriage return arriving with the text as a pasted newline (ARCHITECTURE.md).
 ///
 /// **The trust dialog.** Claude Code asks whether it may work in a directory
-/// the first time it runs there, and a worktree Dex has just created is always
-/// new, so a spawned agent would sit at that dialog forever with nobody to
-/// answer it — which defeats the milestone (PRD §14 M7). Dex answers it, but
-/// only when `own_worktree`: the checkout is one Dex made, under Dex's own
-/// worktree directory, from a repository the user registered themselves. It is
-/// never answered for a directory the user pointed an agent at, and never for
-/// the settings-trust dialog, which is a different question — whether to run
-/// the hooks a project's config declares — and is the user's to answer.
+/// the first time it runs there — and for the home directory, every time — so
+/// a spawned agent would sit at that dialog forever with nobody to answer it,
+/// which defeats the milestone (PRD §14 M7). Dex answers it for every child,
+/// because a child never lands anywhere the owner did not already choose: the
+/// parent's own folder (where the owner started Claude Code themselves), a
+/// repository they registered, or a worktree Dex made from one. This was first
+/// limited to worktrees; the first real use spawned into the parent's folder
+/// and three children stalled at the dialog. The settings-trust dialog is never
+/// answered: whether to run the hooks a project's config declares is a
+/// different question, and the owner's.
 fn launch(launch: Launch) {
     tokio::spawn(async move {
         let Launch {
@@ -270,12 +273,12 @@ fn launch(launch: Launch) {
             pane,
             agent_id,
             mode,
-            own_worktree,
+            answer_trust,
         } = launch;
         let deadline = tokio::time::Instant::now() + LAUNCH_WAIT;
         while tokio::time::Instant::now() < deadline {
             if state.pty.last_output_at(&pane).is_some() {
-                if own_worktree {
+                if answer_trust {
                     // Armed before the command, so the watch is in place however
                     // fast Claude Code reaches the dialog.
                     state.pty.answer_once(
@@ -310,8 +313,10 @@ struct Launch {
     /// The permission mode, taken from the same snapshot as the agent row's, so
     /// the pane header and the command line can never disagree.
     mode: String,
-    /// Whether Dex created this checkout, and so may answer the trust dialog.
-    own_worktree: bool,
+    /// Whether to answer Claude Code's folder-trust dialog for this child.
+    /// Always, today; kept as a field so the reason is a decision in `spawn`
+    /// and not an accident of `launch`.
+    answer_trust: bool,
 }
 
 #[cfg(test)]

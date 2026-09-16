@@ -29,12 +29,15 @@ const DEFAULT_EVENT_LIMIT: u32 = 200;
 const NUDGE: &str = "Another agent has sent you a message. Read it with message_inbox and act on it if it changes your task.";
 
 /// Whether a message just stored for an agent should wake it. Only an idle
-/// agent: a running one sees the message at its next tool batch, one waiting
-/// on a permission prompt would have the text land in that dialog, and an
-/// ended one has no prompt to type into. Only the first unread message: a
-/// second nudge would queue a second prompt behind the first.
-fn should_nudge(status: AgentStatus, unread_after: usize) -> bool {
-    status == AgentStatus::Idle && unread_after == 1
+/// agent that has actually started: a running one sees the message at its
+/// next tool batch, one waiting on a permission prompt would have the text
+/// land in that dialog, an ended one has no prompt to type into — and a
+/// spawned row is `idle` before Claude Code has started at all, when the pane
+/// may be showing the trust dialog, where typed text plus Enter means
+/// "No, exit". Only the first unread message: a second nudge would queue a
+/// second prompt behind the first.
+fn should_nudge(status: AgentStatus, started: bool, unread_after: usize) -> bool {
+    started && status == AgentStatus::Idle && unread_after == 1
 }
 
 /// For the agent slice: records a status change in the workspace log, so the
@@ -140,8 +143,15 @@ pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Appende
                     },
                 )?;
                 let nudge = match agent::whereabouts(conn, &target)? {
-                    Some((Some(pane), status))
-                        if should_nudge(status, store::unread_messages(conn, &target)?.len()) =>
+                    Some(agent::Whereabouts {
+                        pane_id: Some(pane),
+                        status,
+                        started,
+                    }) if should_nudge(
+                        status,
+                        started,
+                        store::unread_messages(conn, &target)?.len(),
+                    ) =>
                     {
                         Some(pane)
                     }
@@ -256,16 +266,20 @@ mod tests {
     fn only_an_idle_agent_with_exactly_one_unread_message_is_woken() {
         // The case that motivated this: a finished child, sitting at its
         // prompt, sent a requirement change it would otherwise never see.
-        assert!(should_nudge(AgentStatus::Idle, 1));
+        assert!(should_nudge(AgentStatus::Idle, true, 1));
         // A second message while the first is still unread: the first nudge
         // is already queued as a prompt; another would queue another.
-        assert!(!should_nudge(AgentStatus::Idle, 2));
+        assert!(!should_nudge(AgentStatus::Idle, true, 2));
         // Running: the next tool batch delivers it without typing anything.
-        assert!(!should_nudge(AgentStatus::Running, 1));
+        assert!(!should_nudge(AgentStatus::Running, true, 1));
         // Waiting on a permission prompt: typed text would answer that dialog.
-        assert!(!should_nudge(AgentStatus::Waiting, 1));
-        assert!(!should_nudge(AgentStatus::Error, 1));
-        assert!(!should_nudge(AgentStatus::Dead, 1));
+        assert!(!should_nudge(AgentStatus::Waiting, true, 1));
+        assert!(!should_nudge(AgentStatus::Error, true, 1));
+        assert!(!should_nudge(AgentStatus::Dead, true, 1));
+        // Spawned but Claude Code has not started: `idle` from birth, and the
+        // pane may be showing the trust dialog, where Enter means "No, exit".
+        // Seen live: a nudge typed here quit the child.
+        assert!(!should_nudge(AgentStatus::Idle, false, 1));
     }
 
     #[test]
