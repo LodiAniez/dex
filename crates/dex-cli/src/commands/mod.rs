@@ -5,5 +5,6 @@ pub mod context;
 pub mod doctor;
 pub mod event;
 pub mod hooks;
+pub mod mcp;
 pub mod pane;
 pub mod workspace;

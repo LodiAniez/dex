@@ -12,6 +12,7 @@ use clap::{Args, Parser, Subcommand};
 use commands::agent::AgentCommand;
 use commands::context::ContextCommand;
 use commands::hooks::HooksCommand;
+use commands::mcp::McpCommand;
 use commands::pane::PaneCommand;
 use commands::workspace::WorkspaceCommand;
 use output::Format;
@@ -57,6 +58,9 @@ enum Command {
     /// Install, remove, or check Dex's Claude Code hooks.
     #[command(subcommand)]
     Hooks(HooksCommand),
+    /// Register or remove the Dex MCP server with Claude Code.
+    #[command(subcommand)]
+    Mcp(McpCommand),
     /// Claude Code hook entry point. Always exits 0; a no-op outside a Dex pane.
     Event(EventArgs),
 }
@@ -100,6 +104,7 @@ fn main() -> ExitCode {
         Command::Agent(command) => commands::agent::run(command, format),
         Command::Context(command) => commands::context::run(command, format, cli.workspace),
         Command::Hooks(command) => commands::hooks::run(command, format),
+        Command::Mcp(command) => commands::mcp::run(command, format),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

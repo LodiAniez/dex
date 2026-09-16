@@ -6,7 +6,7 @@ use std::process::Command;
 use dex_protocol::PROTOCOL_VERSION;
 use serde::Serialize;
 
-use crate::commands::hooks;
+use crate::commands::{hooks, mcp};
 use crate::output::{self, Format};
 use dex_cli::client;
 
@@ -33,18 +33,17 @@ fn check(name: &'static str, status: Status, detail: impl Into<String>) -> Check
     }
 }
 
+/// A check that reports its own pass and detail.
+fn verdict(name: &'static str, (ok, detail): (bool, String)) -> Check {
+    check(name, if ok { Status::Ok } else { Status::Fail }, detail)
+}
+
 /// Runs every check and prints the results. False if any check failed.
 pub fn run(format: Format) -> bool {
     let mut checks = connection_checks();
     checks.push(git());
-    let (hooks_ok, hooks_detail) = hooks::doctor_check();
-    let hooks_status = if hooks_ok { Status::Ok } else { Status::Fail };
-    checks.push(check("hooks", hooks_status, hooks_detail));
-    checks.push(check(
-        "mcp",
-        Status::Skip,
-        "the MCP server arrives in milestone M6",
-    ));
+    checks.push(verdict("hooks", hooks::doctor_check()));
+    checks.push(verdict("mcp", mcp::doctor_check()));
 
     let healthy = checks.iter().all(|c| c.status != Status::Fail);
     if format.json {
