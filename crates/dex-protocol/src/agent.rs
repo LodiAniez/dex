@@ -1,0 +1,129 @@
+//! Wire types for agents: Claude Code sessions running in panes (docs/prd.md §9).
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/// An agent's lifecycle state (PRD §9.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum AgentStatus {
+    /// Alive, waiting for a human prompt.
+    Idle,
+    /// Working.
+    Running,
+    /// Blocked on a human: a permission prompt or a question.
+    Waiting,
+    /// Stopped by an API failure; `status_detail` says which.
+    Error,
+    /// Should be running but has gone silent (the watchdog's verdict).
+    Unknown,
+    /// The session ended or its process exited.
+    Dead,
+}
+
+/// An agent as clients see it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct AgentView {
+    /// Agent id.
+    pub id: String,
+    /// The pane it runs in; `None` once that pane is closed.
+    pub pane_id: Option<String>,
+    /// Its workspace.
+    pub workspace_id: String,
+    /// Display label.
+    pub label: Option<String>,
+    /// `claude`.
+    pub backend: String,
+    /// Current state.
+    pub status: AgentStatus,
+    /// Why, for `error` (e.g. `rate_limit`).
+    pub status_detail: Option<String>,
+    /// When the current state began, unix millis.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub status_at: i64,
+    /// Claude Code's permission mode, as its hooks last reported it.
+    pub permission_mode: Option<String>,
+    /// What it was spawned to do.
+    pub task_brief: Option<String>,
+    /// When it started, unix millis.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub started_at: i64,
+    /// When it ended, unix millis.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub ended_at: Option<i64>,
+}
+
+/// Result of `agent.list`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct AgentList {
+    /// Agents, newest first.
+    pub agents: Vec<AgentView>,
+    /// Grows with every change; a client keeps the snapshot with the highest,
+    /// since responses can arrive out of order.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub revision: i64,
+}
+
+/// Args for `agent.list`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ListAgentsArgs {
+    /// Only this workspace (id or name).
+    #[serde(default)]
+    pub workspace: Option<String>,
+    /// Include agents whose session has ended.
+    #[serde(default)]
+    pub include_dead: bool,
+}
+
+/// Args for `agent.event`: one Claude Code hook firing in a pane. The hook's
+/// stdin JSON goes through untouched; the daemon picks out what it needs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentEventArgs {
+    /// `session-start`, `prompt`, `batch`, `permission`, `waiting`, `idle`,
+    /// `stop`, `stop-failure`, or `session-end`. Unknown kinds are ignored.
+    pub kind: String,
+    /// `DEX_PANE_ID` of the shell the hook ran in.
+    pub pane: String,
+    /// `DEX_AGENT_ID`, set for agents Dex spawned.
+    #[serde(default)]
+    pub agent: Option<String>,
+    /// Unix millis when `dex event` started: events are applied in this order,
+    /// since background hooks can reach the daemon out of order.
+    pub stamp: i64,
+    /// The hook's stdin JSON.
+    #[serde(default)]
+    pub input: Value,
+}
+
+/// Result of `agent.event`, `agent.pane_exited`, and `agent.sweep`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventOutcome {
+    /// Whether anything changed.
+    pub applied: bool,
+}
+
+/// Args for `agent.stop`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StopAgentArgs {
+    /// Agent id or label, or the label or id of the pane it runs in.
+    pub agent: String,
+}
+
+/// Result of `agent.stop`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Stopped {
+    /// The agent asked to stop.
+    pub agent: String,
+    /// The pane it runs in.
+    pub pane: String,
+}
+
+/// Args for `agent.pane_exited`: a pane's process exited.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneExitedArgs {
+    /// The pane.
+    pub pane: String,
+}

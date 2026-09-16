@@ -11,6 +11,8 @@ use dex_core::router;
 use dex_protocol::{Request, Response};
 use tauri::{AppHandle, Emitter, State};
 
+use std::time::Duration;
+
 /// The event the UI listens to; its payload is the topic that changed.
 const CHANGED_EVENT: &str = "dex://changed";
 
@@ -43,5 +45,21 @@ pub async fn forward_changes(app: AppHandle, state: AppState) {
         };
         // Fails only while the window is being torn down; nothing to do then.
         let _ = app.emit(CHANGED_EVENT, topic);
+    }
+}
+
+/// How often the watchdog looks for agents that have gone silent.
+const WATCHDOG_EVERY: Duration = Duration::from_secs(15);
+
+/// Runs the agent watchdog (`agent.sweep`) until the app exits (PRD §9.2).
+pub async fn watch_agents(state: AppState) {
+    loop {
+        tokio::time::sleep(WATCHDOG_EVERY).await;
+        let sweep = Request {
+            id: "watchdog".into(),
+            cmd: "agent.sweep".into(),
+            args: serde_json::json!({}),
+        };
+        router::dispatch(&state, sweep).await;
     }
 }

@@ -1,1 +1,209 @@
-//! Every SQL statement touching the agent slice's tables. No other module queries them.
+//! Every SQL statement touching `agent`. No other module queries it
+//! (docs/conventions.md §1.3).
+
+use dex_protocol::agent::AgentStatus;
+use rusqlite::{Connection, OptionalExtension, Row, params};
+
+use super::logic::{status_from_name, status_name};
+use super::model::Agent;
+
+const AGENT_COLUMNS: &str = "id, pane_id, workspace_id, label, backend, status, status_detail, \
+     status_at, permission_mode, task_brief, started_at, last_event_at, ended_at";
+
+fn agent_from_row(row: &Row<'_>) -> rusqlite::Result<Agent> {
+    Ok(Agent {
+        id: row.get(0)?,
+        pane_id: row.get(1)?,
+        workspace_id: row.get(2)?,
+        label: row.get(3)?,
+        backend: row.get(4)?,
+        status: status_from_name(&row.get::<_, String>(5)?),
+        status_detail: row.get(6)?,
+        status_at: row.get(7)?,
+        permission_mode: row.get(8)?,
+        task_brief: row.get(9)?,
+        started_at: row.get(10)?,
+        last_event_at: row.get(11)?,
+        ended_at: row.get(12)?,
+    })
+}
+
+fn find_one(
+    conn: &Connection,
+    filter: &str,
+    values: impl rusqlite::Params,
+) -> rusqlite::Result<Option<Agent>> {
+    conn.query_row(
+        &format!("SELECT {AGENT_COLUMNS} FROM agent WHERE {filter} ORDER BY started_at DESC, rowid DESC LIMIT 1"),
+        values,
+        agent_from_row,
+    )
+    .optional()
+}
+
+/// Inserts an agent (depth 0, no parent: spawning arrives in M7).
+pub fn insert_agent(
+    conn: &Connection,
+    agent: &Agent,
+    session_id: Option<&str>,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO agent (id, pane_id, workspace_id, label, backend, session_id, status,
+                            status_detail, status_at, permission_mode, task_brief, depth,
+                            started_at, last_event_at, ended_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?13, ?14)",
+        params![
+            agent.id,
+            agent.pane_id,
+            agent.workspace_id,
+            agent.label,
+            agent.backend,
+            session_id,
+            status_name(agent.status),
+            agent.status_detail,
+            agent.status_at,
+            agent.permission_mode,
+            agent.task_brief,
+            agent.started_at,
+            agent.last_event_at,
+            agent.ended_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// One agent by id.
+pub fn find_agent(conn: &Connection, id: &str) -> rusqlite::Result<Option<Agent>> {
+    find_one(conn, "id = ?1", [id])
+}
+
+/// The agent for a Claude Code session in a pane.
+pub fn find_by_session(
+    conn: &Connection,
+    pane_id: &str,
+    session_id: &str,
+) -> rusqlite::Result<Option<Agent>> {
+    find_one(
+        conn,
+        "pane_id = ?1 AND session_id = ?2",
+        [pane_id, session_id],
+    )
+}
+
+/// The newest agent in a pane that has not ended.
+pub fn find_live_in_pane(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<Agent>> {
+    find_one(conn, "pane_id = ?1 AND status != 'dead'", [pane_id])
+}
+
+/// The newest live agent with this label.
+pub fn find_live_by_label(conn: &Connection, label: &str) -> rusqlite::Result<Option<Agent>> {
+    find_one(conn, "label = ?1 AND status != 'dead'", [label])
+}
+
+/// Binds an agent to a (possibly new) session id and records the permission mode.
+pub fn update_session(
+    conn: &Connection,
+    id: &str,
+    session_id: Option<&str>,
+    permission_mode: Option<&str>,
+    now: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE agent SET session_id = COALESCE(?2, session_id),
+                          permission_mode = COALESCE(?3, permission_mode),
+                          last_event_at = ?4
+         WHERE id = ?1",
+        params![id, session_id, permission_mode, now],
+    )?;
+    Ok(())
+}
+
+/// Records that a hook arrived, and the permission mode it reported.
+pub fn touch(
+    conn: &Connection,
+    id: &str,
+    permission_mode: Option<&str>,
+    now: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE agent SET last_event_at = ?2, permission_mode = COALESCE(?3, permission_mode)
+         WHERE id = ?1",
+        params![id, now, permission_mode],
+    )?;
+    Ok(())
+}
+
+/// Moves an agent to a new status. `ended_at` is kept if already set.
+pub fn update_status(
+    conn: &Connection,
+    id: &str,
+    status: AgentStatus,
+    detail: Option<&str>,
+    status_at: i64,
+    ended_at: Option<i64>,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE agent SET status = ?2, status_detail = ?3, status_at = ?4,
+                          ended_at = COALESCE(ended_at, ?5)
+         WHERE id = ?1",
+        params![id, status_name(status), detail, status_at, ended_at],
+    )?;
+    Ok(())
+}
+
+/// Undoes an end: clears `ended_at` and parks the agent in `unknown` until the
+/// hook that proved it alive sets its real status.
+pub fn revive(conn: &Connection, id: &str, status_at: i64) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE agent SET status = 'unknown', status_at = ?2, ended_at = NULL WHERE id = ?1",
+        params![id, status_at],
+    )?;
+    Ok(())
+}
+
+/// Ends one agent. Returns how many rows changed.
+pub fn end_agent(conn: &Connection, id: &str, now: i64) -> rusqlite::Result<usize> {
+    conn.execute(
+        "UPDATE agent SET status = 'dead', status_at = ?2, ended_at = COALESCE(ended_at, ?2)
+         WHERE id = ?1",
+        params![id, now],
+    )
+}
+
+/// Ends every live agent in a pane, except `keep`. Returns how many ended.
+pub fn end_live_in_pane(
+    conn: &Connection,
+    pane_id: &str,
+    keep: Option<&str>,
+    now: i64,
+) -> rusqlite::Result<usize> {
+    conn.execute(
+        "UPDATE agent SET status = 'dead', status_at = ?3, ended_at = COALESCE(ended_at, ?3)
+         WHERE pane_id = ?1 AND status != 'dead' AND id IS NOT ?2",
+        params![pane_id, keep, now],
+    )
+}
+
+/// Agents newest first; ended ones only if asked.
+pub fn list_agents(conn: &Connection, include_dead: bool) -> rusqlite::Result<Vec<Agent>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {AGENT_COLUMNS} FROM agent WHERE ?1 OR status != 'dead'
+         ORDER BY started_at DESC, rowid DESC"
+    ))?;
+    let rows = stmt.query_map([include_dead], agent_from_row)?;
+    rows.collect()
+}
+
+/// Every agent in a given status.
+pub fn list_by_status(conn: &Connection, status: AgentStatus) -> rusqlite::Result<Vec<Agent>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {AGENT_COLUMNS} FROM agent WHERE status = ?1"
+    ))?;
+    let rows = stmt.query_map([status_name(status)], agent_from_row)?;
+    rows.collect()
+}
+
+/// A number that grows with every row this connection changes; orders snapshots.
+pub fn revision(conn: &Connection) -> rusqlite::Result<i64> {
+    conn.query_row("SELECT total_changes()", [], |row| row.get(0))
+}

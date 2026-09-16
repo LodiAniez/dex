@@ -8,7 +8,10 @@ use std::path::PathBuf;
 use dex_core::app::AppState;
 use dex_core::platform::pipe;
 use dex_core::platform::pty::{PtyOutput, SpawnRequest, resolve_shell};
+use dex_core::router;
+use dex_protocol::Request;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tauri::State;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
@@ -70,7 +73,21 @@ pub async fn pty_spawn(
         cols: pane.cols,
         rows: pane.rows,
     };
+    let exited_pane = request.pane_id.clone();
+    let daemon = state.inner().clone();
     let sink = Box::new(move |output: PtyOutput| {
+        if let PtyOutput::Exited { .. } = &output {
+            // Whatever agent ran in this pane ended with its process (PRD §9.2).
+            let (daemon, pane) = (daemon.clone(), exited_pane.clone());
+            tauri::async_runtime::spawn(async move {
+                let exit = Request {
+                    id: "pty-exit".into(),
+                    cmd: "agent.pane_exited".into(),
+                    args: json!({ "pane": pane }),
+                };
+                router::dispatch(&daemon, exit).await;
+            });
+        }
         // A send only fails once the window is gone; nobody is left to tell.
         let _ = match output {
             PtyOutput::Data(bytes) => on_output.send(InvokeResponseBody::Raw(bytes)),

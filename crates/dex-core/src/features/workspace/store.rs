@@ -189,6 +189,17 @@ pub fn update_active_pane(
     Ok(())
 }
 
+/// The workspace a pane belongs to, if the pane exists. Part of the slice's
+/// public face: other slices ask this instead of querying `pane`.
+pub fn find_pane_workspace(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT workspace_id FROM pane WHERE id = ?1",
+        [pane_id],
+        |row| row.get(0),
+    )
+    .optional()
+}
+
 /// A number that grows with every row this connection changes. All writes go
 /// through the daemon's single connection, so it orders snapshots.
 pub fn revision(conn: &Connection) -> rusqlite::Result<i64> {

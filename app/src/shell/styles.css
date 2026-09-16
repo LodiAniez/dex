@@ -188,6 +188,72 @@ body,
   font-size: 9px;
 }
 
+.pane-label {
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--selected);
+  color: var(--text);
+}
+
+/* ---- Agents ---- */
+
+.agent-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--agent-color, #8a93a6);
+}
+
+.agent-dot.idle { --agent-color: #8a93a6; }
+.agent-dot.running { --agent-color: #f5a524; box-shadow: 0 0 6px #f5a524aa; }
+.agent-dot.waiting { --agent-color: #4f8cff; box-shadow: 0 0 8px #4f8cffcc; animation: agent-pulse 1.4s ease-in-out infinite; }
+.agent-dot.error { --agent-color: #f25f5c; box-shadow: 0 0 6px #f25f5caa; }
+.agent-dot.unknown { --agent-color: #ff8c42; }
+.agent-dot.dead { --agent-color: #4a4f5a; }
+
+@keyframes agent-pulse {
+  50% { opacity: 0.45; }
+}
+
+.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding-right: 4px;
+}
+
+.agent-badge .agent-state {
+  color: var(--text);
+}
+
+.agent-badge.waiting .agent-state { color: #8fb4ff; }
+.agent-badge.error .agent-state { color: #ff8f8c; }
+
+.agent-elapsed {
+  color: var(--text-dim);
+}
+
+.agent-mode {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.agent-counts {
+  display: flex;
+  gap: 8px;
+  padding-right: 10px;
+  font-size: 11px;
+}
+
+.agent-counts .count.waiting { color: #8fb4ff; }
+.agent-counts .count.error { color: #ff8f8c; }
+.agent-counts .count.running { color: #f5c46b; }
+
 /* ---- Sidebar ---- */
 
 .sidebar {

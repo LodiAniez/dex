@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { AgentBadge, agentInPane, useAgents } from "../features/agents";
 import { TerminalPane } from "../features/panes/TerminalPane";
 import { closePane, focusPane, setLayout } from "../features/workspaces";
 import type { Layout } from "../platform/generated/Layout";
@@ -102,6 +103,7 @@ function shortPath(path: string): string {
 
 function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: WorkspaceView; zoomed: boolean }) {
   const active = workspace.active_pane === pane.id;
+  const agent = agentInPane(useAgents(), pane.id);
   return (
     <div
       className={`pane${active ? " active" : ""}`}
@@ -111,6 +113,8 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
       }}
     >
       <div className="pane-header">
+        {agent && <AgentBadge agent={agent} />}
+        {pane.label && <span className="pane-label">{pane.label}</span>}
         <span className="pane-cwd" title={pane.cwd}>
           {shortPath(pane.cwd)}
         </span>

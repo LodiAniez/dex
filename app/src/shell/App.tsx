@@ -1,4 +1,6 @@
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
+import { agentCounts, loadAgents, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
 import {
   closePane,
   cycleLayout,
@@ -45,6 +47,16 @@ function run(action: Promise<unknown> | undefined): void {
   void action?.catch(showError);
 }
 
+/** Where a pane is, and whether the user is looking at it (for notifications). */
+function locatePane(paneId: string): PaneContext | null {
+  const list = getWorkspaces();
+  const workspace = list?.workspaces.find((ws) => ws.panes.some((pane) => pane.id === paneId));
+  const pane = workspace?.panes.find((p) => p.id === paneId);
+  if (!list || !workspace || !pane) return null;
+  const looking = document.hasFocus() && list.active === workspace.id && workspace.active_pane === paneId;
+  return { workspaceId: workspace.id, workspaceName: workspace.name, paneName: pane.label ?? "pane", looking };
+}
+
 /** Switches to the workspace `offset` places from the active one, wrapping around. */
 function switchBy(offset: number): void {
   const list = getWorkspaces();
@@ -61,8 +73,23 @@ export function App() {
   const [creating, setCreating] = useState(false);
   const [zoomed, setZoomed] = useState<string | null>(null);
 
+  const agents = useAgents();
+
   useEffect(() => {
     run(loadWorkspaces());
+    run(loadAgents());
+  }, []);
+
+  // Toasts for agents that need attention in panes the user is not looking at.
+  useEffect(() => watchAgentChanges((before, after) => notifyTransitions(before, after, locatePane)), []);
+
+  // A clicked toast brings the app forward; show the pane it was about.
+  useEffect(() => {
+    const unlisten = listen<{ workspace: string; pane: string }>("dex://focus-pane", (event) => {
+      run(switchWorkspace(event.payload.workspace));
+      run(focusPane(event.payload.pane));
+    });
+    return () => void unlisten.then((stop) => stop());
   }, []);
 
   useEffect(() => {
@@ -140,7 +167,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TitleBar title={active?.name} color={active?.color} />
+      <TitleBar title={active?.name} color={active?.color} counts={agentCounts(agents)} />
       <div className="app-body">
         <Sidebar
           open={sidebarOpen}

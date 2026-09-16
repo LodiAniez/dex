@@ -2,7 +2,7 @@
 //! handlers, and its tests. Slices call each other only through what a slice's
 //! `mod.rs` re-exports (docs/conventions.md §1.2).
 
-mod agent;
+pub(crate) mod agent;
 mod context;
 mod diagnostics;
 mod repo;

@@ -1,6 +1,8 @@
 //! Pane commands for the CLI that read state or reach into a pane's shell:
 //! `pane.list`, `pane.send`, `pane.send_key` (docs/prd.md §11).
 
+use std::time::Duration;
+
 use dex_protocol::pane::{ListPanesArgs, PaneList, PaneSummary, SendArgs, SendKeyArgs, Sent};
 
 use super::logic;
@@ -9,6 +11,9 @@ use super::store;
 use super::targets::{resolve_pane, target_workspace};
 use crate::app::AppState;
 use crate::platform::pty::PtyError;
+
+/// How long the Enter waits behind the text it submits.
+const ENTER_GAP: Duration = Duration::from_millis(50);
 
 /// `pane.list`: panes of one workspace (by name/id, or the one holding a
 /// given pane), or of every workspace.
@@ -51,12 +56,18 @@ pub async fn list_panes(state: &AppState, args: ListPanesArgs) -> Result<PaneLis
 }
 
 /// `pane.send`: types text into a pane's shell, then Enter if asked.
+///
+/// The Enter is a second write, a moment later. Claude Code's TUI reads a
+/// carriage return that arrives in the same chunk as the text as a pasted
+/// newline and leaves the prompt unsent (ARCHITECTURE.md); arriving on its own
+/// it is a keypress. Shells behave the same either way.
 pub async fn send(state: &AppState, args: SendArgs) -> Result<Sent, WorkspaceError> {
-    let mut bytes = args.text.into_bytes();
-    if args.enter {
-        bytes.push(b'\r');
+    let sent = write(state, args.pane, args.text.into_bytes()).await?;
+    if !args.enter {
+        return Ok(sent);
     }
-    write(state, args.pane, bytes).await
+    tokio::time::sleep(ENTER_GAP).await;
+    write(state, sent.pane, b"\r".to_vec()).await
 }
 
 /// `pane.send_key`: presses one key in a pane's shell.

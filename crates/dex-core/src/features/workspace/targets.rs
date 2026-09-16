@@ -51,6 +51,22 @@ pub(super) fn resolve_pane(
     })
 }
 
+/// For other slices: the id of the workspace a target names.
+pub fn workspace_id(
+    conn: &Connection,
+    target: &str,
+) -> rusqlite::Result<Result<String, WorkspaceError>> {
+    Ok(resolve_workspace(conn, target)?.map(|workspace| workspace.id))
+}
+
+/// For other slices: the id of the pane a target names.
+pub fn pane_id(
+    conn: &Connection,
+    target: &str,
+) -> rusqlite::Result<Result<String, WorkspaceError>> {
+    Ok(resolve_pane(conn, target)?.map(|pane| pane.id))
+}
+
 fn describe(pane: &Pane) -> String {
     match &pane.label {
         Some(label) => format!("{label} ({})", pane.id),

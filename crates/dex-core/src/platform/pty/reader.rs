@@ -17,6 +17,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use super::{FlowLimits, OutputSink, PtyOutput};
+use crate::platform::clock;
 
 /// Size of each read from the PTY.
 const READ_BYTES: usize = 64 * 1024;
@@ -38,6 +39,9 @@ struct FlowState {
     unacked: usize,
     /// Count of acknowledgements ever received; a change means the display is alive.
     acks: u64,
+    /// When output last reached the sink, unix millis; 0 if never. The agent
+    /// watchdog uses it to tell a silent agent from a busy one.
+    last_output: i64,
 }
 
 /// Whether the coalescer may keep sending.
@@ -58,7 +62,14 @@ impl Flow {
     }
 
     fn sent(&self, bytes: usize) {
-        self.lock().unacked += bytes;
+        let mut state = self.lock();
+        state.unacked += bytes;
+        state.last_output = clock::now_millis();
+    }
+
+    /// When output last reached the display, unix millis; 0 if never.
+    pub(super) fn last_output(&self) -> i64 {
+        self.lock().last_output
     }
 
     fn acks(&self) -> u64 {

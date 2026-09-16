@@ -2,6 +2,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { useRef, useState, type MouseEvent } from "react";
 import type { WorkspaceView } from "../../platform/generated/WorkspaceView";
 import { showError } from "../../platform/notices";
+import { AgentStatusDot, useAgents, workspaceAttention } from "../agents";
 import { ColorPicker } from "./ColorPicker";
 import { ContextMenu } from "./ContextMenu";
 import { deleteWorkspace, recolorWorkspace, renameWorkspace, switchWorkspace } from "./workspaceStore";
@@ -30,6 +31,7 @@ export function WorkspaceItem(props: Props) {
   const [renaming, setRenaming] = useState(false);
   const [picker, setPicker] = useState<Point | null>(null);
   const [menu, setMenu] = useState<Point | null>(null);
+  const attention = workspaceAttention(useAgents(), workspace.id);
 
   const openPicker = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -95,6 +97,7 @@ export function WorkspaceItem(props: Props) {
           {workspace.name}
         </span>
       )}
+      {attention && <AgentStatusDot status={attention} />}
       {index < 9 && <kbd className="shortcut">Ctrl+{index + 1}</kbd>}
 
       {picker && (

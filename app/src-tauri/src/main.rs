@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod daemon;
+mod notify;
 mod pty;
 
 use std::path::PathBuf;
@@ -60,8 +61,9 @@ fn main() {
                     ));
                     tauri::async_runtime::spawn(daemon::forward_changes(
                         app.handle().clone(),
-                        daemon_state,
+                        daemon_state.clone(),
                     ));
+                    tauri::async_runtime::spawn(daemon::watch_agents(daemon_state));
                 }
                 Err(err) => {
                     // Someone else holds the name, most likely another Dex.
@@ -86,6 +88,7 @@ fn main() {
             pty::pty_resize,
             pty::pty_ack,
             pty::pty_kill,
+            notify::notify_agent,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

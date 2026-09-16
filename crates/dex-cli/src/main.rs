@@ -10,6 +10,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 
+use commands::agent::AgentCommand;
+use commands::hooks::HooksCommand;
 use commands::pane::PaneCommand;
 use commands::workspace::WorkspaceCommand;
 use output::Format;
@@ -43,6 +45,12 @@ enum Command {
     /// List, create, split, and close panes; type into them; label them.
     #[command(subcommand)]
     Pane(PaneCommand),
+    /// List and stop the Claude Code sessions running in panes.
+    #[command(subcommand)]
+    Agent(AgentCommand),
+    /// Install, remove, or check Dex's Claude Code hooks.
+    #[command(subcommand)]
+    Hooks(HooksCommand),
     /// Claude Code hook entry point. Always exits 0; a no-op outside a Dex pane.
     Event(EventArgs),
 }
@@ -83,6 +91,8 @@ fn main() -> ExitCode {
         }
         Command::Workspace(command) => commands::workspace::run(command, format),
         Command::Pane(command) => commands::pane::run(command, format),
+        Command::Agent(command) => commands::agent::run(command, format),
+        Command::Hooks(command) => commands::hooks::run(command, format),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

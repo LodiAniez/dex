@@ -7,6 +7,7 @@ use dex_protocol::PROTOCOL_VERSION;
 use serde::Serialize;
 
 use crate::client;
+use crate::commands::hooks;
 use crate::output::{self, Format};
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -36,11 +37,9 @@ fn check(name: &'static str, status: Status, detail: impl Into<String>) -> Check
 pub fn run(format: Format) -> bool {
     let mut checks = connection_checks();
     checks.push(git());
-    checks.push(check(
-        "hooks",
-        Status::Skip,
-        "Claude Code hooks arrive in milestone M5",
-    ));
+    let (hooks_ok, hooks_detail) = hooks::doctor_check();
+    let hooks_status = if hooks_ok { Status::Ok } else { Status::Fail };
+    checks.push(check("hooks", hooks_status, hooks_detail));
     checks.push(check(
         "mcp",
         Status::Skip,

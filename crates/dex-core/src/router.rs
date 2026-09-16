@@ -12,11 +12,20 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::app::AppState;
+use crate::features::agent::{self, AgentError};
 use crate::features::workspace::{self, WorkspaceError};
 
-/// Commands that change nothing the UI shows. Every other successful command
-/// tells the UI to re-read the workspaces.
-const READ_ONLY: [&str; 4] = ["workspace.list", "pane.list", "pane.send", "pane.send_key"];
+/// Which state a successful command changed, so the UI re-reads it; `None`
+/// for commands that change nothing the UI shows. The watchdog announces its
+/// own changes, since most sweeps change nothing.
+fn changes(cmd: &str) -> Option<&'static str> {
+    match cmd {
+        "workspace.list" | "pane.list" | "pane.send" | "pane.send_key" => None,
+        "agent.list" | "agent.sweep" => None,
+        agent if agent.starts_with("agent.") => Some("agents"),
+        _ => Some("workspaces"),
+    }
+}
 
 /// Runs one request and wraps the outcome in a response. Never fails: every
 /// error becomes an error response.
@@ -24,8 +33,8 @@ pub async fn dispatch(state: &AppState, request: Request) -> Response {
     let id = request.id.clone();
     match route(state, &request).await {
         Ok(data) => {
-            if !READ_ONLY.contains(&request.cmd.as_str()) {
-                state.bus.publish("workspaces");
+            if let Some(topic) = changes(&request.cmd) {
+                state.bus.publish(topic);
             }
             Response::success(id, data)
         }
@@ -53,6 +62,11 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "pane.label" => encode(workspace::label_pane(state, args(req)?).await?),
         "pane.send" => encode(workspace::send(state, args(req)?).await?),
         "pane.send_key" => encode(workspace::send_key(state, args(req)?).await?),
+        "agent.event" => encode(agent::event(state, args(req)?).await?),
+        "agent.list" => encode(agent::list(state, args(req)?).await?),
+        "agent.stop" => encode(agent::stop(state, args(req)?).await?),
+        "agent.pane_exited" => encode(agent::pane_exited(state, args(req)?).await?),
+        "agent.sweep" => encode(agent::sweep(state).await?),
         _ => Err(CoreError::UnknownCommand(req.cmd.clone())),
     }
 }
@@ -68,6 +82,8 @@ enum CoreError {
     Encode(serde_json::Error),
     #[error(transparent)]
     Workspace(#[from] WorkspaceError),
+    #[error(transparent)]
+    Agent(#[from] AgentError),
 }
 
 fn args<T: DeserializeOwned>(req: &Request) -> Result<T, CoreError> {
@@ -98,6 +114,21 @@ fn error_body(err: &CoreError) -> ErrorBody {
         ),
         CoreError::Encode(_) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
         CoreError::Workspace(err) => workspace_repair(err),
+        CoreError::Agent(AgentError::NoSuchPane(_)) => (
+            ErrorCode::NoSuchPane,
+            "The hook ran in a pane Dex no longer has; nothing to do.".to_owned(),
+        ),
+        CoreError::Agent(AgentError::NoSuchAgent(_)) => (
+            ErrorCode::NoSuchAgent,
+            "Run `dex agent list` to see the running agents; target one by its id or its pane's label."
+                .to_owned(),
+        ),
+        CoreError::Agent(AgentError::NotRunning(_)) => (
+            ErrorCode::NoSuchAgent,
+            "That agent has already ended; `dex agent list` shows the running ones.".to_owned(),
+        ),
+        CoreError::Agent(AgentError::Target(err)) => workspace_repair(err),
+        CoreError::Agent(AgentError::Db(_)) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
     };
     ErrorBody {
         code,

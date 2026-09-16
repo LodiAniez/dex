@@ -4,6 +4,7 @@
 //! serialized as a single line of JSON (docs/prd.md §6.2).
 #![forbid(unsafe_code)]
 
+pub mod agent;
 pub mod error;
 pub mod handshake;
 pub mod pane;

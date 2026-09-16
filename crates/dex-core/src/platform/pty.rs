@@ -230,6 +230,12 @@ impl PtySupervisor {
         pane.master.resize(cell_size(cols, rows)).map_err(pty_err)
     }
 
+    /// When a pane's output last reached the display, unix millis (0 if never);
+    /// `None` if the pane has no live process.
+    pub fn last_output_at(&self, pane_id: &str) -> Option<i64> {
+        self.lock().get(pane_id).map(|pane| pane.flow.last_output())
+    }
+
     /// Records that the display has processed `bytes` of a pane's output.
     pub fn ack(&self, pane_id: &str, bytes: usize) -> Result<(), PtyError> {
         let flow = self
