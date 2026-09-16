@@ -51,6 +51,15 @@ pub fn siblings(
     Ok(found)
 }
 
+/// For other slices: where an agent is and what it is doing — its pane, if it
+/// still has one, and its status. `None` for an id nobody has.
+pub fn whereabouts(
+    conn: &Connection,
+    agent_id: &str,
+) -> rusqlite::Result<Option<(Option<String>, dex_protocol::agent::AgentStatus)>> {
+    Ok(store::find_agent(conn, agent_id)?.map(|agent| (agent.pane_id, agent.status)))
+}
+
 /// For other slices: the id of the agent a target names, or `None`.
 pub fn resolve_agent(conn: &Connection, target: &str) -> rusqlite::Result<Option<String>> {
     Ok(find_target(conn, target)?.ok().map(|agent| agent.id))

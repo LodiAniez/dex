@@ -98,7 +98,11 @@ retry or work around - it means do the work yourself.
 - `context_write` for facts that stay true, under a stable key. If another agent
   might be editing the same key, `context_read` it first and pass the version
   back, so a conflict fails loudly instead of overwriting them.
-- `message_send` when it matters to one agent and nobody else.
+- `message_send` when it matters to one agent and nobody else. This is also
+  how you change a child's task after it has started: send it the new
+  requirement. A child that is busy sees it at its next tool call; one that
+  has finished and is sitting idle is woken to read it. You do not need to
+  stop it and start another.
 - `message_inbox` the moment your digest says messages are waiting - the digest
   tells you the count, never the contents.
 

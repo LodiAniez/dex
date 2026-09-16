@@ -126,3 +126,35 @@ async fn workspaces_do_not_see_each_others_entries() {
         .unwrap();
     assert!(entries.entries.is_empty(), "context is workspace-scoped");
 }
+
+#[tokio::test]
+async fn a_message_to_an_idle_agent_is_stored_even_when_its_pane_cannot_be_woken() {
+    // The daemon tries to wake an idle recipient by typing a prompt into its
+    // pane. In tests no pane has a shell, so that attempt fails — and the
+    // message must be stored all the same, waiting for the agent's next turn.
+    let (_root, _dir, state, pane) = workspace_at().await;
+    let second = second_pane(&state, &pane).await;
+    start_agent(&state, &pane, "s-a").await;
+    start_agent(&state, &second, "s-b").await;
+
+    let sent = message_send(
+        &state,
+        MessageArgs {
+            target_agent: second.clone(),
+            body: "requirement changed: odd shouts hey".into(),
+            caller: from(&pane),
+        },
+    )
+    .await
+    .expect("a pane with no shell is not a reason to lose the message");
+    assert!(sent.seq > 0);
+
+    let delivered = inbox(&state, ScopeArgs::for_caller(from(&second)))
+        .await
+        .unwrap();
+    assert_eq!(delivered.messages.len(), 1);
+    assert_eq!(
+        delivered.messages[0].body,
+        "requirement changed: odd shouts hey"
+    );
+}
