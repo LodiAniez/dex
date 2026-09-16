@@ -31,6 +31,8 @@ Not on macOS or Linux, by design. Running agents inside WSL from Dex is on the r
 
 1. Download the latest `Dex_<version>_x64_en-US.msi` from the **[Releases page](https://github.com/LodiAniez/dex/releases)**.
 2. Run it and accept the defaults. It installs Dex to Program Files, adds the `dex` command to your PATH, and puts Dex in the Start Menu.
+
+   Windows will show *"Windows protected your PC"* because this build is not code-signed yet — click **More info**, then **Run anyway**. The UAC prompt says *Unknown publisher* for the same reason. The installer is exactly what's in this repository; signing is a paid identity check, not a change to the file.
 3. Open a **new** terminal (PATH changes reach new terminals only) and confirm:
 
    ```powershell
