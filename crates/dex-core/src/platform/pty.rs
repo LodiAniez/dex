@@ -22,6 +22,7 @@ mod reader;
 mod shell;
 #[cfg(test)]
 mod tests;
+mod watch;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -36,6 +37,7 @@ use thiserror::Error;
 
 use reader::Flow;
 pub use shell::resolve_shell;
+pub use watch::Answer;
 
 /// How many reader chunks may queue before the reader blocks. Small on
 /// purpose: once the display is behind, the PTY should pause promptly.
@@ -131,11 +133,15 @@ struct Pane {
     flow: Arc<Flow>,
 }
 
+/// The live panes, shared by every clone of the supervisor.
+type Panes = Arc<Mutex<HashMap<String, Pane>>>;
+
 /// Owns every live PTY. Cheap to clone; clones share the same panes.
 #[derive(Clone)]
 pub struct PtySupervisor {
-    panes: Arc<Mutex<HashMap<String, Pane>>>,
+    panes: Panes,
     limits: FlowLimits,
+    watches: watch::Watches,
 }
 
 impl PtySupervisor {
@@ -144,7 +150,18 @@ impl PtySupervisor {
         Self {
             panes: Arc::new(Mutex::new(HashMap::new())),
             limits,
+            watches: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Types `answer` into a pane once it prints the phrase the answer waits
+    /// for. At most one answer is armed per pane; a later one replaces it.
+    ///
+    /// The supervisor does not otherwise look at what a pane prints. This is
+    /// for prompts a spawned agent would sit at forever, having no human to
+    /// press the key — see `watch.rs`.
+    pub fn answer_once(&self, pane_id: &str, answer: Answer) {
+        watch::arm(&self.watches, pane_id, answer);
     }
 
     /// Starts `request.program` in a new PTY; its output goes to `sink`.
@@ -178,6 +195,7 @@ impl PtySupervisor {
         let coalescer_flow = flow.clone();
         let coalescer_exit = exit_code.clone();
         let limits = self.limits;
+        let sink = self.watching(&id, sink);
         spawn_named(format!("pty-coalescer-{id}"), move || {
             reader::run_coalescer(chunks_rx, coalescer_flow, limits, sink, coalescer_exit);
         })?;
@@ -193,8 +211,10 @@ impl PtySupervisor {
         );
 
         let panes = self.panes.clone();
+        let watches = self.watches.clone();
         spawn_named(format!("pty-waiter-{id}"), move || {
             let code = child.wait().ok().map(|status| status.exit_code());
+            watch::disarm(&watches, &id);
             if let Ok(mut slot) = exit_code.lock() {
                 *slot = code;
             }
@@ -211,13 +231,21 @@ impl PtySupervisor {
 
     /// Sends input bytes to a pane's process.
     pub fn write(&self, pane_id: &str, bytes: &[u8]) -> Result<(), PtyError> {
-        let mut panes = self.lock();
-        let pane = panes
-            .get_mut(pane_id)
-            .ok_or_else(|| PtyError::NoSuchPane(pane_id.to_owned()))?;
-        pane.writer.write_all(bytes)?;
-        pane.writer.flush()?;
-        Ok(())
+        write_to(&self.panes, pane_id, bytes)
+    }
+
+    /// Wraps a pane's sink so an armed answer sees the output on its way past.
+    /// The display's sink still receives everything, unchanged and in order.
+    fn watching(&self, pane_id: &str, mut sink: OutputSink) -> OutputSink {
+        let watches = self.watches.clone();
+        let panes = self.panes.clone();
+        let pane_id = pane_id.to_owned();
+        Box::new(move |output| {
+            if let PtyOutput::Data(bytes) = &output {
+                watch::observe(&watches, &panes, &pane_id, bytes);
+            }
+            sink(output);
+        })
     }
 
     /// Resizes a pane. Callers debounce (PRD §7.1: 100ms), since ConPTY
@@ -270,6 +298,20 @@ impl PtySupervisor {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+/// Sends input to a pane, given the map directly. `watch` answers prompts from
+/// its own thread and has no supervisor to call.
+fn write_to(panes: &Panes, pane_id: &str, bytes: &[u8]) -> Result<(), PtyError> {
+    let mut panes = panes
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let pane = panes
+        .get_mut(pane_id)
+        .ok_or_else(|| PtyError::NoSuchPane(pane_id.to_owned()))?;
+    pane.writer.write_all(bytes)?;
+    pane.writer.flush()?;
+    Ok(())
 }
 
 fn command(request: &SpawnRequest) -> CommandBuilder {

@@ -20,6 +20,7 @@ use super::model::{Agent, AgentError};
 use super::store;
 use crate::app::AppState;
 use crate::features::{context, repo, workspace};
+use crate::platform::pty::Answer;
 use crate::platform::{clock, ids};
 
 /// How deep spawning may go: a child may spawn, its child may not (PRD §13).
@@ -37,6 +38,16 @@ const KICKOFF: &str = "Begin the task described in your workspace context.";
 /// launch. The pane's shell starts when the UI first shows it.
 const LAUNCH_WAIT: Duration = Duration::from_secs(30);
 const LAUNCH_POLL: Duration = Duration::from_millis(250);
+
+/// The confirm option of Claude Code's folder-trust dialog, which it shows the
+/// first time it runs anywhere — including in a worktree Dex has just made.
+const TRUST_PROMPT: &str = "Yes, I trust this folder";
+/// Down, then Enter: the dialog lists "No, exit" first and focuses it, and
+/// hides the index numbers, so there is no key that picks an option directly.
+const TRUST_KEYS: [&[u8]; 2] = [b"\x1b[B", b"\r"];
+/// How long to keep watching for the dialog. Generous: Claude Code has to
+/// start, and a cold start on a large repository is not quick.
+const TRUST_WAIT: Duration = Duration::from_secs(120);
 
 /// `agent.spawn`: a new pane, a new agent, and a Claude Code already working.
 pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentError> {
@@ -62,6 +73,9 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         (None, Some(_)) => return Err(AgentError::WorktreeWithoutRepo),
         (None, None) => (None, caller.cwd.clone(), None),
     };
+    // Whether Dex made this checkout itself, which is what licenses answering
+    // the trust dialog in it — see `launch`.
+    let own_worktree = repo_id.is_some();
 
     // Step 3: the pane, split from the caller's, inheriting its runtime.
     let direction = match args.direction.as_deref() {
@@ -130,7 +144,7 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         .await?;
 
     // Step 6: launch, once the UI has started the pane's shell.
-    launch(state.clone(), pane.clone(), agent_id.clone());
+    launch(state.clone(), pane.clone(), agent_id.clone(), own_worktree);
     // A spawn changes two things, and the router only announces one. Without
     // this the new pane never reaches the UI, so no terminal mounts, so no
     // shell starts, so the child is never launched at all.
@@ -232,11 +246,33 @@ async fn repo_path(state: &AppState, target: &str) -> Result<String, AgentError>
 /// when `spawn` returns, so this waits in the background rather than failing.
 /// Text and Enter go as separate writes: Claude Code's input box reads a
 /// carriage return arriving with the text as a pasted newline (ARCHITECTURE.md).
-fn launch(state: AppState, pane: String, agent_id: String) {
+///
+/// **The trust dialog.** Claude Code asks whether it may work in a directory
+/// the first time it runs there, and a worktree Dex has just created is always
+/// new, so a spawned agent would sit at that dialog forever with nobody to
+/// answer it — which defeats the milestone (PRD §14 M7). Dex answers it, but
+/// only when `own_worktree`: the checkout is one Dex made, under Dex's own
+/// worktree directory, from a repository the user registered themselves. It is
+/// never answered for a directory the user pointed an agent at, and never for
+/// the settings-trust dialog, which is a different question — whether to run
+/// the hooks a project's config declares — and is the user's to answer.
+fn launch(state: AppState, pane: String, agent_id: String, own_worktree: bool) {
     tokio::spawn(async move {
         let deadline = tokio::time::Instant::now() + LAUNCH_WAIT;
         while tokio::time::Instant::now() < deadline {
             if state.pty.last_output_at(&pane).is_some() {
+                if own_worktree {
+                    // Armed before the command, so the watch is in place however
+                    // fast Claude Code reaches the dialog.
+                    state.pty.answer_once(
+                        &pane,
+                        Answer::new(
+                            TRUST_PROMPT,
+                            TRUST_KEYS.map(<[u8]>::to_vec).into(),
+                            TRUST_WAIT,
+                        ),
+                    );
+                }
                 let command =
                     format!("claude --permission-mode {SPAWN_PERMISSION_MODE} \"{KICKOFF}\"\r");
                 let pty = state.pty.clone();
@@ -275,6 +311,14 @@ mod tests {
         // `bypassPermissions` is only honoured in a worktree (PRD §9.4), and
         // Dex does not ship it as the default.
         assert_eq!(SPAWN_PERMISSION_MODE, "auto");
+    }
+
+    #[test]
+    fn the_trust_dialog_is_answered_with_down_then_enter() {
+        // It lists "No, exit" first and focuses it, and hides the index
+        // numbers, so Enter alone would quit and no digit selects anything.
+        assert_eq!(TRUST_KEYS[0], b"\x1b[B");
+        assert_eq!(TRUST_KEYS[1], b"\r");
     }
 
     #[test]
