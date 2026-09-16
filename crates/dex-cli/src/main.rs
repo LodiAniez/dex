@@ -2,7 +2,6 @@
 //! the pipe, print the responses. All logic lives in the daemon.
 #![forbid(unsafe_code)]
 
-mod client;
 mod commands;
 mod output;
 
@@ -11,6 +10,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 
 use commands::agent::AgentCommand;
+use commands::context::ContextCommand;
 use commands::hooks::HooksCommand;
 use commands::pane::PaneCommand;
 use commands::workspace::WorkspaceCommand;
@@ -33,6 +33,9 @@ struct Cli {
     /// Leave out the header row of tables.
     #[arg(long, global = true)]
     no_header: bool,
+    /// Workspace to act on, when not running inside a Dex pane.
+    #[arg(long, global = true)]
+    workspace: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -48,6 +51,9 @@ enum Command {
     /// List and stop the Claude Code sessions running in panes.
     #[command(subcommand)]
     Agent(AgentCommand),
+    /// Read and write the workspace's shared context store.
+    #[command(subcommand)]
+    Context(ContextCommand),
     /// Install, remove, or check Dex's Claude Code hooks.
     #[command(subcommand)]
     Hooks(HooksCommand),
@@ -92,6 +98,7 @@ fn main() -> ExitCode {
         Command::Workspace(command) => commands::workspace::run(command, format),
         Command::Pane(command) => commands::pane::run(command, format),
         Command::Agent(command) => commands::agent::run(command, format),
+        Command::Context(command) => commands::context::run(command, format, cli.workspace),
         Command::Hooks(command) => commands::hooks::run(command, format),
     };
     match result {

@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[lib]
+name = "dex_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "dex"
 path = "src/main.rs"

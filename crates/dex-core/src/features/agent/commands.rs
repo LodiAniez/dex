@@ -10,11 +10,12 @@ use dex_protocol::agent::{
 use dex_protocol::pane::{Key, SendKeyArgs};
 use rusqlite::Connection;
 
+use super::identity::find_target;
 use super::logic::{self, HookInput, HookKind, SessionStart};
 use super::model::{Agent, AgentError};
 use super::store;
 use crate::app::AppState;
-use crate::features::workspace::{self, WorkspaceError};
+use crate::features::workspace;
 use crate::platform::{clock, ids};
 
 /// A running agent with no hook event and no output for this long is `unknown`.
@@ -221,12 +222,17 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
         .db
         .call(
             move |conn| -> rusqlite::Result<Result<AgentList, AgentError>> {
-                let scope = match args.workspace.as_deref() {
-                    Some(target) => match workspace::workspace_id(conn, target)? {
+                let scope = match (args.workspace.as_deref(), args.pane.as_deref()) {
+                    (Some(target), _) => match workspace::workspace_id(conn, target)? {
                         Ok(id) => Some(id),
                         Err(err) => return Ok(Err(err.into())),
                     },
-                    None => None,
+                    // A caller in a pane sees its own workspace's agents only.
+                    (None, Some(pane)) => match workspace::find_pane_workspace(conn, pane)? {
+                        Some(id) => Some(id),
+                        None => return Ok(Err(AgentError::NoSuchPane(pane.to_owned()))),
+                    },
+                    (None, None) => None,
                 };
                 let agents = store::list_agents(conn, args.include_dead)?
                     .into_iter()
@@ -280,23 +286,6 @@ pub async fn stop(state: &AppState, args: StopAgentArgs) -> Result<Stopped, Agen
     Ok(Stopped {
         agent: agent.id,
         pane,
-    })
-}
-
-/// The agent a target names: its id, its label, or a pane (id or label) whose
-/// live agent it is.
-fn find_target(conn: &Connection, target: &str) -> rusqlite::Result<Result<Agent, AgentError>> {
-    if let Some(agent) = store::find_agent(conn, target)? {
-        return Ok(Ok(agent));
-    }
-    if let Some(agent) = store::find_live_by_label(conn, target)? {
-        return Ok(Ok(agent));
-    }
-    let missing = || AgentError::NoSuchAgent(target.to_owned());
-    Ok(match workspace::pane_id(conn, target)? {
-        Ok(pane) => store::find_live_in_pane(conn, &pane)?.ok_or_else(missing),
-        Err(WorkspaceError::NoSuchPane(_)) => Err(missing()),
-        Err(err) => Err(err.into()),
     })
 }
 

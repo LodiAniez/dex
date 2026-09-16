@@ -11,9 +11,9 @@ use dex_protocol::workspace::WorkspaceList;
 use dex_protocol::{ErrorBody, ErrorCode};
 use serde_json::json;
 
-use crate::client;
 use crate::commands::workspace::absolute;
 use crate::output::{self, Format};
+use dex_cli::client;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Direction {

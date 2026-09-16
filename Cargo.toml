@@ -16,6 +16,7 @@ publish = false
 # Exact pins (docs/prd.md §3): versions change deliberately, never as a side
 # effect of a fresh lockfile. Crates add what they use with `workspace = true`.
 [workspace.dependencies]
+dex-cli = { path = "crates/dex-cli" }
 dex-core = { path = "crates/dex-core" }
 dex-protocol = { path = "crates/dex-protocol" }
 anyhow = "=1.0.104"

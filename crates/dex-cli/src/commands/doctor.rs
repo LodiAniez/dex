@@ -6,9 +6,9 @@ use std::process::Command;
 use dex_protocol::PROTOCOL_VERSION;
 use serde::Serialize;
 
-use crate::client;
 use crate::commands::hooks;
 use crate::output::{self, Format};
+use dex_cli::client;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

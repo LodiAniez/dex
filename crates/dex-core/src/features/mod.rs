@@ -3,7 +3,7 @@
 //! `mod.rs` re-exports (docs/conventions.md §1.2).
 
 pub(crate) mod agent;
-mod context;
+pub(crate) mod context;
 mod diagnostics;
 mod repo;
 pub(crate) mod workspace;

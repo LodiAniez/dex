@@ -778,6 +778,11 @@ dependencies = [
 [[package]]
 name = "dex-mcp"
 version = "0.1.0"
+dependencies = [
+ "dex-cli",
+ "dex-protocol",
+ "serde_json",
+]
 
 [[package]]
 name = "dex-protocol"

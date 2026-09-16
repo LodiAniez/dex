@@ -45,6 +45,7 @@ async fn agents(state: &AppState) -> Vec<AgentView> {
         state,
         ListAgentsArgs {
             workspace: None,
+            pane: None,
             include_dead: true,
         },
     )
@@ -275,12 +276,14 @@ async fn list_takes_a_workspace_name_and_rejects_unknown_ones() {
 
     let scoped = ListAgentsArgs {
         workspace: Some(name),
+        pane: None,
         include_dead: false,
     };
     assert_eq!(list(&state, scoped).await.unwrap().agents.len(), 1);
 
     let unknown = ListAgentsArgs {
         workspace: Some("nope".into()),
+        pane: None,
         include_dead: false,
     };
     assert!(matches!(

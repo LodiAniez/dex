@@ -189,6 +189,36 @@ pub fn update_active_pane(
     Ok(())
 }
 
+/// A workspace's root path, which hosts its `.dex/` mirror. Part of the
+/// slice's public face: other slices ask this instead of querying `workspace`.
+pub fn workspace_root(conn: &Connection, workspace_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT root_path FROM workspace WHERE id = ?1",
+        [workspace_id],
+        |row| row.get(0),
+    )
+    .optional()
+}
+
+/// A workspace's display name. Part of the slice's public face.
+pub fn workspace_name(conn: &Connection, workspace_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT name FROM workspace WHERE id = ?1",
+        [workspace_id],
+        |row| row.get(0),
+    )
+    .optional()
+}
+
+/// A pane's label, if it has one. Part of the slice's public face.
+pub fn pane_label(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row("SELECT label FROM pane WHERE id = ?1", [pane_id], |row| {
+        row.get(0)
+    })
+    .optional()
+    .map(Option::flatten)
+}
+
 /// The workspace a pane belongs to, if the pane exists. Part of the slice's
 /// public face: other slices ask this instead of querying `pane`.
 pub fn find_pane_workspace(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<String>> {

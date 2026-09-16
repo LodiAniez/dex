@@ -21,5 +21,5 @@ pub use pane_commands::{
     swap_panes,
 };
 pub use pane_io::{list_panes, send, send_key};
-pub use store::find_pane_workspace;
+pub use store::{find_pane_workspace, pane_label, workspace_name, workspace_root};
 pub use targets::{pane_id, workspace_id};

@@ -5,6 +5,7 @@
 //! Which hook means what, and how a status moves, is pure and lives in `logic.rs`.
 
 mod commands;
+mod identity;
 mod logic;
 mod model;
 mod store;
@@ -12,4 +13,5 @@ mod store;
 mod tests;
 
 pub use commands::{event, list, pane_exited, stop, sweep};
+pub use identity::{brief_of, label_of, resolve_agent, siblings};
 pub use model::AgentError;

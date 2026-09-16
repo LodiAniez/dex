@@ -5,4 +5,11 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[[bin]]
+name = "dex-mcp"
+path = "src/main.rs"
+
 [dependencies]
+dex-cli.workspace = true
+dex-protocol.workspace = true
+serde_json.workspace = true

@@ -9,8 +9,8 @@ use dex_protocol::agent::{AgentList, AgentView, Stopped};
 use dex_protocol::pane::PaneList;
 use serde_json::json;
 
-use crate::client;
 use crate::output::{self, Format};
+use dex_cli::client;
 
 #[derive(Debug, Subcommand)]
 pub enum AgentCommand {

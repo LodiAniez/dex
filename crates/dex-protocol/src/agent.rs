@@ -73,6 +73,10 @@ pub struct ListAgentsArgs {
     /// Only this workspace (id or name).
     #[serde(default)]
     pub workspace: Option<String>,
+    /// Scope to the workspace holding this pane, when no workspace is named.
+    /// A caller inside a pane must not see agents from other workspaces.
+    #[serde(default)]
+    pub pane: Option<String>,
     /// Include agents whose session has ended.
     #[serde(default)]
     pub include_dead: bool,

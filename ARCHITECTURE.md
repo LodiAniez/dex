@@ -2,7 +2,7 @@
 
 Living map of the codebase, updated at the end of every milestone. For what Dex does, see `docs/prd.md`; for how code is organized, `docs/conventions.md`.
 
-**Current milestone:** M5 (agent registry, Claude Code hooks, status dots, toasts) built; awaits the owner's check with hooks installed in their real settings. M0–M4 done; M1 still awaits the owner's end-to-end throughput check, M2 the owner's divider-drag check. Deferred from M4: `dex pane capture` (needs the UI to hand the daemon a terminal's buffer). Deferred from M5: the WSL half of `install-hooks.ps1` (no distro installed to test against).
+**Current milestone:** M6 in progress — context store, digests and `dex-mcp` are built and pass their acceptance checks; the activity pane and the user-scope MCP registration in the installer are not built yet. M5 (agent registry, Claude Code hooks, status dots, toasts) is done and its hooks are installed in the owner's real settings. M0–M4 done; M1 still awaits the owner's end-to-end throughput check, M2 the owner's divider-drag check. Deferred from M4: `dex pane capture` (needs the UI to hand the daemon a terminal's buffer). Deferred from M5: the WSL half of `install-hooks.ps1` (no distro installed to test against).
 
 ## Crates
 
@@ -10,8 +10,8 @@ Living map of the codebase, updated at the end of every milestone. For what Dex 
 |---|---|---|
 | `dex-protocol` | lib | Wire types: request/response envelopes, the closed `ErrorCode` enum, handshake messages. Serde only. TS types via the optional `ts` feature. |
 | `dex-core` | lib | The daemon: `platform/` infrastructure, `features/` slices, `router`. Embedded in the app. |
-| `dex-cli` | bin `dex` | The CLI and hook entry point. Thin: parse, send, print. |
-| `dex-mcp` | bin | Stdio MCP server proxying to the daemon. |
+| `dex-cli` | bin `dex` + lib `dex_cli` | The CLI and hook entry point. Thin: parse, send, print. The lib exposes `client` — the pipe client — and nothing else. |
+| `dex-mcp` | bin | Stdio MCP server proxying to the daemon. Depends on `dex-cli` for `client`. |
 | `app/src-tauri` | bin | The Tauri app hosting the UI and the daemon. |
 
 ## `dex-core`
@@ -38,7 +38,7 @@ Living map of the codebase, updated at the end of every milestone. For what Dex 
 | `workspace` | `workspace`, `pane`, `app_state` | `workspace.*` in `commands.rs`; `pane.split/close/focus/swap` and `workspace.set_layout/cycle_layout` in `pane_commands.rs`; pure tree operations and the five presets in `layout.rs` |
 | `repo` | `repo`, `workspace_repo` | Stub |
 | `agent` | `agent` | `agent.event` (one hook firing; which hook means what, the newest-stamp-wins rule and the revival rule are pure, in `logic.rs`), `agent.list`, `agent.stop` (Ctrl+C ×3, then ends the row), `agent.pane_exited` (the app reports PTY exits), `agent.sweep` (the watchdog; the app calls it every 15 s) |
-| `context` | `context_entry`, `context_entry_fts`, `context_event`, `context_cursor` | Stub |
+| `context` | `context_entry`, `context_entry_fts`, `context_event`, `context_cursor` | Entries with the three `expected_version` modes and the event log (`commands.rs`, `log_commands.rs`); the write-through disk mirror under `<workspace root>/.dex/` (`mirror.rs`); digest building, pure, in `digest.rs`, with gathering and the rate limit in `digest_commands.rs`. Key validation is in `logic.rs` and is a security boundary: a key becomes a file path. |
 | `diagnostics` | — | Stub |
 
 Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
@@ -60,7 +60,10 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 ## Decisions
 
 - **TypeScript wire types:** `ts-rs`, behind `dex-protocol`'s optional `ts` feature so the crate's default dependencies stay serde-only. `cargo test -p dex-protocol --features ts` writes them to `app/src/platform/generated/`.
-- **MCP implementation:** not chosen yet (M6).
+- **MCP implementation: hand-rolled JSON-RPC, not the `rmcp` SDK** (M6). The surface needed is four methods (`initialize`, `ping`, `tools/list`, `tools/call`); the tool list must be decided at runtime rather than by a derive macro, because outside a Dex pane it is empty; and the process starts once per Claude Code session on the machine, so avoiding an async runtime keeps that startup cheap. `rmcp` 3.4.0 was available and would have worked; revisit if the protocol surface grows.
+- **The pipe client lives in `dex-cli`'s lib target**, which `dex-mcp` depends on. The repository layout fixes the crate list at four, and the alternative — a third copy of the HMAC handshake after `dex_core::platform::auth` and this one — is worse than an odd-looking dependency edge.
+- **The context mirror is a projection, never authoritative.** A mirror write that fails (read-only checkout, disconnected share) logs to stderr and does not fail the command; SQLite is the source of truth.
+- **Only a `PostToolBatch` delta starts the delta rate-limit clock.** A `SessionStart` full digest or a `UserPromptSubmit` delta advances the cursor but not the clock — otherwise an agent that had just oriented itself, or whose human had just typed, went silent for a minute, which is exactly the autonomous case deltas exist for.
 - **PTY I/O runs on threads, not tokio tasks** (a deliberate reading of PRD §7.1's "one tokio task per PTY"). `portable-pty` readers are blocking, so reading needs a thread regardless; making the coalescer a thread too lets flow control be a plain bounded `sync_channel` — when the display falls behind, the coalescer stops pulling, the channel fills, the reader blocks, and ConPTY pauses the child. Three named threads per pane; shutdown is documented in `platform/pty.rs`.
 - **PTY output reaches the UI over a per-pane Tauri Channel as raw bytes**; acknowledgements flow back through `pty_ack` in batches of 64KB or every 50ms (`app/src/platform/terminalRegistry.ts`).
 - **Hook installation lives in the CLI** (`dex hooks install|uninstall|status`), not in PowerShell: it edits `settings.json` with an order-preserving JSON parser, recognizes its own entries as `dex.exe … event …` exec-form commands, keeps a one-time `settings.json.dex-backup`, and writes through a temp file and rename. `scripts/install-hooks.ps1` is a thin wrapper.

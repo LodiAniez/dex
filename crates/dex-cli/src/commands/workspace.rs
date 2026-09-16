@@ -7,8 +7,8 @@ use dex_protocol::ErrorBody;
 use dex_protocol::workspace::WorkspaceList;
 use serde_json::json;
 
-use crate::client;
 use crate::output::{self, Format};
+use dex_cli::client;
 
 #[derive(Debug, Subcommand)]
 pub enum WorkspaceCommand {

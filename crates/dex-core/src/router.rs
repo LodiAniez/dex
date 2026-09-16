@@ -13,6 +13,7 @@ use thiserror::Error;
 
 use crate::app::AppState;
 use crate::features::agent::{self, AgentError};
+use crate::features::context::{self, ContextError};
 use crate::features::workspace::{self, WorkspaceError};
 
 /// Which state a successful command changed, so the UI re-reads it; `None`
@@ -22,7 +23,12 @@ fn changes(cmd: &str) -> Option<&'static str> {
     match cmd {
         "workspace.list" | "pane.list" | "pane.send" | "pane.send_key" => None,
         "agent.list" | "agent.sweep" => None,
+        "context.read" | "context.list" | "context.search" | "context.events" => None,
+        // A digest advances the caller's cursor, which no client displays.
+        "context.digest" => None,
         agent if agent.starts_with("agent.") => Some("agents"),
+        // `context.inbox` marks messages read, which the activity pane shows.
+        context if context.starts_with("context.") => Some("context"),
         _ => Some("workspaces"),
     }
 }
@@ -62,6 +68,15 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "pane.label" => encode(workspace::label_pane(state, args(req)?).await?),
         "pane.send" => encode(workspace::send(state, args(req)?).await?),
         "pane.send_key" => encode(workspace::send_key(state, args(req)?).await?),
+        "context.read" => encode(context::read(state, args(req)?).await?),
+        "context.write" => encode(context::write(state, args(req)?).await?),
+        "context.list" => encode(context::list(state, args(req)?).await?),
+        "context.search" => encode(context::search(state, args(req)?).await?),
+        "context.note" => encode(context::note(state, args(req)?).await?),
+        "context.message_send" => encode(context::message_send(state, args(req)?).await?),
+        "context.inbox" => encode(context::inbox(state, args(req)?).await?),
+        "context.events" => encode(context::events(state, args(req)?).await?),
+        "context.digest" => encode(context::digest(state, args(req)?).await?),
         "agent.event" => encode(agent::event(state, args(req)?).await?),
         "agent.list" => encode(agent::list(state, args(req)?).await?),
         "agent.stop" => encode(agent::stop(state, args(req)?).await?),
@@ -84,6 +99,8 @@ enum CoreError {
     Workspace(#[from] WorkspaceError),
     #[error(transparent)]
     Agent(#[from] AgentError),
+    #[error(transparent)]
+    Context(#[from] ContextError),
 }
 
 fn args<T: DeserializeOwned>(req: &Request) -> Result<T, CoreError> {
@@ -129,12 +146,49 @@ fn error_body(err: &CoreError) -> ErrorBody {
         ),
         CoreError::Agent(AgentError::Target(err)) => workspace_repair(err),
         CoreError::Agent(AgentError::Db(_)) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
+        CoreError::Context(err) => context_repair(err),
     };
     ErrorBody {
         code,
         message: err.to_string(),
         repair,
     }
+}
+
+fn context_repair(err: &ContextError) -> (ErrorCode, String) {
+    let (code, repair) = match err {
+        ContextError::InvalidKey { reason, .. } => {
+            (ErrorCode::InvalidArgs, reason.repair().to_owned())
+        }
+        ContextError::NoSuchKey(_) => (
+            ErrorCode::InvalidArgs,
+            "Run `dex context list` to see the keys that exist, or write it first.".to_owned(),
+        ),
+        // The repair carries the current value so the caller can merge in one
+        // step instead of reading, diffing, and racing again.
+        ContextError::VersionConflict { current, value, .. } => {
+            return (
+                ErrorCode::VersionConflict,
+                format!(
+                    "Someone else wrote this key first. It now holds {value:?} at version \
+                     {current}. Merge your change into that value and write again with \
+                     expected_version={current}."
+                ),
+            );
+        }
+        ContextError::NoSuchAgent(_) => (
+            ErrorCode::NoSuchAgent,
+            "Run `dex agent list` to see which agents are running, and target one by label."
+                .to_owned(),
+        ),
+        ContextError::NoWorkspace => (
+            ErrorCode::NotInPane,
+            "Run this inside a Dex pane, or pass --workspace <name-or-id>.".to_owned(),
+        ),
+        ContextError::Target(err) => return workspace_repair(err),
+        ContextError::Db(_) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
+    };
+    (code, repair)
 }
 
 fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
