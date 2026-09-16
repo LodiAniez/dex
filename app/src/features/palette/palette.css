@@ -1,0 +1,105 @@
+/* The command palette: a dialog over the workspace, top-centred like an editor's. */
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.palette {
+  width: min(640px, 92vw);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.palette-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  outline: none;
+}
+
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/*
+ * Flex, not grid: the detail can be a very long path, and in a grid an `auto`
+ * column sized to it swallows the row, leaving the title no width at all. Here
+ * the title keeps whatever the capped detail does not take.
+ */
+.palette-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.palette-row.is-selected {
+  background: var(--selected);
+}
+
+.palette-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-title mark {
+  color: var(--accent);
+  background: transparent;
+  font-weight: 600;
+}
+
+.palette-current {
+  margin-left: 8px;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.palette-detail {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  font-size: 12px;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-kind {
+  flex: none;
+  font-size: 11px;
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.palette-empty {
+  padding: 14px;
+  font-size: 13px;
+  opacity: 0.6;
+}

@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { agentCounts, loadAgents, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
+import { CommandPalette, type PaletteItem } from "../features/palette";
 import {
   closePane,
   cycleLayout,
@@ -16,8 +17,8 @@ import {
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { currentKeymap, watchConfig } from "../platform/config";
 import { showError } from "../platform/notices";
-import { setShortcutFilter } from "../platform/terminalRegistry";
-import { appActionFor, type AppAction } from "./keybindings";
+import { focusTerminal, setShortcutFilter } from "../platform/terminalRegistry";
+import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
 import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
 import { neighborPane } from "./paneGeometry";
@@ -74,6 +75,7 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(readSidebarPref);
   const [creating, setCreating] = useState(false);
   const [zoomed, setZoomed] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const agents = useAgents();
 
@@ -103,55 +105,63 @@ export function App() {
     }
   }, [sidebarOpen]);
 
-  useEffect(() => {
-    const perform = (action: AppAction) => {
-      const pane = activePane();
-      switch (action.kind) {
-        case "new-workspace":
-          setSidebarOpen(true);
-          setCreating(true);
-          return;
-        case "toggle-sidebar":
-          setSidebarOpen((open) => !open);
-          return;
-        case "next-workspace":
-          return switchBy(1);
-        case "previous-workspace":
-          return switchBy(-1);
-        case "switch-workspace": {
-          const target = getWorkspaces()?.workspaces[action.index];
-          if (target) run(switchWorkspace(target.id));
-          return;
-        }
-        case "split-pane":
-          setZoomed(null);
-          if (pane) run(splitPane(pane, action.direction));
-          return;
-        case "close-pane":
-          setZoomed(null);
-          if (pane) run(closePane(pane));
-          return;
-        case "focus-pane": {
-          const next = pane && neighborPane(pane, action.direction);
-          if (next) run(focusPane(next));
-          return;
-        }
-        case "move-pane": {
-          const next = pane && neighborPane(pane, action.direction);
-          if (pane && next) run(swapPanes(pane, next));
-          return;
-        }
-        case "toggle-zoom":
-          setZoomed((current) => (current ? null : (pane ?? null)));
-          return;
-        case "cycle-layout": {
-          setZoomed(null);
-          const ws = activeWorkspace();
-          if (ws) run(cycleLayout(ws.id));
-          return;
-        }
+  const perform = (action: AppAction) => {
+    const pane = activePane();
+    switch (action.kind) {
+      case "command-palette":
+        setPaletteOpen((open) => !open);
+        return;
+      case "new-workspace":
+        setSidebarOpen(true);
+        setCreating(true);
+        return;
+      case "toggle-sidebar":
+        setSidebarOpen((open) => !open);
+        return;
+      case "next-workspace":
+        return switchBy(1);
+      case "previous-workspace":
+        return switchBy(-1);
+      case "switch-workspace": {
+        const target = getWorkspaces()?.workspaces[action.index];
+        if (target) run(switchWorkspace(target.id));
+        return;
       }
-    };
+      case "split-pane":
+        setZoomed(null);
+        if (pane) run(splitPane(pane, action.direction));
+        return;
+      case "close-pane":
+        setZoomed(null);
+        if (pane) run(closePane(pane));
+        return;
+      case "focus-pane": {
+        const next = pane && neighborPane(pane, action.direction);
+        if (next) run(focusPane(next));
+        return;
+      }
+      case "move-pane": {
+        const next = pane && neighborPane(pane, action.direction);
+        if (pane && next) run(swapPanes(pane, next));
+        return;
+      }
+      case "toggle-zoom":
+        setZoomed((current) => (current ? null : (pane ?? null)));
+        return;
+      case "cycle-layout": {
+        setZoomed(null);
+        const ws = activeWorkspace();
+        if (ws) run(cycleLayout(ws.id));
+        return;
+      }
+    }
+  };
+  // The key handler below is installed once and must not go stale, so it
+  // reaches `perform` through a ref that every render refreshes.
+  const performRef = useRef(perform);
+  performRef.current = perform;
+
+  useEffect(() => {
     // Terminals hand app shortcuts on instead of sending them to the shell.
     // Both read the keymap when the key is pressed, never a captured copy, so a
     // config edit rebinds keys without this effect being torn down.
@@ -160,11 +170,34 @@ export function App() {
       const action = appActionFor(event, currentKeymap());
       if (!action) return;
       event.preventDefault();
-      perform(action);
+      performRef.current(action);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  /** Closes the palette and puts the keyboard back where it was. */
+  const closePalette = () => {
+    setPaletteOpen(false);
+    const pane = activePane();
+    if (pane) focusTerminal(pane);
+  };
+
+  /** What choosing a palette row does. */
+  const runItem = (item: PaletteItem) => {
+    switch (item.kind) {
+      case "workspace":
+        return run(switchWorkspace(item.id));
+      case "pane":
+        run(switchWorkspace(item.workspaceId));
+        return run(focusPane(item.id));
+      case "command": {
+        const action = ACTIONS[item.action];
+        if (action) perform(action);
+        return;
+      }
+    }
+  };
 
   const active = list?.workspaces.find((ws) => ws.id === list.active);
   // Zoom belongs to one pane of the active workspace; anywhere else it is off.
@@ -187,6 +220,7 @@ export function App() {
         />
         <main className="workspace-area">{active && <WorkspaceLayout workspace={active} zoomed={zoomedHere} />}</main>
       </div>
+      {paletteOpen && <CommandPalette onRun={runItem} onClose={closePalette} />}
       <NoticeBar />
     </div>
   );

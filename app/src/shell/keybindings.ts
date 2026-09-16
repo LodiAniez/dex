@@ -12,7 +12,8 @@ export type AppAction =
   | { kind: "focus-pane"; direction: Direction }
   | { kind: "move-pane"; direction: Direction }
   | { kind: "toggle-zoom" }
-  | { kind: "cycle-layout" };
+  | { kind: "cycle-layout" }
+  | { kind: "command-palette" };
 
 const DIRECTIONS: Direction[] = ["left", "right", "up", "down"];
 
@@ -24,6 +25,7 @@ const DIRECTIONS: Direction[] = ["left", "right", "up", "down"];
  * overrode keeps whatever this ships with.
  */
 export const ACTIONS: Record<string, AppAction> = {
+  "command-palette": { kind: "command-palette" },
   "new-workspace": { kind: "new-workspace" },
   "toggle-sidebar": { kind: "toggle-sidebar" },
   "next-workspace": { kind: "next-workspace" },
@@ -54,6 +56,7 @@ export const ACTIONS: Record<string, AppAction> = {
  * nothing here does it for them.
  */
 export const DEFAULT_BINDINGS: Record<string, string> = {
+  "command-palette": "Ctrl+Shift+P",
   "new-workspace": "Ctrl+Shift+N",
   "toggle-sidebar": "Ctrl+Shift+B",
   "next-workspace": "Ctrl+Shift+PageDown",
@@ -213,6 +216,22 @@ export function buildKeymap(overrides: Record<string, string> = {}): BuiltKeymap
 
 /** The bindings Dex ships with, for when the config has not been read yet. */
 export const SHIPPED_KEYMAP: Keymap = buildKeymap().keymap;
+
+/**
+ * The keymap the other way round: each action's binding, for showing beside
+ * its name. An action bound twice reports the first; one bound nowhere is
+ * absent. Actions are compared by value, since the keymap holds copies.
+ */
+export function bindingsByAction(keymap: Keymap): Map<string, string> {
+  const byValue = new Map<string, string>();
+  for (const [name, action] of Object.entries(ACTIONS)) byValue.set(JSON.stringify(action), name);
+  const result = new Map<string, string>();
+  for (const [binding, action] of keymap) {
+    const name = byValue.get(JSON.stringify(action));
+    if (name !== undefined && !result.has(name)) result.set(name, binding);
+  }
+  return result;
+}
 
 /** The app action for a key event, or null if the terminal should get the key. */
 export function appActionFor(

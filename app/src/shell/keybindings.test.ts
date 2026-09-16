@@ -3,6 +3,7 @@ import {
   ACTIONS,
   DEFAULT_BINDINGS,
   appActionFor,
+  bindingsByAction,
   buildKeymap,
   parseBinding,
   type Keymap,
@@ -194,6 +195,15 @@ describe("applying the owner's overrides", () => {
     const { keymap, problems } = buildKeymap({});
     expect(problems).toEqual([]);
     expect(keymap).toEqual(shipped);
+  });
+
+  it("can be read back per action, for showing beside a command", () => {
+    const { keymap } = buildKeymap({ "new-workspace": "Ctrl+Alt+T" });
+    const shown = bindingsByAction(keymap);
+    expect(shown.get("new-workspace")).toBe("Ctrl+Alt+T");
+    expect(shown.get("close-pane")).toBe("Ctrl+Shift+W");
+    expect(shown.get("switch-workspace-3")).toBe("Ctrl+3");
+    expect(shown.size).toBe(Object.keys(ACTIONS).length);
   });
 
   it("will bind onto a terminal key if that is what was asked for", () => {
