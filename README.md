@@ -24,7 +24,7 @@ It is a terminal first. Every pane is a real shell (PowerShell by default) runni
 ## Where it runs
 
 - **Windows 11**, or Windows 10 1809 or later (ConPTY is required). WebView2 is preinstalled on Windows 11.
-- **Claude Code** installed and signed in — Dex drives it, it does not replace it.
+- **Claude Code** installed and signed in with **your own Anthropic account** — a Claude Pro or Max subscription, or an API key with billing. Dex drives Claude Code; it does not replace it, and it has no account, keys or usage of its own. Every agent you run in Dex, including the ones agents spawn, is an ordinary Claude Code session on your plan and counts against your usage exactly as if you had opened a terminal and typed `claude`.
 - **Git for Windows** on PATH — worktrees and the diff pane need it.
 
 Not on macOS or Linux, by design. Running agents inside WSL from Dex is on the roadmap but not in this release; panes run Windows shells.
@@ -191,6 +191,8 @@ dex agent spawn --task "port the remaining call sites to the new client API" --r
 Dex creates the worktree, splits a pane for it, records the task, starts Claude Code there, and gives it its brief through its opening digest — the task never passes through a shell command line. The child answers Claude Code's folder-trust dialog by itself (only in a worktree Dex created, from a repository you registered) and begins work. Its pane header shows the permission mode it runs in, so an unattended agent is never unattended invisibly.
 
 Guardrails are in Dex, not in prose an agent might skip: **depth 2** (a child may spawn, its child may not) and **six live agents per workspace**. A refused spawn says why and what to do instead.
+
+Each child is a full Claude Code session under your account, so six agents spend roughly six times what one does. The limits exist for your usage as much as for your machine; lower `max_concurrent` in the config if you want a tighter cap.
 
 The judgment side — when spawning helps and when it just costs a cold start, how to write a brief, what to do while waiting — is the `dex-agentic` skill (`skills/dex-agentic/SKILL.md`), which `dex skill install` puts where Claude Code finds it. Agents load it when a task looks splittable.
 
