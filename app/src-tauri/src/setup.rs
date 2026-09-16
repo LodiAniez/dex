@@ -1,0 +1,98 @@
+//! First-run setup (PRD §14 M8): what is not yet set up, and the buttons that
+//! set it up.
+//!
+//! Nothing here is a second implementation. The checks are `dex doctor --json`
+//! and the fixes are `dex hooks install` and `dex mcp install`, run as the
+//! human would run them, so the panel can never disagree with the CLI and a
+//! fix applied from the panel is exactly the one the docs describe. The
+//! steps are a closed list: the UI names one, it never passes arguments.
+
+use std::path::PathBuf;
+use std::process::Command;
+
+use serde::{Deserialize, Serialize};
+
+/// Hides the console window a console program would otherwise flash open
+/// when started from a GUI process (`CREATE_NO_WINDOW`).
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// `dex doctor --json`, as printed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Report {
+    pub ok: bool,
+    pub checks: Vec<Check>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Check {
+    pub name: String,
+    pub status: String,
+    pub detail: String,
+}
+
+/// What running a setup step printed, and whether it worked.
+#[derive(Debug, Clone, Serialize)]
+pub struct StepOutcome {
+    pub ok: bool,
+    pub output: String,
+}
+
+/// `dex.exe` beside this executable — where the installer puts it and where a
+/// build leaves it — or, failing that, whatever `dex` PATH finds.
+fn dex_exe() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("dex.exe")))
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| PathBuf::from("dex"))
+}
+
+fn dex(args: &[&str]) -> Result<std::process::Output, String> {
+    use std::os::windows::process::CommandExt;
+    Command::new(dex_exe())
+        .args(args)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|err| format!("could not run dex.exe: {err}"))
+}
+
+/// Runs `dex doctor --json` and returns its report.
+#[tauri::command]
+pub async fn setup_check() -> Result<Report, String> {
+    // A subprocess, off the async threads like every other blocking call.
+    let output = tauri::async_runtime::spawn_blocking(|| dex(&["doctor", "--json"]))
+        .await
+        .map_err(|err| err.to_string())??;
+    // Doctor exits non-zero when a check fails; its JSON is still the answer.
+    serde_json::from_slice(&output.stdout).map_err(|err| {
+        format!(
+            "dex doctor gave no report: {err}. It printed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )
+    })
+}
+
+/// Runs one setup step. `step` is `hooks` or `mcp`; anything else is refused.
+#[tauri::command]
+pub async fn setup_run(step: String) -> Result<StepOutcome, String> {
+    let args: &[&str] = match step.as_str() {
+        "hooks" => &["hooks", "install"],
+        "mcp" => &["mcp", "install"],
+        other => return Err(format!("{other:?} is not a setup step")),
+    };
+    let output = tauri::async_runtime::spawn_blocking(move || dex(args))
+        .await
+        .map_err(|err| err.to_string())??;
+    let mut text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    if !stderr.is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&stderr);
+    }
+    Ok(StepOutcome {
+        ok: output.status.success(),
+        output: text,
+    })
+}

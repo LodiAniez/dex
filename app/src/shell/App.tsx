@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { agentCounts, loadAgents, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
@@ -22,16 +23,36 @@ import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
 import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
 import { neighborPane } from "./paneGeometry";
+import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
+import { Setup } from "./SetupPanel";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
 
 const SIDEBAR_PREF = "dex.sidebarOpen";
+/** The set of setup problems the owner last chose to put off. */
+const SETUP_DISMISSED = "dex.setupDismissed";
 
 function readSidebarPref(): boolean {
   try {
     return localStorage.getItem(SIDEBAR_PREF) !== "false";
   } catch {
     return true;
+  }
+}
+
+function readPref(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writePref(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable: the panel will simply offer again next time.
   }
 }
 
@@ -76,13 +97,26 @@ export function App() {
   const [creating, setCreating] = useState(false);
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [setupReport, setSetupReport] = useState<DoctorReport | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
 
   const agents = useAgents();
+
+  /** Runs `dex doctor`; opens the panel only when it should offer itself. */
+  const checkSetup = async (offer: boolean) => {
+    const report = await invoke<DoctorReport>("setup_check");
+    setSetupReport(report);
+    if (offer && shouldOffer(report, readPref(SETUP_DISMISSED))) setSetupOpen(true);
+  };
 
   useEffect(() => {
     run(loadWorkspaces());
     run(loadAgents());
     watchConfig();
+    // First run: if hooks or the MCP server are missing, say so and offer to
+    // fix it. A doctor that cannot run at all is logged, not shown — the app
+    // is usable without it and the palette can ask again.
+    void checkSetup(true).catch((err) => console.warn("setup check failed", err));
   }, []);
 
   // Toasts for agents that need attention in panes the user is not looking at.
@@ -159,6 +193,10 @@ export function App() {
         setZoomed(null);
         if (pane) run(splitPane(pane, "right", "diff"));
         return;
+      case "open-setup":
+        setSetupOpen(true);
+        run(checkSetup(false));
+        return;
     }
   };
   // The key handler below is installed once and must not go stale, so it
@@ -226,6 +264,20 @@ export function App() {
         <main className="workspace-area">{active && <WorkspaceLayout workspace={active} zoomed={zoomedHere} />}</main>
       </div>
       {paletteOpen && <CommandPalette onRun={runItem} onClose={closePalette} />}
+      {setupOpen && setupReport && (
+        <Setup
+          report={setupReport}
+          onRecheck={() => checkSetup(false)}
+          onClose={() => {
+            // Remember what was put off, so the same problems do not reopen
+            // the panel every start — but new ones still do.
+            writePref(SETUP_DISMISSED, fingerprint(setupReport));
+            setSetupOpen(false);
+            const pane = activePane();
+            if (pane) focusTerminal(pane);
+          }}
+        />
+      )}
       <NoticeBar />
     </div>
   );

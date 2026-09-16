@@ -1,0 +1,67 @@
+/**
+ * The first-run setup panel's decisions, kept pure: what `dex doctor` said,
+ * which failures have a button, and whether to show the panel at all.
+ */
+
+export type CheckStatus = "ok" | "fail" | "skip";
+
+export interface Check {
+  name: string;
+  status: CheckStatus;
+  detail: string;
+}
+
+/** `dex doctor --json`, as the app receives it. */
+export interface DoctorReport {
+  ok: boolean;
+  checks: Check[];
+}
+
+/** A setup step the app can run for the owner. */
+export type Step = "hooks" | "mcp";
+
+/** Which failures the panel can fix itself; the rest it can only explain. */
+export function stepFor(check: Check): Step | null {
+  if (check.status !== "fail") return null;
+  if (check.name === "hooks") return "hooks";
+  if (check.name === "mcp") return "mcp";
+  return null;
+}
+
+/** Failing checks, in the order doctor reported them. */
+export function failures(report: DoctorReport): Check[] {
+  return report.checks.filter((check) => check.status === "fail");
+}
+
+/**
+ * A short string naming what is wrong, so a dismissal can be remembered
+ * against *this* set of problems: dismissing "hooks missing" must not also
+ * dismiss "hooks broke" six months later.
+ */
+export function fingerprint(report: DoctorReport): string {
+  return failures(report)
+    .map((check) => check.name)
+    .sort()
+    .join(",");
+}
+
+/**
+ * Whether to open the panel unasked. Only when something is wrong, and only
+ * when the owner has not already dismissed exactly this set of problems.
+ * An owner can always open it from the palette.
+ */
+export function shouldOffer(report: DoctorReport, dismissed: string | null): boolean {
+  const now = fingerprint(report);
+  return now !== "" && now !== dismissed;
+}
+
+/** What the header line should say. */
+export function headline(report: DoctorReport): string {
+  const failed = failures(report);
+  if (failed.length === 0) return "Dex is set up";
+  const fixable = failed.filter((check) => stepFor(check) !== null).length;
+  if (fixable === failed.length) {
+    return failed.length === 1 ? "One step left to set up Dex" : `${failed.length} steps left to set up Dex`;
+  }
+  return failed.length === 1 ? "One thing needs your attention" : `${failed.length} things need your attention`;
+}

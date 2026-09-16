@@ -7,6 +7,7 @@
 mod daemon;
 mod notify;
 mod pty;
+mod setup;
 
 use std::path::PathBuf;
 
@@ -98,6 +99,8 @@ fn main() {
             pty::pty_ack,
             pty::pty_kill,
             notify::notify_agent,
+            setup::setup_check,
+            setup::setup_run,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

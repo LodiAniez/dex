@@ -14,7 +14,8 @@ export type AppAction =
   | { kind: "toggle-zoom" }
   | { kind: "cycle-layout" }
   | { kind: "command-palette" }
-  | { kind: "open-diff" };
+  | { kind: "open-diff" }
+  | { kind: "open-setup" };
 
 const DIRECTIONS: Direction[] = ["left", "right", "up", "down"];
 
@@ -36,8 +37,9 @@ export const ACTIONS: Record<string, AppAction> = {
   "close-pane": { kind: "close-pane" },
   "toggle-zoom": { kind: "toggle-zoom" },
   "cycle-layout": { kind: "cycle-layout" },
-  // Palette-only unless the owner binds it: PRD §13 gives it no key.
+  // Palette-only unless the owner binds them: PRD §13 gives them no key.
   "open-diff": { kind: "open-diff" },
+  "open-setup": { kind: "open-setup" },
   ...Object.fromEntries(
     DIRECTIONS.flatMap((direction): [string, AppAction][] => [
       [`focus-${direction}`, { kind: "focus-pane", direction }],

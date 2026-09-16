@@ -1,0 +1,133 @@
+/* First-run setup: a dialog over the workspace, same shell as the palette. */
+
+.setup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 10vh;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.setup {
+  outline: none;
+  width: min(720px, 94vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.setup-head {
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.setup-head h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.setup-sub {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.setup-checks {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  overflow-y: auto;
+}
+
+.setup-check {
+  display: grid;
+  grid-template-columns: 12px 72px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 9px 20px;
+  font-size: 13px;
+}
+
+.setup-check + .setup-check {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.setup-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #6b7280;
+}
+
+.is-ok .setup-dot { background: #3fb950; }
+.is-fail .setup-dot { background: #f25f5c; }
+
+.setup-name {
+  font-weight: 600;
+  padding-top: 1px;
+}
+
+.setup-detail {
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+
+.setup-explain {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.setup-button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 11px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.setup-button:hover:not(:disabled) { background: var(--hover); }
+.setup-button:disabled { opacity: 0.5; cursor: default; }
+
+.setup-button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.setup-output {
+  margin: 0 20px 8px;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow: auto;
+  font-size: 12px;
+  background: #0a0c10;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+.setup-output.is-error { border-color: #f25f5c; }
+
+.setup-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}

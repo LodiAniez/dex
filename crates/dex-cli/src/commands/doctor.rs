@@ -41,6 +41,7 @@ fn verdict(name: &'static str, (ok, detail): (bool, String)) -> Check {
 /// Runs every check and prints the results. False if any check failed.
 pub fn run(format: Format) -> bool {
     let mut checks = connection_checks();
+    checks.push(claude());
     checks.push(git());
     checks.push(verdict("hooks", hooks::doctor_check()));
     checks.push(verdict("mcp", mcp::doctor_check()));
@@ -105,6 +106,26 @@ fn connection_checks() -> Vec<Check> {
             ),
             check("version", Status::Skip, "needs the app running"),
         ],
+    }
+}
+
+/// Claude Code itself. Without it the hooks and the MCP server have nothing
+/// to attach to, so this comes before either of those checks.
+fn claude() -> Check {
+    match Command::new("claude").arg("--version").output() {
+        Ok(out) if out.status.success() => check(
+            "claude",
+            Status::Ok,
+            format!(
+                "Claude Code {}",
+                String::from_utf8_lossy(&out.stdout).trim()
+            ),
+        ),
+        _ => check(
+            "claude",
+            Status::Fail,
+            "claude is not on PATH; install Claude Code (https://claude.com/claude-code), then open a new terminal",
+        ),
     }
 }
 
