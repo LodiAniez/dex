@@ -103,9 +103,14 @@ fn session_start(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<()> {
         Some(session) => store::find_by_session(conn, pane, session)?,
         None => None,
     };
-    // An agent Dex spawned (DEX_AGENT_ID) was registered before it started.
+    // An agent Dex spawned was registered before its Claude Code started, and
+    // carries the parent and brief the child needs. It is found by
+    // `DEX_AGENT_ID`, or — if that never reached the shell — by being the one
+    // row in this pane still waiting for a session to bind to. Missing it would
+    // orphan the brief and start the child with no idea what it is for.
     let existing = match (existing, &hook.args.agent) {
         (None, Some(id)) => store::find_agent(conn, id)?,
+        (None, None) => store::find_unbound_in_pane(conn, pane)?,
         (found, _) => found,
     };
     let existing = revive(conn, hook, existing)?;
@@ -215,6 +220,8 @@ fn register(conn: &Connection, hook: &Hook<'_>, status: AgentStatus) -> rusqlite
         id: ids::new_id(),
         pane_id: Some(hook.args.pane.clone()),
         workspace_id: hook.workspace_id.clone(),
+        parent_id: None,
+        depth: 0,
         label: None,
         backend: "claude".into(),
         status,

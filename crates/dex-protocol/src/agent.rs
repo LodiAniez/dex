@@ -109,6 +109,45 @@ pub struct EventOutcome {
     pub applied: bool,
 }
 
+/// Args for `agent.spawn` (PRD §9.4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnArgs {
+    /// What the new agent is for. Reaches it through its opening digest, never
+    /// through a shell command line.
+    pub task: String,
+    /// Registered repo to work in.
+    #[serde(default)]
+    pub repo: Option<String>,
+    /// Branch to create a worktree on; requires `repo`.
+    #[serde(default)]
+    pub worktree: Option<String>,
+    /// Label for the new pane.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// `right` or `down`.
+    #[serde(default)]
+    pub direction: Option<String>,
+    /// The pane the caller is in; the new pane is split from it.
+    #[serde(default)]
+    pub pane: Option<String>,
+    /// Workspace, when the caller is not in a pane.
+    #[serde(default)]
+    pub workspace: Option<String>,
+}
+
+/// Result of `agent.spawn`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Spawned {
+    /// The new agent's id, which becomes its `DEX_AGENT_ID`.
+    pub agent: String,
+    /// The pane it runs in.
+    pub pane: String,
+    /// Where it is working.
+    pub cwd: String,
+    /// The branch it is on, when it was given a worktree.
+    pub branch: Option<String>,
+}
+
 /// Args for `agent.stop`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StopAgentArgs {

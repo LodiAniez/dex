@@ -5,5 +5,5 @@
 pub(crate) mod agent;
 pub(crate) mod context;
 mod diagnostics;
-mod repo;
+pub(crate) mod repo;
 pub(crate) mod workspace;

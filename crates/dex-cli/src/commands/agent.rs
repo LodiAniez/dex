@@ -3,9 +3,16 @@
 
 use std::collections::HashMap;
 
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
+
+/// Where a spawned agent's pane goes.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum Direction {
+    Right,
+    Down,
+}
 use dex_protocol::ErrorBody;
-use dex_protocol::agent::{AgentList, AgentView, Stopped};
+use dex_protocol::agent::{AgentList, AgentView, Spawned, Stopped};
 use dex_protocol::pane::PaneList;
 use serde_json::json;
 
@@ -28,9 +35,32 @@ pub enum AgentCommand {
         /// Agent id, or the label or id of its pane.
         target: String,
     },
+    /// Start another agent on a task, in its own pane.
+    Spawn {
+        /// What it should do. It reads this from its workspace context, so it
+        /// can be as long as you like.
+        #[arg(long)]
+        task: String,
+        /// Registered repository to work in.
+        #[arg(long)]
+        repo: Option<String>,
+        /// Branch to give it a worktree on; needs --repo.
+        #[arg(long)]
+        worktree: Option<String>,
+        /// Label for its pane.
+        #[arg(long)]
+        label: Option<String>,
+        /// Where its pane goes.
+        #[arg(long, value_enum, default_value = "right")]
+        direction: Direction,
+    },
 }
 
-pub fn run(command: AgentCommand, format: Format) -> Result<(), ErrorBody> {
+pub fn run(
+    command: AgentCommand,
+    format: Format,
+    workspace: Option<String>,
+) -> Result<(), ErrorBody> {
     match command {
         AgentCommand::List { workspace, all } => {
             let mut client = client::connect()?;
@@ -44,6 +74,34 @@ pub fn run(command: AgentCommand, format: Format) -> Result<(), ErrorBody> {
             }
             let panes: PaneList = client.call("pane.list", json!({}))?;
             print_agents(&list, &panes, format);
+        }
+        AgentCommand::Spawn {
+            task,
+            repo,
+            worktree,
+            label,
+            direction,
+        } => {
+            let spawned: Spawned = client::connect()?.call(
+                "agent.spawn",
+                json!({
+                    "task": task,
+                    "repo": repo,
+                    "worktree": worktree,
+                    "label": label,
+                    "direction": match direction {
+                        Direction::Right => "right",
+                        Direction::Down => "down",
+                    },
+                    "pane": std::env::var("DEX_PANE_ID").ok().filter(|id| !id.is_empty()),
+                    "workspace": workspace,
+                }),
+            )?;
+            if format.json {
+                output::json(&spawned);
+            } else {
+                println!("{}", spawned.agent);
+            }
         }
         AgentCommand::Stop { target } => {
             let stopped: Stopped =

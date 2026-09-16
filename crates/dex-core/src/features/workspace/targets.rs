@@ -59,6 +59,24 @@ pub fn workspace_id(
     Ok(resolve_workspace(conn, target)?.map(|workspace| workspace.id))
 }
 
+/// For other slices: the focused pane of the workspace a target names, which
+/// is where a command with no pane of its own acts.
+pub fn focused_pane(
+    conn: &Connection,
+    target: &str,
+) -> rusqlite::Result<Result<String, WorkspaceError>> {
+    Ok(resolve_workspace(conn, target)?.and_then(|workspace| {
+        workspace
+            .active_pane
+            .or_else(|| {
+                store::list_panes(conn, &workspace.id)
+                    .ok()
+                    .and_then(|panes| panes.into_iter().next().map(|pane| pane.id))
+            })
+            .ok_or_else(|| WorkspaceError::NoSuchPane(target.to_owned()))
+    }))
+}
+
 /// For other slices: the id of the pane a target names.
 pub fn pane_id(
     conn: &Connection,

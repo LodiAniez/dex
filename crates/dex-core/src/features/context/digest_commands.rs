@@ -10,7 +10,10 @@ use super::digest::{self, Change, Orientation, Sibling};
 use super::model::ContextError;
 use super::store;
 use crate::app::AppState;
+use std::path::Path;
+
 use crate::features::agent;
+use crate::features::repo;
 use crate::features::workspace;
 use crate::platform::clock;
 
@@ -43,6 +46,17 @@ pub async fn digest(state: &AppState, args: DigestArgs) -> Result<Digest, Contex
                     let orientation = Orientation {
                         workspace: workspace::workspace_name(conn, &scope.workspace_id)?
                             .unwrap_or_else(|| "this workspace".into()),
+                        repos: repo::workspace_repos(conn, &scope.workspace_id)?
+                            .into_iter()
+                            .map(|(name, worktree, branch)| {
+                                // The branch recorded when the worktree was made
+                                // can be stale; what is checked out now wins.
+                                let live = worktree
+                                    .as_deref()
+                                    .and_then(|path| repo::branch_at(Path::new(path)));
+                                (name, live.or(branch))
+                            })
+                            .collect(),
                         task_brief: match me {
                             Some(id) => agent::brief_of(conn, id)?,
                             None => None,

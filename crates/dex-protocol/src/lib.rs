@@ -9,6 +9,7 @@ pub mod context;
 pub mod error;
 pub mod handshake;
 pub mod pane;
+pub mod repo;
 pub mod request;
 pub mod response;
 pub mod workspace;

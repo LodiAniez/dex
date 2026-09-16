@@ -14,6 +14,7 @@ use commands::context::ContextCommand;
 use commands::hooks::HooksCommand;
 use commands::mcp::McpCommand;
 use commands::pane::PaneCommand;
+use commands::repo::{RepoCommand, WorktreeCommand};
 use commands::workspace::WorkspaceCommand;
 use output::Format;
 
@@ -52,6 +53,12 @@ enum Command {
     /// List and stop the Claude Code sessions running in panes.
     #[command(subcommand)]
     Agent(AgentCommand),
+    /// Register and inspect git repositories.
+    #[command(subcommand)]
+    Repo(RepoCommand),
+    /// Create and remove the git worktrees agents work in.
+    #[command(subcommand)]
+    Worktree(WorktreeCommand),
     /// Read and write the workspace's shared context store.
     #[command(subcommand)]
     Context(ContextCommand),
@@ -101,7 +108,9 @@ fn main() -> ExitCode {
         }
         Command::Workspace(command) => commands::workspace::run(command, format),
         Command::Pane(command) => commands::pane::run(command, format),
-        Command::Agent(command) => commands::agent::run(command, format),
+        Command::Agent(command) => commands::agent::run(command, format, cli.workspace),
+        Command::Repo(command) => commands::repo::run(command, format),
+        Command::Worktree(command) => commands::repo::run_worktree(command, format),
         Command::Context(command) => commands::context::run(command, format, cli.workspace),
         Command::Hooks(command) => commands::hooks::run(command, format),
         Command::Mcp(command) => commands::mcp::run(command, format),

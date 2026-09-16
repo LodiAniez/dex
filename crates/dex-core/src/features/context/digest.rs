@@ -27,6 +27,9 @@ pub struct Sibling {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Orientation {
     pub workspace: String,
+    /// The workspace's repos as `(name, branch)`, so an agent knows which
+    /// checkout it is in before it touches anything (PRD §10.3).
+    pub repos: Vec<(String, Option<String>)>,
     pub task_brief: Option<String>,
     pub siblings: Vec<Sibling>,
     /// Entry keys, most recently updated first.
@@ -51,6 +54,10 @@ const HEADING: &str = "## Workspace context";
 /// An agent's orientation when its session starts.
 pub fn full(orientation: &Orientation, cap: usize) -> String {
     let mut lines = vec![format!("Workspace: {}", orientation.workspace)];
+    for (repo, branch) in &orientation.repos {
+        let branch = branch.as_deref().unwrap_or("a detached HEAD");
+        lines.push(format!("Repo {repo} is on {branch}."));
+    }
     if let Some(task) = &orientation.task_brief {
         lines.push(format!("This agent's task: {task}"));
     }
@@ -259,6 +266,7 @@ mod tests {
     fn a_full_digest_orients_without_instructing() {
         let orientation = Orientation {
             workspace: "api".into(),
+            repos: vec![("api".into(), Some("main".into()))],
             task_brief: Some("port the auth module".into()),
             siblings: vec![Sibling {
                 label: "frontend".into(),
@@ -270,6 +278,7 @@ mod tests {
         };
         let text = full(&orientation, FULL_CAP);
         assert!(text.contains("Workspace: api"));
+        assert!(text.contains("Repo api is on main."));
         assert!(text.contains("frontend (running) — rebuild the login form"));
         assert!(text.contains("- auth/jwt"));
         assert!(text.contains("2 unread messages waiting"));

@@ -12,6 +12,8 @@ use super::{AgentError, event, list, pane_exited, stop, store, sweep};
 use crate::app::AppState;
 use crate::features::workspace::{self, WorkspaceError};
 
+mod spawn;
+
 /// A state with one workspace; returns its first pane's id.
 async fn pane() -> (tempfile::TempDir, AppState, String) {
     let (dir, state) = AppState::for_tests();

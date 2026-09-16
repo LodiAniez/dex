@@ -32,12 +32,27 @@ pub fn record_status(
     body: String,
     now: i64,
 ) -> rusqlite::Result<()> {
+    record_event(conn, workspace_id, Some(agent_id), "status", body, now)
+}
+
+/// For other slices: puts one event in the workspace log.
+///
+/// The kind is a `&'static str` so only kinds this codebase knows about can be
+/// written; the schema's list is the closed set (PRD §5).
+pub fn record_event(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+    agent_id: Option<&str>,
+    kind: &'static str,
+    body: String,
+    now: i64,
+) -> rusqlite::Result<()> {
     store::insert_event(
         conn,
         &NewEvent {
             workspace_id: workspace_id.to_owned(),
-            agent_id: Some(agent_id.to_owned()),
-            kind: "status",
+            agent_id: agent_id.map(str::to_owned),
+            kind,
             key: None,
             body,
             target_agent: None,

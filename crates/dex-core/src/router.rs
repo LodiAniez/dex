@@ -5,7 +5,9 @@
 //! its protocol code and repair string (§4.3), so no error can reach a client
 //! without an actionable `repair`, and where changes are announced to the UI.
 
-use dex_protocol::{ErrorBody, ErrorCode, Request, Response};
+mod repairs;
+
+use dex_protocol::{Request, Response};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -14,7 +16,9 @@ use thiserror::Error;
 use crate::app::AppState;
 use crate::features::agent::{self, AgentError};
 use crate::features::context::{self, ContextError};
+use crate::features::repo::{self, RepoError};
 use crate::features::workspace::{self, WorkspaceError};
+use repairs::error_body;
 
 /// Which state a successful command changed, so the UI re-reads it; `None`
 /// for commands that change nothing the UI shows. The watchdog announces its
@@ -26,6 +30,8 @@ fn changes(cmd: &str) -> Option<&'static str> {
         "context.read" | "context.list" | "context.search" | "context.events" => None,
         // A digest advances the caller's cursor, which no client displays.
         "context.digest" => None,
+        "repo.list" | "repo.status" | "worktree.list" => None,
+        repo if repo.starts_with("repo.") || repo.starts_with("worktree.") => Some("repos"),
         agent if agent.starts_with("agent.") => Some("agents"),
         // `context.inbox` marks messages read, which the activity pane shows.
         context if context.starts_with("context.") => Some("context"),
@@ -68,6 +74,13 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "pane.label" => encode(workspace::label_pane(state, args(req)?).await?),
         "pane.send" => encode(workspace::send(state, args(req)?).await?),
         "pane.send_key" => encode(workspace::send_key(state, args(req)?).await?),
+        "repo.add" => encode(repo::add(state, args(req)?).await?),
+        "repo.list" => encode(repo::list(state).await?),
+        "repo.scan" => encode(repo::scan(state, args(req)?).await?),
+        "repo.status" => encode(repo::status(state, args(req)?).await?),
+        "worktree.add" => encode(repo::add_worktree(state, args(req)?).await?),
+        "worktree.remove" => encode(repo::remove_worktree(state, args(req)?).await?),
+        "worktree.list" => encode(repo::list_worktrees(state, args(req)?).await?),
         "context.read" => encode(context::read(state, args(req)?).await?),
         "context.write" => encode(context::write(state, args(req)?).await?),
         "context.list" => encode(context::list(state, args(req)?).await?),
@@ -80,6 +93,7 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "agent.event" => encode(agent::event(state, args(req)?).await?),
         "agent.list" => encode(agent::list(state, args(req)?).await?),
         "agent.stop" => encode(agent::stop(state, args(req)?).await?),
+        "agent.spawn" => encode(agent::spawn(state, args(req)?).await?),
         "agent.pane_exited" => encode(agent::pane_exited(state, args(req)?).await?),
         "agent.sweep" => encode(agent::sweep(state).await?),
         _ => Err(CoreError::UnknownCommand(req.cmd.clone())),
@@ -101,6 +115,8 @@ enum CoreError {
     Agent(#[from] AgentError),
     #[error(transparent)]
     Context(#[from] ContextError),
+    #[error(transparent)]
+    Repo(#[from] RepoError),
 }
 
 fn args<T: DeserializeOwned>(req: &Request) -> Result<T, CoreError> {
@@ -114,151 +130,9 @@ fn encode(value: impl Serialize) -> Result<Value, CoreError> {
     serde_json::to_value(value).map_err(CoreError::Encode)
 }
 
-const REPAIR_BUG: &str =
-    "This is a bug in Dex, not in your input. The app log has the details; please report it.";
-
-/// The protocol code and repair string for every error.
-fn error_body(err: &CoreError) -> ErrorBody {
-    let (code, repair) = match err {
-        CoreError::UnknownCommand(_) => (
-            ErrorCode::InvalidArgs,
-            "Check the command name; `dex --help` lists every command.".to_owned(),
-        ),
-        CoreError::InvalidArgs { .. } => (
-            ErrorCode::InvalidArgs,
-            "Check the arguments; `dex <command> --help` lists what the command accepts."
-                .to_owned(),
-        ),
-        CoreError::Encode(_) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
-        CoreError::Workspace(err) => workspace_repair(err),
-        CoreError::Agent(AgentError::NoSuchPane(_)) => (
-            ErrorCode::NoSuchPane,
-            "The hook ran in a pane Dex no longer has; nothing to do.".to_owned(),
-        ),
-        CoreError::Agent(AgentError::NoSuchAgent(_)) => (
-            ErrorCode::NoSuchAgent,
-            "Run `dex agent list` to see the running agents; target one by its id or its pane's label."
-                .to_owned(),
-        ),
-        CoreError::Agent(AgentError::NotRunning(_)) => (
-            ErrorCode::NoSuchAgent,
-            "That agent has already ended; `dex agent list` shows the running ones.".to_owned(),
-        ),
-        CoreError::Agent(AgentError::Target(err)) => workspace_repair(err),
-        CoreError::Agent(AgentError::Db(_)) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
-        CoreError::Context(err) => context_repair(err),
-    };
-    ErrorBody {
-        code,
-        message: err.to_string(),
-        repair,
-    }
-}
-
-fn context_repair(err: &ContextError) -> (ErrorCode, String) {
-    let (code, repair) = match err {
-        ContextError::InvalidKey { reason, .. } => {
-            (ErrorCode::InvalidArgs, reason.repair().to_owned())
-        }
-        ContextError::NoSuchKey(_) => (
-            ErrorCode::InvalidArgs,
-            "Run `dex context list` to see the keys that exist, or write it first.".to_owned(),
-        ),
-        // The repair carries the current value so the caller can merge in one
-        // step instead of reading, diffing, and racing again.
-        ContextError::VersionConflict { current, value, .. } => {
-            return (
-                ErrorCode::VersionConflict,
-                format!(
-                    "Someone else wrote this key first. It now holds {value:?} at version \
-                     {current}. Merge your change into that value and write again with \
-                     expected_version={current}."
-                ),
-            );
-        }
-        ContextError::NoSuchAgent(_) => (
-            ErrorCode::NoSuchAgent,
-            "Run `dex agent list` to see which agents are running, and target one by label."
-                .to_owned(),
-        ),
-        ContextError::NoWorkspace => (
-            ErrorCode::NotInPane,
-            "Run this inside a Dex pane, or pass --workspace <name-or-id>.".to_owned(),
-        ),
-        ContextError::Target(err) => return workspace_repair(err),
-        ContextError::Db(_) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
-    };
-    (code, repair)
-}
-
-fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
-    let (code, repair) = match err {
-        WorkspaceError::NoSuchWorkspace(_) => (
-            ErrorCode::NoSuchWorkspace,
-            "Run `dex workspace list` to see the workspaces that exist.",
-        ),
-        WorkspaceError::NoSuchPane(_) => (
-            ErrorCode::NoSuchPane,
-            "Run `dex pane list` to see the panes that exist.",
-        ),
-        WorkspaceError::AmbiguousTarget { candidates, .. } => {
-            return (
-                ErrorCode::AmbiguousTarget,
-                format!(
-                    "Target one of them by id instead: {}.",
-                    candidates.join("; ")
-                ),
-            );
-        }
-        WorkspaceError::PaneNotStarted(_) => (
-            ErrorCode::NoSuchPane,
-            "A pane's shell starts when the pane is first shown: switch to its workspace in Dex, then retry.",
-        ),
-        WorkspaceError::InvalidColor(_) => (
-            ErrorCode::InvalidArgs,
-            "Use a hex color like #4f8cff, or no color.",
-        ),
-        WorkspaceError::InvalidName => (
-            ErrorCode::InvalidArgs,
-            "Give the workspace a name between 1 and 64 characters.",
-        ),
-        WorkspaceError::InvalidOrder => (
-            ErrorCode::InvalidArgs,
-            "List every workspace id exactly once, in the new order.",
-        ),
-        WorkspaceError::InvalidRoot(_) => (
-            ErrorCode::InvalidArgs,
-            "Choose an existing folder, as an absolute path.",
-        ),
-        WorkspaceError::LastPane => (
-            ErrorCode::InvalidArgs,
-            "A workspace keeps at least one pane; delete the workspace to close it.",
-        ),
-        WorkspaceError::LayoutMismatch => (
-            ErrorCode::InvalidArgs,
-            "Send a layout that shows every pane of the workspace exactly once.",
-        ),
-        WorkspaceError::LabelTaken(_) => (
-            ErrorCode::InvalidArgs,
-            "Pick another label, or clear the other pane's label first.",
-        ),
-        WorkspaceError::InvalidLabel => (
-            ErrorCode::InvalidArgs,
-            "Use a short label without spaces, like `server` or `tests`.",
-        ),
-        WorkspaceError::InvalidKind(_) => (
-            ErrorCode::InvalidArgs,
-            "Use `terminal` for a shell, or `activity` for the workspace's live event stream.",
-        ),
-        WorkspaceError::Pty(_) | WorkspaceError::Layout(_) | WorkspaceError::Db(_) => {
-            (ErrorCode::Internal, REPAIR_BUG)
-        }
-    };
-    (code, repair.to_owned())
-}
-
 #[cfg(test)]
 mod tests {
+    use dex_protocol::ErrorCode;
     use serde_json::json;
 
     use super::*;

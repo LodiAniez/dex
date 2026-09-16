@@ -7,4 +7,5 @@ pub mod event;
 pub mod hooks;
 pub mod mcp;
 pub mod pane;
+pub mod repo;
 pub mod workspace;

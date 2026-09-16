@@ -15,6 +15,10 @@ pub struct Agent {
     pub pane_id: Option<String>,
     /// Its workspace.
     pub workspace_id: String,
+    /// The agent that spawned it; `None` for one a human started.
+    pub parent_id: Option<String>,
+    /// How many spawns deep it is; 0 for a human-started agent.
+    pub depth: i64,
     /// Display label.
     pub label: Option<String>,
     /// `claude`.
@@ -50,6 +54,37 @@ pub enum AgentError {
     /// The agent has already ended.
     #[error("agent {0} has already ended")]
     NotRunning(String),
+    /// `agent.spawn` with nothing for the new agent to do.
+    #[error("a spawned agent needs a task brief")]
+    EmptyBrief,
+    /// `--worktree` without `--repo`: there is no repository to branch.
+    #[error("a worktree needs a repository")]
+    WorktreeWithoutRepo,
+    /// `agent.spawn` from outside any pane and with no workspace named.
+    #[error("cannot tell which workspace to spawn into")]
+    NoCaller,
+    /// The spawn would go deeper than allowed (PRD §9.4).
+    #[error("spawning would reach depth {depth}, and the limit is {max}")]
+    DepthLimit {
+        /// The depth the new agent would have.
+        depth: i64,
+        /// The configured maximum.
+        max: i64,
+    },
+    /// The workspace already has as many live agents as allowed.
+    #[error("this workspace already has {live} agents running, and the limit is {max}")]
+    ConcurrencyLimit {
+        /// How many are alive now.
+        live: i64,
+        /// The configured maximum.
+        max: i64,
+    },
+    /// `--repo` named something that is not registered.
+    #[error("no repository matches {0:?}")]
+    NoSuchRepo(String),
+    /// Creating the worktree failed, which aborts the whole spawn.
+    #[error(transparent)]
+    Repo(#[from] crate::features::repo::RepoError),
     /// A workspace or pane argument did not resolve, or the pane could not be written.
     #[error(transparent)]
     Target(#[from] WorkspaceError),

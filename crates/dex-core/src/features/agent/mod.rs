@@ -8,6 +8,7 @@ mod commands;
 mod identity;
 mod logic;
 mod model;
+mod spawn;
 mod store;
 #[cfg(test)]
 mod tests;
@@ -15,3 +16,4 @@ mod tests;
 pub use commands::{event, list, pane_exited, stop, sweep};
 pub use identity::{brief_of, label_of, resolve_agent, siblings};
 pub use model::AgentError;
+pub use spawn::spawn;

@@ -8,7 +8,7 @@ use super::logic::{status_from_name, status_name};
 use super::model::Agent;
 
 const AGENT_COLUMNS: &str = "id, pane_id, workspace_id, label, backend, status, status_detail, \
-     status_at, permission_mode, task_brief, started_at, last_event_at, ended_at";
+     status_at, permission_mode, task_brief, started_at, last_event_at, ended_at, parent_id, depth";
 
 fn agent_from_row(row: &Row<'_>) -> rusqlite::Result<Agent> {
     Ok(Agent {
@@ -25,6 +25,8 @@ fn agent_from_row(row: &Row<'_>) -> rusqlite::Result<Agent> {
         started_at: row.get(10)?,
         last_event_at: row.get(11)?,
         ended_at: row.get(12)?,
+        parent_id: row.get(13)?,
+        depth: row.get(14)?,
     })
 }
 
@@ -41,21 +43,23 @@ fn find_one(
     .optional()
 }
 
-/// Inserts an agent (depth 0, no parent: spawning arrives in M7).
+/// Inserts an agent. A spawned one carries its parent and depth; one a human
+/// started has neither.
 pub fn insert_agent(
     conn: &Connection,
     agent: &Agent,
     session_id: Option<&str>,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO agent (id, pane_id, workspace_id, label, backend, session_id, status,
-                            status_detail, status_at, permission_mode, task_brief, depth,
+        "INSERT INTO agent (id, pane_id, workspace_id, parent_id, label, backend, session_id,
+                            status, status_detail, status_at, permission_mode, task_brief, depth,
                             started_at, last_event_at, ended_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?13, ?14)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
             agent.id,
             agent.pane_id,
             agent.workspace_id,
+            agent.parent_id,
             agent.label,
             agent.backend,
             session_id,
@@ -64,12 +68,32 @@ pub fn insert_agent(
             agent.status_at,
             agent.permission_mode,
             agent.task_brief,
+            agent.depth,
             agent.started_at,
             agent.last_event_at,
             agent.ended_at,
         ],
     )?;
     Ok(())
+}
+
+/// A live agent in a pane that has not yet bound to a backend session: the row
+/// `agent.spawn` created before its Claude Code started.
+pub fn find_unbound_in_pane(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<Agent>> {
+    find_one(
+        conn,
+        "pane_id = ?1 AND session_id IS NULL AND status != 'dead'",
+        [pane_id],
+    )
+}
+
+/// How many agents in a workspace have not ended.
+pub fn count_live_in_workspace(conn: &Connection, workspace_id: &str) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM agent WHERE workspace_id = ?1 AND status != 'dead'",
+        [workspace_id],
+        |row| row.get(0),
+    )
 }
 
 /// One agent by id.
