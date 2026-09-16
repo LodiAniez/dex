@@ -11,9 +11,8 @@
 //! transcript and replayed on `--resume`, where an absolute timestamp would be
 //! a lie.
 
-/// Hard caps from PRD §10.3, in characters.
-pub const FULL_CAP: usize = 2000;
-pub const DELTA_CAP: usize = 800;
+// The caps (PRD §10.3) are arguments, not constants: they are configurable, and
+// their shipped values live with the rest of the defaults in `platform::config`.
 
 /// One other agent in the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,6 +196,12 @@ pub fn ago(now: i64, then: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::config::DigestSettings;
+
+    /// The budgets Dex ships with; the owner may set others.
+    fn caps() -> DigestSettings {
+        DigestSettings::default()
+    }
 
     fn change(author: &str, body: &str, key: Option<&str>, at: i64) -> Change {
         Change {
@@ -210,7 +215,7 @@ mod tests {
 
     #[test]
     fn an_empty_delta_is_nothing_at_all() {
-        assert_eq!(delta(&[], 0, DELTA_CAP), None);
+        assert_eq!(delta(&[], 0, caps().delta_chars), None);
     }
 
     #[test]
@@ -222,7 +227,7 @@ mod tests {
             None,
             now - 600_000,
         )];
-        let text = delta(&changes, now, DELTA_CAP).unwrap();
+        let text = delta(&changes, now, caps().delta_chars).unwrap();
         assert!(text.starts_with(HEADING));
         assert!(text.contains("backend noted the schema moved"));
         assert!(text.contains("10 minutes ago"), "{text}");
@@ -234,11 +239,12 @@ mod tests {
         let changes: Vec<Change> = (0..500)
             .map(|i| change("agent", &format!("did thing number {i}"), None, 0))
             .collect();
-        let text = delta(&changes, now, DELTA_CAP).unwrap();
+        let text = delta(&changes, now, caps().delta_chars).unwrap();
         assert!(
-            text.len() <= DELTA_CAP,
-            "{} characters exceeds the {DELTA_CAP} cap",
-            text.len()
+            text.len() <= caps().delta_chars,
+            "{} characters exceeds the {} cap",
+            text.len(),
+            caps().delta_chars
         );
         assert!(text.contains("earlier updates omitted"), "{text}");
         assert!(
@@ -256,7 +262,7 @@ mod tests {
             change("a", "wrote notes (v1)", Some("notes"), -2),
             change("a", "wrote other (v1)", Some("other"), -3),
         ];
-        let text = delta(&changes, now, DELTA_CAP).unwrap();
+        let text = delta(&changes, now, caps().delta_chars).unwrap();
         assert_eq!(text.matches("wrote notes").count(), 1, "{text}");
         assert!(text.contains("wrote notes (v3)"), "the latest wins: {text}");
         assert!(text.contains("wrote other"));
@@ -276,13 +282,13 @@ mod tests {
             entries: vec!["auth/jwt".into(), "db/pool".into()],
             unread: 2,
         };
-        let text = full(&orientation, FULL_CAP);
+        let text = full(&orientation, caps().full_chars);
         assert!(text.contains("Workspace: api"));
         assert!(text.contains("Repo api is on main."));
         assert!(text.contains("frontend (running) — rebuild the login form"));
         assert!(text.contains("- auth/jwt"));
         assert!(text.contains("2 unread messages waiting"));
-        assert!(text.len() <= FULL_CAP);
+        assert!(text.len() <= caps().full_chars);
     }
 
     #[test]
@@ -292,7 +298,7 @@ mod tests {
             unread: 1,
             ..Default::default()
         };
-        assert!(full(&orientation, FULL_CAP).contains("1 unread message waiting"));
+        assert!(full(&orientation, caps().full_chars).contains("1 unread message waiting"));
     }
 
     #[test]
@@ -303,8 +309,8 @@ mod tests {
             entries: (0..500).map(|i| format!("namespace/key-{i}")).collect(),
             ..Default::default()
         };
-        let text = full(&orientation, FULL_CAP);
-        assert!(text.len() <= FULL_CAP);
+        let text = full(&orientation, caps().full_chars);
+        assert!(text.len() <= caps().full_chars);
         assert!(text.contains("Workspace: api"), "{text}");
         assert!(text.contains("port the auth module"));
         assert!(text.contains("earlier updates omitted"));

@@ -16,6 +16,7 @@ use thiserror::Error;
 use crate::app::AppState;
 use crate::features::agent::{self, AgentError};
 use crate::features::context::{self, ContextError};
+use crate::features::diagnostics::{self, DiagnosticsError};
 use crate::features::repo::{self, RepoError};
 use crate::features::workspace::{self, WorkspaceError};
 use repairs::error_body;
@@ -31,6 +32,10 @@ fn changes(cmd: &str) -> Option<&'static str> {
         // A digest advances the caller's cursor, which no client displays.
         "context.digest" => None,
         "repo.list" | "repo.status" | "worktree.list" => None,
+        // `config.reload` may change what is in force, and the UI reads
+        // keybindings from it. `config.get` changes nothing.
+        "config.get" => None,
+        "config.reload" => Some("config"),
         repo if repo.starts_with("repo.") || repo.starts_with("worktree.") => Some("repos"),
         agent if agent.starts_with("agent.") => Some("agents"),
         // `context.inbox` marks messages read, which the activity pane shows.
@@ -96,6 +101,8 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "agent.spawn" => encode(agent::spawn(state, args(req)?).await?),
         "agent.pane_exited" => encode(agent::pane_exited(state, args(req)?).await?),
         "agent.sweep" => encode(agent::sweep(state).await?),
+        "config.get" => encode(diagnostics::get_config(state)?),
+        "config.reload" => encode(diagnostics::reload_config(state)?),
         _ => Err(CoreError::UnknownCommand(req.cmd.clone())),
     }
 }
@@ -117,6 +124,8 @@ enum CoreError {
     Context(#[from] ContextError),
     #[error(transparent)]
     Repo(#[from] RepoError),
+    #[error(transparent)]
+    Diagnostics(#[from] DiagnosticsError),
 }
 
 fn args<T: DeserializeOwned>(req: &Request) -> Result<T, CoreError> {

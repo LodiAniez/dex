@@ -5,6 +5,7 @@
 pub mod auth;
 pub mod bus;
 pub mod clock;
+pub mod config;
 pub mod db;
 pub mod ids;
 pub mod job;

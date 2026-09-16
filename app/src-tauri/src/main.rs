@@ -38,6 +38,15 @@ fn main() {
             std::process::exit(1);
         }
     };
+    // Held for the life of the process, like the job: dropping the watcher
+    // stops config edits being noticed, silently.
+    let _config_watcher = match state.config.watch(state.bus.clone()) {
+        Ok(watcher) => Some(watcher),
+        Err(err) => {
+            tracing::error!(%err, "config changes will need a restart to take effect");
+            None
+        }
+    };
     let pipe_name = pipe::default_name();
     let daemon_state = state.clone();
 
@@ -97,11 +106,17 @@ fn main() {
     }
 }
 
-/// Opens `%APPDATA%\Dex\dex.db` and prepares a fresh connection token (written
-/// once the pipe is bound).
+/// Opens `%APPDATA%\Dex\dex.db`, reads `config.toml`, and prepares a fresh
+/// connection token (written once the pipe is bound).
 fn startup() -> Result<(AppState, Token, PathBuf), String> {
     let dir = paths::app_data_dir().map_err(|err| format!("app data directory: {err}"))?;
-    let state = AppState::open(&dir.join("dex.db")).map_err(|err| format!("database: {err}"))?;
+    let (state, problems) = AppState::open(&dir.join("dex.db"), dir.join("config.toml"))
+        .map_err(|err| format!("database: {err}"))?;
+    // Logged, not fatal: a setting Dex could not use is a reason to say so, not
+    // a reason to refuse to start.
+    for problem in problems {
+        tracing::warn!("{problem}");
+    }
     let token = Token::generate().map_err(|err| format!("token: {err}"))?;
     Ok((state, token, dir.join("token")))
 }

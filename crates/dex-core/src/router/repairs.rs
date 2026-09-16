@@ -9,6 +9,7 @@ use dex_protocol::{ErrorBody, ErrorCode};
 use super::CoreError;
 use crate::features::agent::AgentError;
 use crate::features::context::ContextError;
+use crate::features::diagnostics::DiagnosticsError;
 use crate::features::repo::RepoError;
 use crate::features::workspace::WorkspaceError;
 
@@ -28,6 +29,10 @@ pub(super) fn error_body(err: &CoreError) -> ErrorBody {
                 .to_owned(),
         ),
         CoreError::Encode(_) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
+        // Every setting was read from TOML, so failing to write it back is a bug.
+        CoreError::Diagnostics(DiagnosticsError::Unprintable(_)) => {
+            (ErrorCode::Internal, REPAIR_BUG.to_owned())
+        }
         CoreError::Workspace(err) => workspace_repair(err),
         CoreError::Agent(AgentError::NoSuchPane(_)) => (
             ErrorCode::NoSuchPane,

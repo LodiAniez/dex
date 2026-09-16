@@ -20,15 +20,9 @@ use super::model::{Agent, AgentError};
 use super::store;
 use crate::app::AppState;
 use crate::features::{context, repo, workspace};
+use crate::platform::config::AgentSettings;
 use crate::platform::pty::Answer;
 use crate::platform::{clock, ids};
-
-/// How deep spawning may go: a child may spawn, its child may not (PRD §13).
-const MAX_DEPTH: i64 = 2;
-/// How many agents may be alive in one workspace at once.
-const MAX_CONCURRENT: i64 = 6;
-/// The permission mode spawned agents run in, so they do not stop for approval.
-const SPAWN_PERMISSION_MODE: &str = "auto";
 
 /// Exactly what is typed into the child's shell. A constant: no user text ever
 /// reaches a command line.
@@ -55,8 +49,11 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
     if brief.is_empty() {
         return Err(AgentError::EmptyBrief);
     }
+    // One snapshot for the whole spawn: a reload partway through must not let a
+    // spawn pass the old depth limit and then run in the new permission mode.
+    let settings = state.config.get();
     let caller = caller(state, &args).await?;
-    check_limits(state, &caller).await?;
+    check_limits(state, &caller, &settings.agents).await?;
 
     // Step 2: the worktree, before anything else is created. A spawn that fell
     // back to the main checkout would put two agents in one working tree.
@@ -115,7 +112,7 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         status: dex_protocol::agent::AgentStatus::Idle,
         status_detail: None,
         status_at: now,
-        permission_mode: Some(SPAWN_PERMISSION_MODE.into()),
+        permission_mode: Some(settings.agents.spawn_permission_mode.clone()),
         task_brief: Some(brief.clone()),
         started_at: now,
         last_event_at: now,
@@ -144,7 +141,13 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         .await?;
 
     // Step 6: launch, once the UI has started the pane's shell.
-    launch(state.clone(), pane.clone(), agent_id.clone(), own_worktree);
+    launch(Launch {
+        state: state.clone(),
+        pane: pane.clone(),
+        agent_id: agent_id.clone(),
+        mode: settings.agents.spawn_permission_mode.clone(),
+        own_worktree,
+    });
     // A spawn changes two things, and the router only announces one. Without
     // this the new pane never reaches the UI, so no terminal mounts, so no
     // shell starts, so the child is never launched at all.
@@ -209,11 +212,15 @@ async fn caller(state: &AppState, args: &SpawnArgs) -> Result<Caller, AgentError
 }
 
 /// Refuses a spawn that would go too deep or crowd the workspace (PRD §9.4).
-async fn check_limits(state: &AppState, caller: &Caller) -> Result<(), AgentError> {
-    if caller.depth + 1 > MAX_DEPTH {
+async fn check_limits(
+    state: &AppState,
+    caller: &Caller,
+    limits: &AgentSettings,
+) -> Result<(), AgentError> {
+    if caller.depth + 1 > limits.max_depth {
         return Err(AgentError::DepthLimit {
             depth: caller.depth + 1,
-            max: MAX_DEPTH,
+            max: limits.max_depth,
         });
     }
     let workspace_id = caller.workspace_id.clone();
@@ -221,10 +228,10 @@ async fn check_limits(state: &AppState, caller: &Caller) -> Result<(), AgentErro
         .db
         .call(move |conn| store::count_live_in_workspace(conn, &workspace_id))
         .await?;
-    if live >= MAX_CONCURRENT {
+    if live >= limits.max_concurrent {
         return Err(AgentError::ConcurrencyLimit {
             live,
-            max: MAX_CONCURRENT,
+            max: limits.max_concurrent,
         });
     }
     Ok(())
@@ -256,8 +263,15 @@ async fn repo_path(state: &AppState, target: &str) -> Result<String, AgentError>
 /// never answered for a directory the user pointed an agent at, and never for
 /// the settings-trust dialog, which is a different question — whether to run
 /// the hooks a project's config declares — and is the user's to answer.
-fn launch(state: AppState, pane: String, agent_id: String, own_worktree: bool) {
+fn launch(launch: Launch) {
     tokio::spawn(async move {
+        let Launch {
+            state,
+            pane,
+            agent_id,
+            mode,
+            own_worktree,
+        } = launch;
         let deadline = tokio::time::Instant::now() + LAUNCH_WAIT;
         while tokio::time::Instant::now() < deadline {
             if state.pty.last_output_at(&pane).is_some() {
@@ -273,8 +287,7 @@ fn launch(state: AppState, pane: String, agent_id: String, own_worktree: bool) {
                         ),
                     );
                 }
-                let command =
-                    format!("claude --permission-mode {SPAWN_PERMISSION_MODE} \"{KICKOFF}\"\r");
+                let command = format!("claude --permission-mode {mode} \"{KICKOFF}\"\r");
                 let pty = state.pty.clone();
                 let pane = pane.clone();
                 let _ =
@@ -287,6 +300,18 @@ fn launch(state: AppState, pane: String, agent_id: String, own_worktree: bool) {
             "dex: agent {agent_id} was created but its pane never started a shell, so it was not launched"
         );
     });
+}
+
+/// What `launch` needs once the pane's shell appears.
+struct Launch {
+    state: AppState,
+    pane: String,
+    agent_id: String,
+    /// The permission mode, taken from the same snapshot as the agent row's, so
+    /// the pane header and the command line can never disagree.
+    mode: String,
+    /// Whether Dex created this checkout, and so may answer the trust dialog.
+    own_worktree: bool,
 }
 
 #[cfg(test)]
@@ -307,10 +332,11 @@ mod tests {
     }
 
     #[test]
-    fn spawned_agents_do_not_stop_for_approval() {
+    fn spawned_agents_do_not_stop_for_approval_unless_configured_to() {
         // `bypassPermissions` is only honoured in a worktree (PRD §9.4), and
         // Dex does not ship it as the default.
-        assert_eq!(SPAWN_PERMISSION_MODE, "auto");
+        let shipped = AgentSettings::default();
+        assert_eq!(shipped.spawn_permission_mode, "auto");
     }
 
     #[test]
@@ -322,8 +348,9 @@ mod tests {
     }
 
     #[test]
-    fn the_limits_are_the_documented_ones() {
-        assert_eq!(MAX_DEPTH, 2);
-        assert_eq!(MAX_CONCURRENT, 6);
+    fn the_shipped_limits_are_the_documented_ones() {
+        let shipped = AgentSettings::default();
+        assert_eq!(shipped.max_depth, 2);
+        assert_eq!(shipped.max_concurrent, 6);
     }
 }

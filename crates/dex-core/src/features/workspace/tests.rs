@@ -200,7 +200,9 @@ async fn workspaces_and_the_active_one_survive_reopening_the_database() {
     .unwrap();
     drop(state);
 
-    let reopened = AppState::open(&dir.path().join("dex.db")).unwrap();
+    let (reopened, problems) =
+        AppState::open(&dir.path().join("dex.db"), dir.path().join("config.toml")).unwrap();
+    assert!(problems.is_empty(), "no config file means no complaints");
     let restored = list(&reopened).await.unwrap();
     assert_eq!(names(&restored), ["api", "web"]);
     assert_eq!(restored.active, Some(api));

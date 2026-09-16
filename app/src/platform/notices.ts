@@ -28,6 +28,17 @@ export function showError(err: unknown): void {
   window.setTimeout(() => dismissNotice(id), NOTICE_MS);
 }
 
+/**
+ * Shows something the owner should know about but that stopped nothing — a
+ * setting Dex could not use, and what it used instead.
+ */
+export function showWarning(message: string): void {
+  nextId += 1;
+  const id = nextId;
+  publish([...notices, { id, message }]);
+  window.setTimeout(() => dismissNotice(id), NOTICE_MS);
+}
+
 export function dismissNotice(id: number): void {
   if (notices.some((n) => n.id === id)) publish(notices.filter((n) => n.id !== id));
 }

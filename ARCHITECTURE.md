@@ -2,7 +2,7 @@
 
 Living map of the codebase, updated at the end of every milestone. For what Dex does, see `docs/prd.md`; for how code is organized, `docs/conventions.md`.
 
-**Current milestone:** M7 in progress — the repo registry, worktrees, `agent.spawn` with its depth and concurrency limits, and the `dex repo`/`worktree`/`agent spawn` commands are built and tested end to end. `skills/dex-agentic/SKILL.md` is not written, and the workspace-trust obstacle above is unresolved. M6 built — context store, digests, `dex-mcp`, the activity pane, user-scope registration and `dex doctor`'s MCP check all pass their acceptance checks. Awaiting the owner's check with the MCP server registered in their real Claude Code config. M5 (agent registry, Claude Code hooks, status dots, toasts) is done and its hooks are installed in the owner's real settings. M0–M4 done; M1 still awaits the owner's end-to-end throughput check, M2 the owner's divider-drag check. Deferred from M4: `dex pane capture` (needs the UI to hand the daemon a terminal's buffer). Deferred from M5: the WSL half of `install-hooks.ps1` (no distro installed to test against).
+**Current milestone:** M8 in progress — `config.toml` with hot reload and keybinding overrides is built (WP-81); the command palette, diff and markdown panes, first-run experience and the MSI installer are not. M7 done: the repo registry, worktrees, `agent.spawn` with its depth and concurrency limits, `skills/dex-agentic/SKILL.md`, and a spawned agent that answers Claude Code's folder-trust dialog and starts work unattended. Its one open item is the WSL spawn check, blocked on no distro being installed. M6 built — context store, digests, `dex-mcp`, the activity pane, user-scope registration and `dex doctor`'s MCP check all pass their acceptance checks. Awaiting the owner's check with the MCP server registered in their real Claude Code config. M5 (agent registry, Claude Code hooks, status dots, toasts) is done and its hooks are installed in the owner's real settings. M0–M4 done; M1 still awaits the owner's end-to-end throughput check, M2 the owner's divider-drag check. Deferred from M4: `dex pane capture` (needs the UI to hand the daemon a terminal's buffer). Deferred from M5: the WSL half of `install-hooks.ps1` (no distro installed to test against).
 
 ## Crates
 
@@ -28,6 +28,7 @@ Living map of the codebase, updated at the end of every milestone. For what Dex 
 | `bus` | Lossy broadcast of change topics; the app forwards them to the UI as `dex://changed` | Done (M4) |
 | `proc` | Subprocess runner for `git.exe`, translating its stderr into actionable errors | Done (M7) |
 | `paths` | Forward-slash normalization, `%APPDATA%\Dex`, home dir. WSL translation and reserved names still to come | Partial |
+| `config` | `config.toml`: the settings, their defaults, the validation that replaces a bad value rather than refusing it, and the `notify` watcher behind hot reload | Done (M8) |
 | `clock` | `now_millis()`; becomes injectable when time-dependent logic lands (M5) | Partial |
 | `ids` | UUID v4 ids | Done |
 
@@ -39,7 +40,7 @@ Living map of the codebase, updated at the end of every milestone. For what Dex 
 | `repo` | `repo`, `workspace_repo` | Registry, discovery and status (`commands.rs`); worktree create/remove/list (`worktree_commands.rs`). Branch rules and git's porcelain formats are pure (`logic.rs`); every git call goes through `platform::proc`, which translates stderr so git's own words never reach a caller |
 | `agent` | `agent` | `agent.event` (one hook firing; which hook means what, the newest-stamp-wins rule and the revival rule are pure, in `logic.rs`), `agent.list`, `agent.stop` (Ctrl+C ×3, then ends the row), `agent.pane_exited` (the app reports PTY exits), `agent.sweep` (the watchdog; the app calls it every 15 s) |
 | `context` | `context_entry`, `context_entry_fts`, `context_event`, `context_cursor` | Entries with the three `expected_version` modes and the event log (`commands.rs`, `log_commands.rs`); the write-through disk mirror under `<workspace root>/.dex/` (`mirror.rs`); digest building, pure, in `digest.rs`, with gathering and the rate limit in `digest_commands.rs`. Key validation is in `logic.rs` and is a security boundary: a key becomes a file path. |
-| `diagnostics` | — | Stub |
+| `diagnostics` | — | `config.get` and `config.reload`. `dex doctor` runs entirely in the CLI, since most of what it checks is outside the daemon |
 
 Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 
@@ -48,7 +49,7 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 | Path | Owns |
 |---|---|
 | `shell/` | `App` (root, app shortcuts, zoom), `TitleBar`, `Sidebar`, `LayoutView` (pane tree, draggable dividers, pane headers), `paneGeometry` (on-screen neighbor for Alt+Arrow), `NoticeBar`, `keybindings` |
-| `platform/` | `daemon.ts` (the `dex_request` envelope), `pty.ts`, `terminalRegistry.ts` (terminals outside React), `notices.ts`, `generated/` (ts-rs wire types) |
+| `platform/` | `daemon.ts` (the `dex_request` envelope), `pty.ts`, `terminalRegistry.ts` (terminals outside React), `notices.ts`, `config.ts` (the keymap, rebuilt whenever the daemon announces `config`), `generated/` (ts-rs wire types) |
 | `features/workspaces/` | `workspaceStore` (snapshot of the daemon's `WorkspaceList`), sidebar rows, color picker, context menu, new-workspace form |
 | `features/panes/` | `TerminalPane` (a layout box that attaches a registry terminal) |
 | `features/activity/` | `activityStore` (one `EventList` per workspace, refreshed on the `context` topic) and `ActivityPane` — the live event stream, filterable by agent (PRD §10.4) |
@@ -74,6 +75,8 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 - **Which state changed is announced per topic** (`workspaces`, `agents`) by `router::changes`, so the UI re-reads only what moved.
 - **Production builds go through the Tauri CLI** (`npx tauri build`): a plain `cargo build` of `app/src-tauri` loads the Vite dev server URL instead of the embedded frontend. **`cargo build --workspace` counts as a plain build**, and the dev-pointing `dex-app.exe` it leaves is considered up to date by a later `tauri build`, so the app silently keeps showing "localhost refused to connect". Recover with `cargo clean -p dex-app`, then build through the Tauri CLI.
 - **A spawned agent's row is created before its Claude Code starts**, carrying its parent and brief. `SessionStart` adopts it — by `DEX_AGENT_ID`, or by being the one row in that pane still waiting for a session. Without the second path, a child whose environment lost the variable would register a fresh agent and orphan the brief.
+- **Settings are validated, not rejected.** A value Dex cannot use is replaced by its default and reported; only a TOML syntax error fails, and even then a *reload* keeps the settings already in force, because an editor saving mid-keystroke must not reconfigure the running app. The problems from the last read are kept, not just returned, so `dex config show` can answer what went wrong at startup — the app is a GUI, and a problem only logged is a problem nobody sees.
+- **Keybinding defaults live in the frontend, overrides in the config.** `[keys]` carries only what the owner changed, so the table has one owner; `buildKeymap` merges them onto the shipped bindings. An override that cannot be used leaves its action on the default rather than unbound, which would be a silent way to lose a shortcut. A binding with no modifier is refused: it would take an ordinary letter from the terminal on every keystroke, which looks like a broken keyboard rather than a setting.
 - **The daemon reads pane output in exactly one place, and only when asked.** `PtySupervisor::answer_once` arms a phrase and the keys to type when it appears; `spawn` uses it for the folder-trust dialog, and nothing else uses it. The alternative — typing on a timer — would fire at a prompt that may not be there, in a directory Claude Code is already trusted in. The match is made on the output reduced to letters and digits with escape sequences removed, because a pane wraps lines mid-word and Claude Code draws dialogs inside a box, so the phrase is rarely contiguous. Dex answers only in a worktree it created itself, from a repository the owner registered; it does not answer the settings-trust dialog, which asks whether to run the hooks a project declares.
 - **`agent.spawn` announces `workspaces` itself.** It changes two things — a new pane and a new agent — and `router::changes` announces only one per command. Without that the pane never reaches the UI, so no terminal mounts, so no shell starts, so the child is never launched.
 

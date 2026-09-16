@@ -14,6 +14,7 @@ import {
   useWorkspaces,
 } from "../features/workspaces";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
+import { currentKeymap, watchConfig } from "../platform/config";
 import { showError } from "../platform/notices";
 import { setShortcutFilter } from "../platform/terminalRegistry";
 import { appActionFor, type AppAction } from "./keybindings";
@@ -79,6 +80,7 @@ export function App() {
   useEffect(() => {
     run(loadWorkspaces());
     run(loadAgents());
+    watchConfig();
   }, []);
 
   // Toasts for agents that need attention in panes the user is not looking at.
@@ -151,9 +153,11 @@ export function App() {
       }
     };
     // Terminals hand app shortcuts on instead of sending them to the shell.
-    setShortcutFilter((event) => appActionFor(event) !== null);
+    // Both read the keymap when the key is pressed, never a captured copy, so a
+    // config edit rebinds keys without this effect being torn down.
+    setShortcutFilter((event) => appActionFor(event, currentKeymap()) !== null);
     const onKey = (event: KeyboardEvent) => {
-      const action = appActionFor(event);
+      const action = appActionFor(event, currentKeymap());
       if (!action) return;
       event.preventDefault();
       perform(action);

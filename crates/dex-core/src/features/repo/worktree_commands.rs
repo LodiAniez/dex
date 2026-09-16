@@ -30,7 +30,7 @@ pub async fn add(state: &AppState, args: AddWorktreeArgs) -> Result<WorktreeList
         });
     }
     let repo = resolve(state, &args.repo).await?;
-    let path = logic::worktree_path(&state.worktree_base, &repo.name, &args.branch);
+    let path = logic::worktree_path(&state.worktree_base(), &repo.name, &args.branch);
     let repo_path = repo.path.clone();
     let branch = args.branch.clone();
     let created: PathBuf = tokio::task::spawn_blocking(move || {
@@ -68,7 +68,7 @@ pub async fn add(state: &AppState, args: AddWorktreeArgs) -> Result<WorktreeList
 /// `worktree.remove`: take a worktree away and forget it.
 pub async fn remove(state: &AppState, args: RemoveWorktreeArgs) -> Result<WorktreeList, RepoError> {
     let repo = resolve(state, &args.repo).await?;
-    let path = logic::worktree_path(&state.worktree_base, &repo.name, &args.branch);
+    let path = logic::worktree_path(&state.worktree_base(), &repo.name, &args.branch);
     let repo_path = repo.path.clone();
     let force = args.force;
     tokio::task::spawn_blocking(move || {
@@ -149,7 +149,7 @@ pub async fn create_for_spawn(
         });
     }
     let repo = resolve(state, repo_target).await?;
-    let path = logic::worktree_path(&state.worktree_base, &repo.name, branch);
+    let path = logic::worktree_path(&state.worktree_base(), &repo.name, branch);
     let repo_path = repo.path.clone();
     let branch = branch.to_owned();
     let made = path.clone();

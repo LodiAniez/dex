@@ -207,7 +207,7 @@ async fn a_worktree_is_created_on_a_new_branch_and_removed_again() {
     assert!(branches.contains(&Some("fix/login")), "{branches:?}");
     assert!(made.worktrees[0].main, "the main checkout is listed first");
     let on_disk = state
-        .worktree_base
+        .worktree_base()
         .join("api")
         .join("fix-login")
         .join("README.md");

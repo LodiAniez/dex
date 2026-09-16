@@ -32,6 +32,7 @@ const FULL_ENTRIES: usize = 25;
 /// this runs on every prompt of every agent (PRD §10.3).
 pub async fn digest(state: &AppState, args: DigestArgs) -> Result<Digest, ContextError> {
     let now = clock::now_millis();
+    let budgets = state.config.get().digest;
     state
         .db
         .call(
@@ -42,7 +43,7 @@ pub async fn digest(state: &AppState, args: DigestArgs) -> Result<Digest, Contex
                 };
                 let me = scope.agent_id.as_deref();
                 let text = if args.kind == "full" {
-                    let cap = args.max_chars.unwrap_or(digest::FULL_CAP);
+                    let cap = args.max_chars.unwrap_or(budgets.full_chars);
                     let orientation = Orientation {
                         workspace: workspace::workspace_name(conn, &scope.workspace_id)?
                             .unwrap_or_else(|| "this workspace".into()),
@@ -91,7 +92,14 @@ pub async fn digest(state: &AppState, args: DigestArgs) -> Result<Digest, Contex
                     }
                     Some(digest::full(&orientation, cap))
                 } else {
-                    delta_for(conn, &scope.workspace_id, me, &args, now)?
+                    delta_for(
+                        conn,
+                        &scope.workspace_id,
+                        me,
+                        &args,
+                        now,
+                        budgets.delta_chars,
+                    )?
                 };
                 Ok(Ok(Digest { text }))
             },
@@ -106,6 +114,7 @@ fn delta_for(
     me: Option<&str>,
     args: &DigestArgs,
     now: i64,
+    budget: usize,
 ) -> rusqlite::Result<Option<String>> {
     // Without an identity there is no cursor to advance, and re-sending the
     // same events every turn would be worse than sending none.
@@ -151,7 +160,7 @@ fn delta_for(
             created_at: event.created_at,
         });
     }
-    let cap = args.max_chars.unwrap_or(digest::DELTA_CAP);
+    let cap = args.max_chars.unwrap_or(budget);
     let mut text = digest::delta(&changes, now, cap);
     if waiting > 0 {
         let note = format!(

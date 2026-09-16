@@ -266,7 +266,7 @@ async fn a_spawn_into_a_worktree_puts_the_child_on_its_own_branch() {
     .unwrap();
 
     assert_eq!(child.branch.as_deref(), Some("fix/login"));
-    let checkout = state.worktree_base.join("api").join("fix-login");
+    let checkout = state.worktree_base().join("api").join("fix-login");
     assert!(checkout.join("README.md").exists(), "the worktree is real");
     assert_eq!(
         repo::branch_at(&checkout).as_deref(),

@@ -46,7 +46,7 @@ pub async fn pty_spawn(
     on_output: Channel<InvokeResponseBody>,
     on_event: Channel<PtyEvent>,
 ) -> Result<(), String> {
-    let program = resolve_shell(None)
+    let program = resolve_shell(state.config.get().shell.as_deref())
         .ok_or("no shell found: pwsh.exe, powershell.exe and cmd.exe are all missing from PATH")?;
     let cwd = pane
         .cwd

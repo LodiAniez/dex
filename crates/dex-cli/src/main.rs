@@ -10,6 +10,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 
 use commands::agent::AgentCommand;
+use commands::config::ConfigCommand;
 use commands::context::ContextCommand;
 use commands::hooks::HooksCommand;
 use commands::mcp::McpCommand;
@@ -68,6 +69,9 @@ enum Command {
     /// Register or remove the Dex MCP server with Claude Code.
     #[command(subcommand)]
     Mcp(McpCommand),
+    /// Show where Dex's settings live and what it is running with.
+    #[command(subcommand)]
+    Config(ConfigCommand),
     /// Claude Code hook entry point. Always exits 0; a no-op outside a Dex pane.
     Event(EventArgs),
 }
@@ -114,6 +118,7 @@ fn main() -> ExitCode {
         Command::Context(command) => commands::context::run(command, format, cli.workspace),
         Command::Hooks(command) => commands::hooks::run(command, format),
         Command::Mcp(command) => commands::mcp::run(command, format),
+        Command::Config(command) => commands::config::run(command, format),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
