@@ -6,7 +6,7 @@ use std::process::Command;
 use dex_protocol::PROTOCOL_VERSION;
 use serde::Serialize;
 
-use crate::commands::{hooks, mcp};
+use crate::commands::{hooks, mcp, skill};
 use crate::output::{self, Format};
 use dex_cli::client;
 
@@ -45,6 +45,7 @@ pub fn run(format: Format) -> bool {
     checks.push(git());
     checks.push(verdict("hooks", hooks::doctor_check()));
     checks.push(verdict("mcp", mcp::doctor_check()));
+    checks.push(verdict("skill", skill::doctor_check()));
 
     let healthy = checks.iter().all(|c| c.status != Status::Fail);
     if format.json {

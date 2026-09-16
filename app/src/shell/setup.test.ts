@@ -10,9 +10,10 @@ const fail = (name: string, detail = ""): Check => ({ name, status: "fail", deta
 const skip = (name: string): Check => ({ name, status: "skip", detail: "" });
 
 describe("which failures have a button", () => {
-  it("offers to install hooks and register the MCP server", () => {
+  it("offers to install hooks, register the MCP server, and install the skill", () => {
     expect(stepFor(fail("hooks"))).toBe("hooks");
     expect(stepFor(fail("mcp"))).toBe("mcp");
+    expect(stepFor(fail("skill"))).toBe("skill");
   });
 
   it("only explains what it cannot fix", () => {

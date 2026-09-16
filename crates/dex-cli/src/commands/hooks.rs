@@ -178,7 +178,7 @@ pub fn doctor_check() -> (bool, String) {
     let detail = if ok {
         describe(&found)
     } else {
-        format!("{}; run scripts\\install-hooks.ps1", describe(&found))
+        format!("{} (run `dex hooks install`)", describe(&found))
     };
     (ok, detail)
 }

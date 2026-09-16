@@ -51,14 +51,16 @@ Start Dex. The first time, a setup panel opens on its own and runs the same chec
 | `git`     | Git is on PATH                                             | Install Git for Windows                        |
 | `hooks`   | Dex's hooks are in your Claude Code settings               | Press **Install hooks**                        |
 | `mcp`     | Dex's MCP server is registered with Claude Code            | Press **Register MCP server**                  |
+| `skill`   | The `dex-agentic` skill is in your Claude Code skills      | Press **Install skill**                        |
 
-Press the two buttons. Both go green without a restart. That is the whole setup; the panel is in the command palette as **Setup checks** if you ever want it back, and it reappears by itself if something new goes wrong.
+Press the three buttons. All go green without a restart. That is the whole setup; the panel is in the command palette as **Setup checks** if you ever want it back, and it reappears by itself if something new goes wrong — including after a Dex upgrade, when `skill` turns red until you refresh it.
 
-From a terminal, the same two steps are:
+From a terminal, the same three steps are:
 
 ```powershell
 dex hooks install     # adds Dex's hooks to %USERPROFILE%\.claude\settings.json; your other hooks are kept
 dex mcp install       # runs `claude mcp add` for the Dex server, user scope
+dex skill install     # copies the skill to %USERPROFILE%\.claude\skills\dex-agentic\
 dex doctor            # the table above
 ```
 
@@ -186,7 +188,7 @@ Dex creates the worktree, splits a pane for it, records the task, starts Claude 
 
 Guardrails are in Dex, not in prose an agent might skip: **depth 2** (a child may spawn, its child may not) and **six live agents per workspace**. A refused spawn says why and what to do instead.
 
-The judgment side — when spawning helps and when it just costs a cold start — is in `skills/dex-agentic/SKILL.md`, a Claude Code skill you can install so your agents read it.
+The judgment side — when spawning helps and when it just costs a cold start, how to write a brief, what to do while waiting — is the `dex-agentic` skill (`skills/dex-agentic/SKILL.md`), which `dex skill install` puts where Claude Code finds it. Agents load it when a task looks splittable.
 
 ## The `dex` command
 
@@ -202,6 +204,7 @@ dex worktree   add | remove | list
 dex context    read | write | list | note | send | inbox | search | digest
 dex hooks      install | uninstall | status
 dex mcp        install | uninstall | status
+dex skill      install | uninstall | status
 dex config     path | show | reload
 ```
 
@@ -209,7 +212,7 @@ Add `--json` to any command for machine-readable output. Inside a Dex pane, comm
 
 ## Uninstall
 
-Settings → Apps → Dex → Uninstall. That removes the program and the PATH entry. It leaves your data (`%APPDATA%\Dex`), your worktrees, and your Claude Code configuration alone; to take the hooks and the MCP registration out first, run `dex hooks uninstall` and `dex mcp uninstall`.
+Settings → Apps → Dex → Uninstall. That removes the program and the PATH entry. It leaves your data (`%APPDATA%\Dex`), your worktrees, and your Claude Code configuration alone; to take the hooks, the MCP registration and the skill out first, run `dex hooks uninstall`, `dex mcp uninstall` and `dex skill uninstall`.
 
 ## Building from source
 

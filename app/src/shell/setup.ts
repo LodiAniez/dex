@@ -18,14 +18,14 @@ export interface DoctorReport {
 }
 
 /** A setup step the app can run for the owner. */
-export type Step = "hooks" | "mcp";
+export type Step = "hooks" | "mcp" | "skill";
+
+const STEPS: readonly Step[] = ["hooks", "mcp", "skill"];
 
 /** Which failures the panel can fix itself; the rest it can only explain. */
 export function stepFor(check: Check): Step | null {
   if (check.status !== "fail") return null;
-  if (check.name === "hooks") return "hooks";
-  if (check.name === "mcp") return "mcp";
-  return null;
+  return STEPS.find((step) => step === check.name) ?? null;
 }
 
 /** Failing checks, in the order doctor reported them. */

@@ -16,6 +16,7 @@ use commands::hooks::HooksCommand;
 use commands::mcp::McpCommand;
 use commands::pane::PaneCommand;
 use commands::repo::{RepoCommand, WorktreeCommand};
+use commands::skill::SkillCommand;
 use commands::workspace::WorkspaceCommand;
 use output::Format;
 
@@ -72,6 +73,9 @@ enum Command {
     /// Show where Dex's settings live and what it is running with.
     #[command(subcommand)]
     Config(ConfigCommand),
+    /// Install, remove, or check the Dex skill for Claude Code agents.
+    #[command(subcommand)]
+    Skill(SkillCommand),
     /// Claude Code hook entry point. Always exits 0; a no-op outside a Dex pane.
     Event(EventArgs),
 }
@@ -119,6 +123,7 @@ fn main() -> ExitCode {
         Command::Hooks(command) => commands::hooks::run(command, format),
         Command::Mcp(command) => commands::mcp::run(command, format),
         Command::Config(command) => commands::config::run(command, format),
+        Command::Skill(command) => commands::skill::run(command, format),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

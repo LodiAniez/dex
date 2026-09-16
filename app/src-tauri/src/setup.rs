@@ -5,7 +5,7 @@
 //! and the fixes are `dex hooks install` and `dex mcp install`, run as the
 //! human would run them, so the panel can never disagree with the CLI and a
 //! fix applied from the panel is exactly the one the docs describe. The
-//! steps are a closed list: the UI names one, it never passes arguments.
+//! steps are a closed list of three: the UI names one, it never passes arguments.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -72,12 +72,13 @@ pub async fn setup_check() -> Result<Report, String> {
     })
 }
 
-/// Runs one setup step. `step` is `hooks` or `mcp`; anything else is refused.
+/// Runs one setup step. `step` is `hooks`, `mcp` or `skill`; anything else is refused.
 #[tauri::command]
 pub async fn setup_run(step: String) -> Result<StepOutcome, String> {
     let args: &[&str] = match step.as_str() {
         "hooks" => &["hooks", "install"],
         "mcp" => &["mcp", "install"],
+        "skill" => &["skill", "install"],
         other => return Err(format!("{other:?} is not a setup step")),
     };
     let output = tauri::async_runtime::spawn_blocking(move || dex(args))

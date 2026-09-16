@@ -6,11 +6,13 @@ import { type Check, type DoctorReport, type Step, failures, headline, stepFor }
 const STEP_LABEL: Record<Step, string> = {
   hooks: "Install hooks",
   mcp: "Register MCP server",
+  skill: "Install skill",
 };
 
 const STEP_EXPLAINS: Record<Step, string> = {
   hooks: "Adds Dex's hooks to your Claude Code settings, so agents in Dex panes report what they are doing.",
   mcp: "Registers the Dex MCP server with Claude Code, so agents can share notes and messages.",
+  skill: "Copies the dex-agentic skill into your Claude Code skills, so agents know when starting another agent helps and how to brief one.",
 };
 
 interface StepOutcome {
@@ -71,8 +73,8 @@ export function Setup({ report, onRecheck, onClose }: SetupProps) {
           <h2>{headline(report)}</h2>
           <p className="setup-sub">
             {done
-              ? "Claude Code, git, the hooks and the MCP server are all in place."
-              : "Dex works with Claude Code through hooks and an MCP server. These are what a fresh install still needs."}
+              ? "Claude Code, git, the hooks, the MCP server and the skill are all in place."
+              : "Dex works with Claude Code through hooks, an MCP server and a skill. These are what a fresh install still needs."}
           </p>
         </header>
         <ul className="setup-checks">

@@ -32,11 +32,21 @@
           <RegistryValue Name="IconUri" Type="string" Value="[INSTALLDIR]dex-app.exe" />
         </RegistryKey>
       </Component>
+      <!-- The skill, where `dex skill install` looks for it: skills\dex-agentic beside dex.exe.
+           Three levels up from the main binary is the repository root. -->
+      <Directory Id="DexSkillsDir" Name="skills">
+        <Directory Id="DexAgenticSkillDir" Name="dex-agentic">
+          <Component Id="DexSkill" Guid="8E1C4B0A-6F2D-4F7B-9C3E-2A5D1B7E9F04" Win64="yes">
+            <File Id="DexSkillFile" Source="$(var.SourceDir)\..\..\..\skills\dex-agentic\SKILL.md" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
     </DirectoryRef>
     <ComponentGroup Id="DexSetup">
       <ComponentRef Id="DexCli" />
       <ComponentRef Id="DexMcp" />
       <ComponentRef Id="DexAppUserModelId" />
+      <ComponentRef Id="DexSkill" />
     </ComponentGroup>
   </Fragment>
 </Wix>

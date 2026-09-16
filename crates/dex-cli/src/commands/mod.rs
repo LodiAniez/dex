@@ -9,4 +9,5 @@ pub mod hooks;
 pub mod mcp;
 pub mod pane;
 pub mod repo;
+pub mod skill;
 pub mod workspace;
