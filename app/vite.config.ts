@@ -16,4 +16,12 @@ export default defineConfig({
     target: "es2022",
     outDir: "dist",
   },
+  test: {
+    // Tests sit beside the code they test, as the Rust side does.
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // No jsdom: what is worth testing here is pure — key parsing, layout
+    // geometry, store reducers. A component needing a DOM is a sign the logic
+    // should come out of the component first.
+    environment: "node",
+  },
 });

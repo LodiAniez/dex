@@ -48,7 +48,7 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 
 | Path | Owns |
 |---|---|
-| `shell/` | `App` (root, app shortcuts, zoom), `TitleBar`, `Sidebar`, `LayoutView` (pane tree, draggable dividers, pane headers), `paneGeometry` (on-screen neighbor for Alt+Arrow), `NoticeBar`, `keybindings` |
+| `shell/` | `App` (root, app shortcuts, zoom), `TitleBar`, `Sidebar`, `LayoutView` (pane tree, draggable dividers, pane headers), `paneGeometry` (on-screen neighbor for Alt+Arrow), `NoticeBar`, `keybindings` (the action table, binding parser, and override merge) |
 | `platform/` | `daemon.ts` (the `dex_request` envelope), `pty.ts`, `terminalRegistry.ts` (terminals outside React), `notices.ts`, `config.ts` (the keymap, rebuilt whenever the daemon announces `config`), `generated/` (ts-rs wire types) |
 | `features/workspaces/` | `workspaceStore` (snapshot of the daemon's `WorkspaceList`), sidebar rows, color picker, context menu, new-workspace form |
 | `features/panes/` | `TerminalPane` (a layout box that attaches a registry terminal) |
@@ -61,6 +61,7 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 
 ## Decisions
 
+- **Frontend tests run in node, with no DOM** (`vitest`, `app/src/**/*.test.ts` beside the source, as on the Rust side). What is worth testing here is pure — key parsing, pane geometry, the toast rules — and needing a DOM is a sign the logic should come out of the component first. That is why `paneGeometry` separates `neighborIn`, which takes boxes, from the `data-pane-id` lookup: a headless DOM would not have helped, since `getBoundingClientRect` returns zeros there and every pane would sit on top of every other.
 - **TypeScript wire types:** `ts-rs`, behind `dex-protocol`'s optional `ts` feature so the crate's default dependencies stay serde-only. `cargo test -p dex-protocol --features ts` writes them to `app/src/platform/generated/`.
 - **MCP implementation: hand-rolled JSON-RPC, not the `rmcp` SDK** (M6). The surface needed is four methods (`initialize`, `ping`, `tools/list`, `tools/call`); the tool list must be decided at runtime rather than by a derive macro, because outside a Dex pane it is empty; and the process starts once per Claude Code session on the machine, so avoiding an async runtime keeps that startup cheap. `rmcp` 3.4.0 was available and would have worked; revisit if the protocol surface grows.
 - **The pipe client lives in `dex-cli`'s lib target**, which `dex-mcp` depends on. The repository layout fixes the crate list at four, and the alternative — a third copy of the HMAC handshake after `dex_core::platform::auth` and this one — is worse than an odd-looking dependency edge.

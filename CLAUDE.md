@@ -16,7 +16,14 @@ Read ARCHITECTURE.md for the current module map, measurements, and tested versio
 
 ## Before every commit
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+In `app/`: npm run typecheck && npm test
 
 ## Running
 - Frontend deps: `npm install` in `app/`
 - Dev app: `npm run tauri dev` in `app/`
+- Frontend tests: `npm test` in `app/` (vitest, `*.test.ts` beside the code)
+
+## Testing the frontend
+Tests run in node, with no DOM. Logic that needs one is logic in the wrong
+place: lift it out of the component into a pure function and test that. A
+`.test.ts` sits beside its source, as on the Rust side.
