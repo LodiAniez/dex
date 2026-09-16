@@ -158,3 +158,152 @@ async fn a_message_to_an_idle_agent_is_stored_even_when_its_pane_cannot_be_woken
         "requirement changed: odd shouts hey"
     );
 }
+
+#[tokio::test]
+async fn one_event_can_be_removed_and_a_missing_one_says_so() {
+    use dex_protocol::context::DeleteEventArgs;
+
+    let (_root, _dir, state, pane) = workspace_at().await;
+    for body in ["first", "second"] {
+        note(
+            &state,
+            NoteArgs {
+                body: body.into(),
+                tags: None,
+                caller: from(&pane),
+            },
+        )
+        .await
+        .unwrap();
+    }
+    let before = events(&state, ScopeArgs::for_caller(from(&pane)))
+        .await
+        .unwrap();
+    let first = before.events[0].seq;
+
+    let cleared = crate::features::context::delete_event(
+        &state,
+        DeleteEventArgs {
+            seq: first,
+            caller: from(&pane),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(cleared.removed, 1);
+    let after = events(&state, ScopeArgs::for_caller(from(&pane)))
+        .await
+        .unwrap();
+    assert_eq!(after.events.len(), 1);
+    assert_eq!(after.events[0].body, "second");
+
+    let again = crate::features::context::delete_event(
+        &state,
+        DeleteEventArgs {
+            seq: first,
+            caller: from(&pane),
+        },
+    )
+    .await;
+    assert!(
+        matches!(again, Err(ContextError::NoSuchEvent(_))),
+        "{again:?}"
+    );
+}
+
+#[tokio::test]
+async fn clearing_ended_agents_keeps_the_living_and_the_human() {
+    use dex_protocol::agent::AgentEventArgs;
+    use dex_protocol::context::{ClearEventsArgs, ClearScope};
+
+    let (_root, _dir, state, pane) = workspace_at().await;
+    let second = second_pane(&state, &pane).await;
+    let live = start_agent(&state, &pane, "s-live").await;
+    let doomed = start_agent(&state, &second, "s-doomed").await;
+    assert_ne!(live, doomed);
+    for (who, body) in [(&pane, "still here"), (&second, "about to go")] {
+        note(
+            &state,
+            NoteArgs {
+                body: body.into(),
+                tags: None,
+                caller: from(who),
+            },
+        )
+        .await
+        .unwrap();
+    }
+    // The human, from outside any pane: named by workspace, not by pane.
+    let workspace_id = {
+        let pane = pane.clone();
+        state
+            .db
+            .call(move |conn| workspace::find_pane_workspace(conn, &pane))
+            .await
+            .unwrap()
+            .unwrap()
+    };
+    note(
+        &state,
+        NoteArgs {
+            body: "typed by a person".into(),
+            tags: None,
+            caller: Caller {
+                pane: None,
+                workspace: Some(workspace_id),
+                agent: None,
+            },
+        },
+    )
+    .await
+    .unwrap();
+    // The second agent's session ends.
+    crate::features::agent::event(
+        &state,
+        AgentEventArgs {
+            kind: "session-end".into(),
+            pane: second.clone(),
+            agent: None,
+            stamp: 99,
+            input: serde_json::json!({ "session_id": "s-doomed" }),
+        },
+    )
+    .await
+    .unwrap();
+
+    let cleared = crate::features::context::clear_events(
+        &state,
+        ClearEventsArgs {
+            scope: ClearScope::Ended,
+            caller: from(&pane),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(
+        cleared.removed >= 1,
+        "the ended agent's note (and its status rows) go"
+    );
+    let left = events(&state, ScopeArgs::for_caller(from(&pane)))
+        .await
+        .unwrap();
+    let bodies: Vec<&str> = left.events.iter().map(|e| e.body.as_str()).collect();
+    assert!(bodies.contains(&"still here"), "{bodies:?}");
+    assert!(bodies.contains(&"typed by a person"), "{bodies:?}");
+    assert!(!bodies.contains(&"about to go"), "{bodies:?}");
+
+    let everything = crate::features::context::clear_events(
+        &state,
+        ClearEventsArgs {
+            scope: ClearScope::All,
+            caller: from(&pane),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(everything.removed >= 2);
+    let none = events(&state, ScopeArgs::for_caller(from(&pane)))
+        .await
+        .unwrap();
+    assert!(none.events.is_empty());
+}

@@ -57,3 +57,14 @@ export function watchActivity(workspaceId: string): () => void {
     watched.delete(workspaceId);
   };
 }
+
+/** Removes one event; the `context` change that follows refreshes the list. */
+export async function deleteEvent(workspaceId: string, seq: number): Promise<void> {
+  await request("context.delete_event", { workspace: workspaceId, seq });
+}
+
+/** Removes the events of ended agents, or everything. Returns how many went. */
+export async function clearEvents(workspaceId: string, scope: "ended" | "all"): Promise<number> {
+  const cleared = await request<{ removed: number }>("context.clear_events", { workspace: workspaceId, scope });
+  return cleared.removed;
+}

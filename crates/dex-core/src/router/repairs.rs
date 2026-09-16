@@ -175,6 +175,11 @@ fn context_repair(err: &ContextError) -> (ErrorCode, String) {
             ErrorCode::NotInPane,
             "Run this inside a Dex pane, or pass --workspace <name-or-id>.".to_owned(),
         ),
+        ContextError::NoSuchEvent(_) => (
+            ErrorCode::InvalidArgs,
+            "The activity pane shows each event's number; it may already have been removed."
+                .to_owned(),
+        ),
         ContextError::Target(err) => return workspace_repair(err),
         ContextError::Db(_) => (ErrorCode::Internal, REPAIR_BUG.to_owned()),
     };

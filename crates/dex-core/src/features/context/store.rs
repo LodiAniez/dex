@@ -270,3 +270,36 @@ pub fn advance_cursor(
 pub fn revision(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row("SELECT total_changes()", [], |row| row.get(0))
 }
+
+/// Removes one event. Returns whether there was one to remove.
+pub fn delete_event(conn: &Connection, workspace_id: &str, seq: i64) -> rusqlite::Result<bool> {
+    let n = conn.execute(
+        "DELETE FROM context_event WHERE workspace_id = ?1 AND seq = ?2",
+        params![workspace_id, seq],
+    )?;
+    Ok(n > 0)
+}
+
+/// Removes every event caused by any of `agents`. Returns how many went.
+pub fn delete_events_by(
+    conn: &Connection,
+    workspace_id: &str,
+    agents: &[String],
+) -> rusqlite::Result<usize> {
+    let mut removed = 0;
+    for agent in agents {
+        removed += conn.execute(
+            "DELETE FROM context_event WHERE workspace_id = ?1 AND agent_id = ?2",
+            params![workspace_id, agent],
+        )?;
+    }
+    Ok(removed)
+}
+
+/// Removes a workspace's whole log. Returns how many events went.
+pub fn delete_all_events(conn: &Connection, workspace_id: &str) -> rusqlite::Result<usize> {
+    conn.execute(
+        "DELETE FROM context_event WHERE workspace_id = ?1",
+        [workspace_id],
+    )
+}

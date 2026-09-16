@@ -96,6 +96,8 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "context.message_send" => encode(context::message_send(state, args(req)?).await?),
         "context.inbox" => encode(context::inbox(state, args(req)?).await?),
         "context.events" => encode(context::events(state, args(req)?).await?),
+        "context.delete_event" => encode(context::delete_event(state, args(req)?).await?),
+        "context.clear_events" => encode(context::clear_events(state, args(req)?).await?),
         "context.digest" => encode(context::digest(state, args(req)?).await?),
         "agent.event" => encode(agent::event(state, args(req)?).await?),
         "agent.list" => encode(agent::list(state, args(req)?).await?),

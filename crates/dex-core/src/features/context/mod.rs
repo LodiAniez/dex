@@ -17,5 +17,7 @@ mod tests;
 
 pub use commands::{list, read, search, write};
 pub use digest_commands::digest;
-pub use log_commands::{events, inbox, message_send, note, record_event, record_status};
+pub use log_commands::{
+    clear_events, delete_event, events, inbox, message_send, note, record_event, record_status,
+};
 pub use model::ContextError;

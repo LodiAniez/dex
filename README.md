@@ -78,7 +78,7 @@ dex doctor            # the table above
 
 - a **terminal** (the default) — a shell in the pane's folder;
 - an **agent** — just a terminal where you ran `claude`; Dex notices;
-- **activity** — the workspace's live event stream (the `activity` button, top right);
+- **activity** — the workspace's live event stream (the `activity` button, top right). Hover an event for **×** to remove it; **clear ended** removes everything agents that have since ended did, **clear all** empties the log. From a terminal: `dex context delete <seq>`, `dex context clear [--all]`;
 - **diff** — a repository's uncommitted changes, unstaged or staged, following the working tree as it changes (**Show git diff** in the palette);
 - **markdown** — a rendered file that updates as it's written, for agents' notes and plans (`dex pane create --kind markdown --path notes.md`).
 

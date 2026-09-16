@@ -103,6 +103,9 @@ pub enum ContextError {
     /// `message_send` to an agent that does not exist.
     #[error("no agent matches {0:?}")]
     NoSuchAgent(String),
+    /// `context.delete_event` on a seq the workspace's log does not have.
+    #[error("no event {0} in this workspace")]
+    NoSuchEvent(i64),
     /// The caller is not in a pane and named no workspace.
     #[error("this command needs a workspace: it is not running inside a Dex pane")]
     NoWorkspace,

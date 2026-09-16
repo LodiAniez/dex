@@ -76,6 +76,18 @@ pub fn whereabouts(conn: &Connection, agent_id: &str) -> rusqlite::Result<Option
     }))
 }
 
+/// For other slices: the ids of a workspace's agents that have ended.
+pub fn ended_in_workspace(conn: &Connection, workspace_id: &str) -> rusqlite::Result<Vec<String>> {
+    Ok(store::list_agents(conn, true)?
+        .into_iter()
+        .filter(|agent| {
+            agent.workspace_id == workspace_id
+                && agent.status == dex_protocol::agent::AgentStatus::Dead
+        })
+        .map(|agent| agent.id)
+        .collect())
+}
+
 /// For other slices: the id of the agent a target names, or `None`.
 pub fn resolve_agent(conn: &Connection, target: &str) -> rusqlite::Result<Option<String>> {
     Ok(find_target(conn, target)?.ok().map(|agent| agent.id))

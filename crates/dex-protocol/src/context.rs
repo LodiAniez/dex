@@ -266,3 +266,39 @@ pub struct SearchResults {
     /// Hits, best match first.
     pub hits: Vec<SearchHit>,
 }
+
+/// Args for `context.delete_event`: one event out of the workspace log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeleteEventArgs {
+    /// The event's `seq`.
+    pub seq: i64,
+    #[serde(flatten)]
+    pub caller: Caller,
+}
+
+/// What `context.clear_events` removes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ClearScope {
+    /// Events from agents that have ended. Live agents' and the human's stay.
+    Ended,
+    /// Every event in the workspace.
+    All,
+}
+
+/// Args for `context.clear_events`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClearEventsArgs {
+    pub scope: ClearScope,
+    #[serde(flatten)]
+    pub caller: Caller,
+}
+
+/// Result of `context.delete_event` and `context.clear_events`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct Cleared {
+    /// How many events were removed.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub removed: u64,
+}

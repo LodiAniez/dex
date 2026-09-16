@@ -1,6 +1,8 @@
+import { ask } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useState } from "react";
 import type { EventView } from "../../platform/generated/EventView";
-import { useActivity, watchActivity } from "./activityStore";
+import { showError } from "../../platform/notices";
+import { clearEvents, deleteEvent, useActivity, watchActivity } from "./activityStore";
 
 /**
  * The workspace's live event stream (docs/prd.md §10.4): what every agent here
@@ -23,19 +25,48 @@ export function ActivityPane({ workspaceId }: { workspaceId: string }) {
   const active = author && authors.includes(author) ? author : null;
   const events = (log?.events ?? []).filter((event) => !active || (event.author ?? HUMAN) === active);
 
+  /** Clears after a confirmation: this removes what other people can see too. */
+  const clear = async (scope: "ended" | "all") => {
+    const question =
+      scope === "all"
+        ? "Remove every event in this workspace's activity?"
+        : "Remove the activity of agents that have ended? What live agents and you have done stays.";
+    if (!(await ask(question, { title: "Clear activity", kind: "warning" }))) return;
+    try {
+      await clearEvents(workspaceId, scope);
+    } catch (err) {
+      showError(err);
+    }
+  };
+
+  const hasEvents = (log?.events.length ?? 0) > 0;
   return (
     <div className="activity">
-      {authors.length > 1 && (
+      {(authors.length > 1 || hasEvents) && (
         <div className="activity-filters">
-          <FilterChip label="everyone" on={!active} onClick={() => setAuthor(null)} />
-          {authors.map((name) => (
-            <FilterChip key={name} label={name} on={active === name} onClick={() => setAuthor(name)} />
-          ))}
+          {authors.length > 1 && (
+            <>
+              <FilterChip label="everyone" on={!active} onClick={() => setAuthor(null)} />
+              {authors.map((name) => (
+                <FilterChip key={name} label={name} on={active === name} onClick={() => setAuthor(name)} />
+              ))}
+            </>
+          )}
+          {hasEvents && (
+            <span className="activity-clear">
+              <button type="button" className="activity-chip" title="Remove events from agents that have ended" onClick={() => void clear("ended")}>
+                clear ended
+              </button>
+              <button type="button" className="activity-chip" title="Remove every event" onClick={() => void clear("all")}>
+                clear all
+              </button>
+            </span>
+          )}
         </div>
       )}
       <ol className="activity-list">
         {events.map((event) => (
-          <Line key={event.seq} event={event} />
+          <Line key={event.seq} event={event} onDelete={() => void deleteEvent(workspaceId, event.seq).catch(showError)} />
         ))}
       </ol>
       {log && events.length === 0 && (
@@ -58,7 +89,7 @@ function FilterChip({ label, on, onClick }: { label: string; on: boolean; onClic
   );
 }
 
-function Line({ event }: { event: EventView }) {
+function Line({ event, onDelete }: { event: EventView; onDelete: () => void }) {
   return (
     <li className="activity-line">
       <time className="activity-time" dateTime={new Date(event.created_at).toISOString()}>
@@ -67,6 +98,10 @@ function Line({ event }: { event: EventView }) {
       <span className={`activity-kind kind-${event.kind}`}>{event.kind}</span>
       <span className="activity-author">{event.author ?? HUMAN}</span>
       <span className="activity-body">{event.body}</span>
+      {/* One event is cheap to remove and cheap to have removed by mistake, so no confirmation. */}
+      <button type="button" className="activity-delete" title={`Remove event ${event.seq}`} aria-label="Remove event" onClick={onDelete}>
+        ×
+      </button>
     </li>
   );
 }

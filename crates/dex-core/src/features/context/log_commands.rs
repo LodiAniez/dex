@@ -4,7 +4,8 @@
 
 use dex_protocol::agent::AgentStatus;
 use dex_protocol::context::{
-    Appended, EventList, EventView, Inbox, Message, MessageArgs, NoteArgs, ScopeArgs,
+    Appended, ClearEventsArgs, ClearScope, Cleared, DeleteEventArgs, EventList, EventView, Inbox,
+    Message, MessageArgs, NoteArgs, ScopeArgs,
 };
 use dex_protocol::pane::SendArgs;
 
@@ -179,6 +180,66 @@ pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Appende
         }
     }
     Ok(appended)
+}
+
+/// `context.delete_event`: removes one event from the workspace log.
+///
+/// The log is a record for the human watching, not an audit trail; an event
+/// that is noise to them is theirs to remove. Digest cursors are sequence
+/// numbers, so a gap in the sequence costs nothing.
+pub async fn delete_event(
+    state: &AppState,
+    args: DeleteEventArgs,
+) -> Result<Cleared, ContextError> {
+    state
+        .db
+        .call(
+            move |conn| -> rusqlite::Result<Result<Cleared, ContextError>> {
+                let scope = match scope(conn, &args.caller)? {
+                    Ok(scope) => scope,
+                    Err(err) => return Ok(Err(err)),
+                };
+                if !store::delete_event(conn, &scope.workspace_id, args.seq)? {
+                    return Ok(Err(ContextError::NoSuchEvent(args.seq)));
+                }
+                Ok(Ok(Cleared { removed: 1 }))
+            },
+        )
+        .await?
+}
+
+/// `context.clear_events`: removes the events of agents that have ended, or
+/// every event in the workspace.
+///
+/// "Ended" is decided by the agent slice, not by a join here: which agents
+/// are dead is its knowledge. The human's own events (no agent) and live
+/// agents' events survive an `ended` clear, so what is still happening stays
+/// visible while what is over goes.
+pub async fn clear_events(
+    state: &AppState,
+    args: ClearEventsArgs,
+) -> Result<Cleared, ContextError> {
+    state
+        .db
+        .call(
+            move |conn| -> rusqlite::Result<Result<Cleared, ContextError>> {
+                let scope = match scope(conn, &args.caller)? {
+                    Ok(scope) => scope,
+                    Err(err) => return Ok(Err(err)),
+                };
+                let removed = match args.scope {
+                    ClearScope::All => store::delete_all_events(conn, &scope.workspace_id)?,
+                    ClearScope::Ended => {
+                        let ended = agent::ended_in_workspace(conn, &scope.workspace_id)?;
+                        store::delete_events_by(conn, &scope.workspace_id, &ended)?
+                    }
+                };
+                Ok(Ok(Cleared {
+                    removed: removed as u64,
+                }))
+            },
+        )
+        .await?
 }
 
 /// `context.inbox`: unread directed messages, which reading marks read.

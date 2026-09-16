@@ -58,6 +58,17 @@ pub enum ContextCommand {
     },
     /// Read and clear this pane's unread messages.
     Inbox,
+    /// Remove one event from the workspace's activity log.
+    Delete {
+        /// The event's number, as the activity pane shows it.
+        seq: i64,
+    },
+    /// Remove the activity of agents that have ended; with --all, everything.
+    Clear {
+        /// Remove every event, not only those of ended agents.
+        #[arg(long)]
+        all: bool,
+    },
     /// Full-text search over this workspace's entries.
     Search {
         /// What to look for.
@@ -151,6 +162,34 @@ pub fn run(
             )?;
             if format.json {
                 output::json(&appended);
+            }
+        }
+        ContextCommand::Delete { seq } => {
+            let cleared: dex_protocol::context::Cleared = client.call(
+                "context.delete_event",
+                with(json!({ "seq": seq }), &workspace),
+            )?;
+            if format.json {
+                output::json(&cleared);
+            } else {
+                println!("Removed event {seq}.");
+            }
+        }
+        ContextCommand::Clear { all } => {
+            let scope = if all { "all" } else { "ended" };
+            let cleared: dex_protocol::context::Cleared = client.call(
+                "context.clear_events",
+                with(json!({ "scope": scope }), &workspace),
+            )?;
+            if format.json {
+                output::json(&cleared);
+            } else if all {
+                println!("Removed {} events.", cleared.removed);
+            } else {
+                println!(
+                    "Removed {} events from agents that have ended.",
+                    cleared.removed
+                );
             }
         }
         ContextCommand::Inbox => {
