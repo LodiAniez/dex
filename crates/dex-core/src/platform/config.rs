@@ -63,17 +63,18 @@ pub struct Config {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct UiSettings {
-    /// What an office pane shows first: `cards` or `office` (the floor map).
-    pub office_view: String,
+    /// How a workspace is shown until the owner chooses: `terminal` (the panes),
+    /// `cards` (its agents as cards) or `office` (its agents on a floor plan).
+    pub view: String,
 }
 
-/// The views an office pane has.
-const OFFICE_VIEWS: [&str; 2] = ["cards", "office"];
+/// The ways of looking at a workspace.
+const VIEWS: [&str; 3] = ["terminal", "cards", "office"];
 
 impl Default for UiSettings {
     fn default() -> Self {
         Self {
-            office_view: "cards".into(),
+            view: "terminal".into(),
         }
     }
 }
@@ -238,12 +239,12 @@ impl Config {
             ));
             self.digest = defaults.digest;
         }
-        if !OFFICE_VIEWS.contains(&self.ui.office_view.as_str()) {
+        if !VIEWS.contains(&self.ui.view.as_str()) {
             problems.push(format!(
-                "ui.office_view \"{}\" is not one of {}; using \"{}\"",
-                self.ui.office_view,
-                OFFICE_VIEWS.join(", "),
-                defaults.ui.office_view
+                "ui.view \"{}\" is not one of {}; using \"{}\"",
+                self.ui.view,
+                VIEWS.join(", "),
+                defaults.ui.view
             ));
             self.ui = defaults.ui;
         }

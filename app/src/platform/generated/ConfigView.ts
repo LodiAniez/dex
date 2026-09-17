@@ -22,9 +22,10 @@ keys: { [key in string]: string },
  */
 max_concurrent: number, 
 /**
- * What an office pane shows until the owner chooses: `cards` or `office`.
+ * How a workspace is shown until the owner chooses: `terminal`, `cards` or
+ * `office`.
  */
-office_view: string, 
+view: string, 
 /**
  * What Dex could not use, and what it used instead. Empty when the file is
  * good, or absent.

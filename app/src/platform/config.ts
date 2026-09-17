@@ -21,7 +21,7 @@ const listeners = new Set<() => void>();
 export interface OfficeSettings {
   /** How many agents a workspace may have: the office's seats. */
   maxConcurrent: number;
-  /** `[ui] office_view`: what the office shows until the owner chooses. */
+  /** `[ui] view`: how a workspace is shown until the owner chooses. */
   officeView: string;
 }
 let office: OfficeSettings | null = null;
@@ -46,8 +46,8 @@ async function refresh(): Promise<void> {
   const view = await request<ConfigView>("config.get", {});
   const built = buildKeymap(view.keys);
   keymap = built.keymap;
-  if (office?.maxConcurrent !== view.max_concurrent || office.officeView !== view.office_view) {
-    office = { maxConcurrent: view.max_concurrent, officeView: view.office_view };
+  if (office?.maxConcurrent !== view.max_concurrent || office.officeView !== view.view) {
+    office = { maxConcurrent: view.max_concurrent, officeView: view.view };
   }
   for (const listener of listeners) listener();
   // The daemon reports what it could not use; this reports what the UI could

@@ -34,7 +34,7 @@ fn view(state: &AppState, problems: Vec<String>) -> Result<ConfigView, Diagnosti
         path: crate::platform::paths::normalize(&path),
         keys: settings.keys.clone(),
         max_concurrent: settings.agents.max_concurrent,
-        office_view: settings.ui.office_view.clone(),
+        view: settings.ui.view.clone(),
         problems,
         effective,
     })
