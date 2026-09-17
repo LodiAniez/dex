@@ -170,6 +170,12 @@ pub struct StopAgentArgs {
     /// made for a spawned agent is closed.
     #[serde(default)]
     pub close_pane: bool,
+    /// The pane the request came from, when it came from one (`DEX_PANE_ID`).
+    /// If an agent is running there, it is the one asking, and an agent may
+    /// stop only itself and the agents it spawned. The owner - the office, or
+    /// a pane with no agent in it - may stop anyone.
+    #[serde(default)]
+    pub from_pane: Option<String>,
 }
 
 /// Args for `agent.prompt`: type the owner's turn into an agent's terminal.

@@ -303,6 +303,7 @@ fn stop_args(target: &str) -> StopAgentArgs {
         agent: target.into(),
         graceful: false,
         close_pane: false,
+        from_pane: None,
     }
 }
 

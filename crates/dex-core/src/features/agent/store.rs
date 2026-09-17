@@ -251,6 +251,32 @@ pub fn revision(conn: &Connection) -> rusqlite::Result<i64> {
 
 /// Whether Claude Code has started in this agent's pane: `SessionStart` set a
 /// session id. A spawned row has none until then.
+/// Whether `agent_id` was spawned by `ancestor_id`, directly or through its
+/// own spawns. Walks up the parents; the depth limit keeps that short, and the
+/// bound keeps a corrupt cycle from walking for ever.
+pub fn descends_from(
+    conn: &Connection,
+    agent_id: &str,
+    ancestor_id: &str,
+) -> rusqlite::Result<bool> {
+    let mut current = agent_id.to_owned();
+    for _ in 0..32 {
+        let parent: Option<Option<String>> = conn
+            .query_row(
+                "SELECT parent_id FROM agent WHERE id = ?1",
+                [&current],
+                |row| row.get(0),
+            )
+            .optional()?;
+        match parent.flatten() {
+            Some(parent) if parent == ancestor_id => return Ok(true),
+            Some(parent) => current = parent,
+            None => return Ok(false),
+        }
+    }
+    Ok(false)
+}
+
 pub fn has_session(conn: &Connection, agent_id: &str) -> rusqlite::Result<bool> {
     let started: Option<bool> = conn
         .query_row(

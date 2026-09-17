@@ -140,6 +140,8 @@ asked to stop, kill or dismiss agents you spawned, or when one is finished and
 its seat is wanted - not to change its task, which is what `message_send` is
 for. Its notes and its branch stay. It only closes panes Dex created: an agent
 the owner started in a pane of their own is ended and the pane left alone.
+You can stop yourself and the agents you spawned, and nobody else's: Dex
+refuses the rest. If another agent's child should end, tell that agent.
 
 Everything else is an MCP tool: `note_append`, `context_read`, `context_write`,
 `context_search`, `context_list`, `agents_list`, `message_send`,

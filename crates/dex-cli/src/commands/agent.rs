@@ -118,7 +118,12 @@ pub fn run(
         } => {
             let stopped: Stopped = client::connect()?.call(
                 "agent.stop",
-                json!({ "agent": target, "graceful": graceful, "close_pane": close_pane }),
+                json!({
+                    "agent": target,
+                    "graceful": graceful,
+                    "close_pane": close_pane,
+                    "from_pane": std::env::var("DEX_PANE_ID").ok().filter(|id| !id.is_empty()),
+                }),
             )?;
             if format.json {
                 output::json(&stopped);
