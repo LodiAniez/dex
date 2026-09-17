@@ -13,11 +13,13 @@ interface Props {
   onGoToPane: (paneId: string) => void;
   /** Opens someone's panel, from the Details button on their card. */
   onDetails: (employee: Employee) => void;
+  /** Opens someone's output large, from the Expand control on their screen. */
+  onExpand: (employee: Employee) => void;
   onHire: () => void;
 }
 
 /** The office as a grid of cards, one per pod, with HR's column beside it. */
-export function CardsFloor({ office, seats, hrNote, screens, cardLines, onGoToPane, onDetails, onHire }: Props) {
+export function CardsFloor({ office, seats, hrNote, screens, cardLines, onGoToPane, onDetails, onExpand, onHire }: Props) {
   return (
     <div className="office-cards">
       <aside className="office-hr">
@@ -45,6 +47,7 @@ export function CardsFloor({ office, seats, hrNote, screens, cardLines, onGoToPa
               screen={(screens.get(employee.agent.id) ?? []).slice(-cardLines)}
               onGoToPane={onGoToPane}
               onDetails={onDetails}
+              onExpand={onExpand}
             />
           ) : (
             // Keyed by pod: a vacancy is a place, not a person.
