@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isMinimized, newest, storedAs, unseen, unseenLabel } from "./chatBox";
+import { caughtUp, isMinimized, newest, storedAs, unseen, unseenLabel } from "./chatBox";
 
 const line = (seq: number) => ({ seq });
 
@@ -31,6 +31,22 @@ describe("unseen", () => {
 
   it("counts nothing for a box minimized in an earlier session: nobody knows what was seen", () => {
     expect(unseen([line(4), line(7)], null)).toBe(0);
+  });
+});
+
+describe("caughtUp", () => {
+  it("takes what is there when a minimized box is first shown as seen, so that what comes after is counted", () => {
+    const seen = caughtUp(null, [line(4), line(7)]);
+    expect(seen).toBe(7);
+    expect(unseen([line(4), line(7), line(9)], seen)).toBe(1);
+  });
+
+  it("waits for the first line in a silent office", () => {
+    expect(caughtUp(null, [])).toBeNull();
+  });
+
+  it("leaves alone what is already known", () => {
+    expect(caughtUp(4, [line(4), line(7)])).toBe(4);
   });
 });
 
