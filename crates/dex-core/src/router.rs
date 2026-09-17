@@ -198,6 +198,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_refused_pane_kind_is_told_every_kind_there_is() {
+        let (_dir, state) = AppState::for_tests();
+        let created = dispatch(&state, request("workspace.create", json!({}))).await;
+        let pane = created.data.unwrap()["workspaces"][0]["panes"][0]["id"].clone();
+        let refused = dispatch(
+            &state,
+            request(
+                "pane.split",
+                json!({"pane": pane, "direction": "right", "kind": "hologram"}),
+            ),
+        )
+        .await;
+        let error = refused.error.unwrap();
+        assert_eq!(error.code, ErrorCode::InvalidArgs);
+        for kind in ["terminal", "activity", "diff", "markdown", "office"] {
+            assert!(
+                error.repair.contains(&format!("`{kind}`")),
+                "{kind} is missing from: {}",
+                error.repair
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn pane_commands_are_routed() {
         let (_dir, state) = AppState::for_tests();
         let created = dispatch(&state, request("workspace.create", json!({}))).await;

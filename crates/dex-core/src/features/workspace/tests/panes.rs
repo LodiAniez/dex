@@ -211,6 +211,30 @@ async fn set_layout_clamps_ratios_and_rejects_trees_with_other_panes() {
 }
 
 #[tokio::test]
+async fn a_pane_can_be_created_as_the_office() {
+    let (_dir, state) = AppState::for_tests();
+    let (_, first) = one_workspace(&state).await;
+
+    let list = split_pane(
+        &state,
+        SplitPaneArgs {
+            // Typed by a human, so case is forgiven and the stored kind is not.
+            kind: Some("Office".into()),
+            ..split_args(&first, SplitDirection::Right)
+        },
+    )
+    .await
+    .unwrap();
+
+    let kinds: Vec<&str> = list.workspaces[0]
+        .panes
+        .iter()
+        .map(|pane| pane.kind.as_str())
+        .collect();
+    assert_eq!(kinds, ["terminal", "office"]);
+}
+
+#[tokio::test]
 async fn a_pane_can_be_created_as_an_activity_stream_and_nothing_else() {
     let (_dir, state) = AppState::for_tests();
     let (_, first) = one_workspace(&state).await;

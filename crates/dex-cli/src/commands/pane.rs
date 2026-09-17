@@ -56,8 +56,8 @@ pub enum PaneCommand {
         #[arg(long)]
         workspace: Option<String>,
         /// `terminal` (default), `activity` (the workspace's event stream),
-        /// `diff` (the changes in --path's repository), or `markdown` (the
-        /// file at --path, rendered).
+        /// `office` (the agents as a team), `diff` (the changes in --path's
+        /// repository), or `markdown` (the file at --path, rendered).
         #[arg(long)]
         kind: Option<String>,
     },
@@ -72,8 +72,8 @@ pub enum PaneCommand {
         #[arg(long)]
         label: Option<String>,
         /// `terminal` (default), `activity` (the workspace's event stream),
-        /// `diff` (the changes in --path's repository), or `markdown` (the
-        /// file at --path, rendered).
+        /// `office` (the agents as a team), `diff` (the changes in --path's
+        /// repository), or `markdown` (the file at --path, rendered).
         #[arg(long)]
         kind: Option<String>,
     },
