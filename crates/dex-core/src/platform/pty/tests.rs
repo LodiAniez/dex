@@ -261,3 +261,52 @@ fn throughput_type_50mb_file() {
         elapsed.as_secs_f64()
     );
 }
+
+#[test]
+fn a_pane_does_not_inherit_the_identity_of_a_claude_session_dex_was_started_from() {
+    // Dex started from a terminal inside Claude Code inherits that session's
+    // variables, and every `claude` in a pane then believes it is its child:
+    // transcripts off, and messages routed to a socket that is not its own.
+    let mut cmd = portable_pty::CommandBuilder::new("cmd.exe");
+    for name in [
+        "CLAUDECODE",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLAUDE_PID",
+    ] {
+        cmd.env(name, "inherited");
+    }
+    // The owner's own settings for Claude Code are theirs, and must get through.
+    cmd.env("CLAUDE_CONFIG_DIR", "D:/claude");
+    cmd.env("ANTHROPIC_MODEL", "opus");
+
+    super::forget_claude_session(&mut cmd);
+
+    for name in [
+        "CLAUDECODE",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLAUDE_PID",
+    ] {
+        assert!(cmd.get_env(name).is_none(), "{name} reached the pane");
+    }
+    assert!(cmd.get_env("CLAUDE_CONFIG_DIR").is_some());
+    assert!(cmd.get_env("ANTHROPIC_MODEL").is_some());
+}
+
+#[test]
+fn what_dex_sets_for_a_pane_is_set_after_the_forgetting() {
+    let request = SpawnRequest {
+        env: vec![("CLAUDE_CODE_SESSION_ID".into(), "asked-for".into())],
+        ..cmd("forget-order", "exit 0")
+    };
+    let built = super::command(&request);
+    assert!(
+        built.get_env("CLAUDE_CODE_SESSION_ID").is_some(),
+        "a caller that sets one on purpose is obeyed"
+    );
+}
