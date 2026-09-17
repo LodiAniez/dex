@@ -272,6 +272,64 @@
   border-radius: 14px;
 }
 
+.office-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Minimized: a button in the box's own corner. */
+.office-chat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 8px 0 14px;
+  background: rgba(17, 20, 28, 0.92);
+  border: 0;
+  border-radius: 17px;
+  cursor: pointer;
+}
+
+.office-chat-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--office-dim);
+  font-size: 13px;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+button.office-chat-toggle { cursor: pointer; }
+
+button.office-chat-toggle:hover,
+.office-chat-pill:hover .office-chat-toggle {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.office-chat-pill:focus-visible,
+button.office-chat-toggle:focus-visible {
+  outline: 2px solid #9db9f2;
+  outline-offset: 2px;
+}
+
+.office-chat-badge {
+  min-width: 18px;
+  padding: 1px 6px;
+  color: #11141c;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  background: #9fe1cb;
+  border-radius: 9px;
+}
+
 .office-chat-title {
   color: var(--office-faint);
   font-size: 11px;

@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { isLoafing } from "./antics";
 import type { Headcount } from "./floor";
+import { ActivityBox } from "./ActivityBox";
 import { Horn } from "./Announce";
 import { IdleActor, type Loafing } from "./IdleActor";
 import { MapBackdrop } from "./MapBackdrop";
@@ -101,19 +102,7 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
             <span>Announce</span>
           </button>
         </foreignObject>
-        {chat.length > 0 && (
-          // Under the break room, not over it: people drink their coffee in there.
-          <foreignObject x="26" y={height - 166} width="360" height="112">
-            <div className="office-chat">
-              <span className="office-chat-title">Activity</span>
-              {chat.map((line) => (
-                <span key={line.seq} className={`office-chat-line ${line.tone}`}>
-                  <span className="who">{line.who}</span> {line.text}
-                </span>
-              ))}
-            </div>
-          </foreignObject>
-        )}
+        <ActivityBox chat={chat} mapHeight={height} />
         {!still &&
           office.employees
             .filter((employee) => !onTheirWay.has(employee.agent.id))

@@ -19,6 +19,7 @@ import { MapFloor } from "./MapFloor";
 import { OutputModal } from "./OutputModal";
 import { useOffice, useScreens, type Employee } from "./officeStore";
 import { knownAs } from "./persona";
+import { CHAT_LINES } from "./ActivityBox";
 import { chatLines } from "./phrasing";
 import { PANEL_SCREEN_LINES, WorkPanel } from "./WorkPanel";
 
@@ -33,8 +34,6 @@ interface Props {
 const DEFAULT_SEATS = 10;
 /** Lines of an agent's screen a card asks for: the card is their screen, and shows as many as fit. */
 const CARD_LINES = 30;
-/** Lines of chat the map has room for. */
-const CHAT_LINES = 3;
 
 /**
  * The workspace's agents as a team in an office: who is here, what each was
