@@ -168,6 +168,10 @@ pub struct Stopped {
     /// The pane Ctrl+C was pressed in; `None` when the agent's pane was
     /// already gone and stopping meant only marking it ended.
     pub pane: Option<String>,
+    /// Whether that pane was closed as well: true for an agent Dex spawned,
+    /// whose pane Dex made; false for one the owner started in a pane of theirs.
+    #[serde(default)]
+    pub closed_pane: bool,
 }
 
 /// Args for `agent.pane_exited`: a pane's process exited.

@@ -9,13 +9,15 @@ mod identity;
 mod logic;
 mod model;
 mod spawn;
+mod stop;
 mod store;
 #[cfg(test)]
 mod tests;
 
-pub use commands::{event, list, pane_exited, stop, sweep};
+pub use commands::{event, list, pane_exited, sweep};
 pub use identity::{
     Whereabouts, brief_of, ended_in_workspace, label_of, resolve_agent, siblings, whereabouts,
 };
 pub use model::AgentError;
 pub use spawn::spawn;
+pub use stop::stop;

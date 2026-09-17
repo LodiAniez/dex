@@ -213,6 +213,8 @@ Guardrails are in Dex, not in prose an agent might skip: **depth 2** (a child ma
 
 Each child is a full Claude Code session under your account, so ten agents spend roughly ten times what one does. The limits exist for your usage as much as for your machine; lower `max_concurrent` in the config if you want a tighter cap.
 
+`dex agent stop <label>` ends an agent. If Dex spawned it, its pane is closed with it — Dex made that pane — so a lead told to dismiss its agents does not leave a row of empty shells. An agent you started by typing `claude` keeps its pane: that one is yours.
+
 The judgment side — when spawning helps and when it just costs a cold start, how to write a brief, what to do while waiting — is the `dex-agentic` skill (`skills/dex-agentic/SKILL.md`), which `dex skill install` puts where Claude Code finds it. Agents load it when a task looks splittable.
 
 ## The `dex` command

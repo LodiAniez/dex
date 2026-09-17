@@ -15,6 +15,7 @@ use crate::features::workspace::{self, WorkspaceError};
 mod launch;
 mod orphans;
 mod spawn;
+mod stopping;
 
 /// A state with one workspace; returns its first pane's id.
 async fn pane() -> (tempfile::TempDir, AppState, String) {
@@ -308,14 +309,16 @@ async fn stop_finds_the_agent_by_its_id_or_its_pane() {
     fire(&state, "prompt", &pane, 1, session("s1")).await;
     let id = only_agent(&state).await.id;
 
-    // Test panes have no shell, so reaching the key press proves the target resolved.
-    for target in [id.as_str(), pane.as_str()] {
-        let result = stop(&state, stop_args(target)).await;
-        assert!(
-            matches!(result, Err(AgentError::Target(WorkspaceError::PaneNotStarted(ref p))) if p == &pane),
-            "{target}: {result:?}"
-        );
-    }
+    // Test panes have no shell, so there is nothing to interrupt; stopping is
+    // then ending the row, which proves the target resolved. A second stop,
+    // by the other name, finds the same agent already ended.
+    let stopped = stop(&state, stop_args(&pane)).await.unwrap();
+    assert_eq!(stopped.agent, id);
+    let again = stop(&state, stop_args(&id)).await;
+    assert!(
+        matches!(again, Err(AgentError::NotRunning(ref ended)) if ended == &id),
+        "{again:?}"
+    );
 }
 
 #[tokio::test]

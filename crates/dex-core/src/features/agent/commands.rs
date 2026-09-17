@@ -1,16 +1,12 @@
 //! One handler per `agent.*` command: hook events, the list, pane exits, and
 //! the watchdog sweep (docs/prd.md §9.1–9.2).
 
-use std::time::Duration;
-
 use dex_protocol::agent::{
-    AgentEventArgs, AgentList, AgentStatus, AgentView, EventOutcome, ListAgentsArgs,
-    PaneExitedArgs, StopAgentArgs, Stopped,
+    AgentEventArgs, AgentList, AgentStatus, AgentView, EventOutcome, ListAgentsArgs, PaneExitedArgs,
 };
-use dex_protocol::pane::{Key, SendKeyArgs};
 use rusqlite::Connection;
 
-use super::identity::{self, find_target};
+use super::identity;
 use super::logic::{self, HookInput, HookKind, SessionStart};
 use super::model::{Agent, AgentError};
 use super::store;
@@ -20,11 +16,6 @@ use crate::platform::{clock, ids};
 
 /// A running agent with no hook event and no output for this long is `unknown`.
 const WATCHDOG_MS: i64 = 120_000;
-
-/// `agent.stop` presses Ctrl+C this many times, this far apart: Claude Code
-/// quits on a second press shortly after the first.
-const STOP_PRESSES: usize = 3;
-const STOP_GAP: Duration = Duration::from_millis(300);
 
 const APPLIED: EventOutcome = EventOutcome { applied: true };
 const IGNORED: EventOutcome = EventOutcome { applied: false };
@@ -268,62 +259,6 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
             },
         )
         .await?
-}
-
-/// `agent.stop`: ends an agent by pressing Ctrl+C in its pane: the first press
-/// interrupts a running turn, the next two quit Claude Code. A press left over
-/// lands at the shell prompt, where it is harmless.
-///
-/// Claude Code killed this way does not get to run its `SessionEnd` hook
-/// (verified against 2.1.273), so waiting for one would leave the agent showing
-/// `running` until the watchdog noticed two minutes later. The row is ended here
-/// instead; if Claude survived the interrupt, its next hook revives it
-/// (`logic::revived`).
-pub async fn stop(state: &AppState, args: StopAgentArgs) -> Result<Stopped, AgentError> {
-    let target = args.agent;
-    let agent = state
-        .db
-        .call(move |conn| find_target(conn, &target))
-        .await??;
-    if agent.status == AgentStatus::Dead {
-        return Err(AgentError::NotRunning(agent.id));
-    }
-    let Some(pane) = agent.pane_id else {
-        // Its pane is gone, so there is nothing to press Ctrl+C in — but the
-        // row still says it is alive, and until this it counted toward the
-        // spawn limit while `stop` refused to touch it. Ending it is the
-        // whole of what stopping can mean here.
-        let now = clock::now_millis();
-        let id = agent.id.clone();
-        state
-            .db
-            .call(move |conn| store::end_agent(conn, &id, now))
-            .await?;
-        return Ok(Stopped {
-            agent: agent.id,
-            pane: None,
-        });
-    };
-    for press in 0..STOP_PRESSES {
-        if press > 0 {
-            tokio::time::sleep(STOP_GAP).await;
-        }
-        let key = SendKeyArgs {
-            pane: pane.clone(),
-            key: Key::CtrlC,
-        };
-        workspace::send_key(state, key).await?;
-    }
-    let now = clock::now_millis();
-    let id = agent.id.clone();
-    state
-        .db
-        .call(move |conn| store::end_agent(conn, &id, now))
-        .await?;
-    Ok(Stopped {
-        agent: agent.id,
-        pane: Some(pane),
-    })
 }
 
 /// `agent.pane_exited`: a pane's process exited, so whatever agent ran in it

@@ -129,6 +129,18 @@ dex agent spawn --task "<the brief>" --repo <name> --worktree <branch> --label <
 The brief can be as long as it needs to be; it reaches the child through the
 shared context, not through a command line.
 
+So is ending one, because it removes a pane:
+
+```
+dex agent stop <label-or-id>
+```
+
+That ends the agent and closes the pane Dex made for it. Do it when you are
+asked to stop, kill or dismiss agents you spawned, or when one is finished and
+its seat is wanted - not to change its task, which is what `message_send` is
+for. Its notes and its branch stay. It only closes panes Dex created: an agent
+the owner started in a pane of their own is ended and the pane left alone.
+
 Everything else is an MCP tool: `note_append`, `context_read`, `context_write`,
 `context_search`, `context_list`, `agents_list`, `message_send`,
 `message_inbox`. They are only available inside a Dex pane.

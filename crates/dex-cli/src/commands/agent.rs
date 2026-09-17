@@ -30,7 +30,8 @@ pub enum AgentCommand {
         #[arg(long)]
         all: bool,
     },
-    /// Stop an agent: presses Ctrl+C in its pane until Claude Code exits.
+    /// Stop an agent: presses Ctrl+C in its pane until Claude Code exits, and
+    /// closes the pane if Dex made it for a spawned agent.
     Stop {
         /// Agent id, or the label or id of its pane.
         target: String,
@@ -110,6 +111,9 @@ pub fn run(
                 output::json(&stopped);
             } else {
                 println!("{}", stopped.agent);
+                if stopped.closed_pane {
+                    eprintln!("closed its pane");
+                }
             }
         }
     }
