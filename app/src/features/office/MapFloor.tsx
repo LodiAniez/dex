@@ -1,4 +1,5 @@
 import type { Headcount } from "./floor";
+import { Horn } from "./Announce";
 import { MapBackdrop } from "./MapBackdrop";
 import { MAP_WIDTH, mapHeight } from "./mapGeometry";
 import type { Employee, Office } from "./officeStore";
@@ -19,6 +20,7 @@ interface Props {
   chat: readonly ChatLine[];
   onPick: (employee: Employee) => void;
   onHire: () => void;
+  onAnnounce: () => void;
 }
 
 /**
@@ -26,7 +28,7 @@ interface Props {
  * pane: everything on it — name tags and HR's button included — is inside, so
  * nothing drifts off its desk when the pane is resized.
  */
-export function MapFloor({ workspaceId, office, seats, hrNote, chat, onPick, onHire }: Props) {
+export function MapFloor({ workspaceId, office, seats, hrNote, chat, onPick, onHire, onAnnounce }: Props) {
   // One person crosses the floor at a time; the rest wait their turn at HR.
   const { queue, finish } = useWalks(workspaceId, office.employees);
   const onTheirWay = new Set(queue.filter((walk) => walk.kind === "arrive").map((walk) => walk.id));
@@ -60,6 +62,14 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, onPick, onH
             <VacantPod key={`vacant-${pod}`} pod={pod} />
           ),
         )}
+        {/* The public address: middle right, in the corridor beside the water cooler.
+            Walks turn off the corridor before here, and it is drawn after the pods. */}
+        <foreignObject x="1100" y="364" width="98" height="112">
+          <button type="button" className="office-map-announce" disabled={office.employees.length === 0} onClick={onAnnounce} title="Prompt every agent at once">
+            <Horn size={56} />
+            <span>Announce</span>
+          </button>
+        </foreignObject>
         {chat.length > 0 && (
           <foreignObject x="26" y={height - 190} width="360" height="112">
             <div className="office-chat">

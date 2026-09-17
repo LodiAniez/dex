@@ -84,6 +84,15 @@ describe("legsTo", () => {
   });
 });
 
+describe("the corridor", () => {
+  it("is never walked as far as the loudspeaker beside the water cooler", () => {
+    // The speaker stands in the corridor from x = 1100; a walker is 48 wide.
+    for (let pod = 0; pod < 12; pod += 1) {
+      for (const leg of legsTo(pod)) expect(leg.x + 48, `pod ${pod}`).toBeLessThan(1100);
+    }
+  });
+});
+
 describe("routeOf", () => {
   it("starts an arrival at HR's door", () => {
     const route = routeOf({ kind: "arrive", pod: 5 });
