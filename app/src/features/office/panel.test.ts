@@ -1,27 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { eventsOf, reportsTo } from "./panel";
-
-const event = (seq: number, agent_id: string | null, body = `event ${seq}`) => ({ seq, agent_id, body });
-
-describe("eventsOf", () => {
-  const log = [event(1, "a"), event(2, null), event(3, "b"), event(4, "a"), event(5, "a"), event(6, "b")];
-
-  it("is what one agent did, by id, oldest first", () => {
-    expect(eventsOf(log, "a", 10).map((e) => e.seq)).toEqual([1, 4, 5]);
-  });
-
-  it("keeps the newest when there are more than fit", () => {
-    expect(eventsOf(log, "a", 2).map((e) => e.seq)).toEqual([4, 5]);
-  });
-
-  it("never shows the human's events as an agent's", () => {
-    expect(eventsOf(log, "nobody", 10)).toEqual([]);
-  });
-
-  it("copes with a log that has not loaded", () => {
-    expect(eventsOf(undefined, "a", 5)).toEqual([]);
-  });
-});
+import { ago, doneBy, reportsTo } from "./panel";
 
 describe("reportsTo", () => {
   const staff = [
@@ -40,5 +18,38 @@ describe("reportsTo", () => {
 
   it("says so when the parent has gone", () => {
     expect(reportsTo(staff[2], staff)).toBe("someone who has left");
+  });
+});
+
+describe("doneBy", () => {
+  const did = (seq: number, agent_id: string | null, kind: string) => ({ seq, agent_id, kind, body: `${kind} ${seq}` });
+  const log = [did(1, "a", "spawn"), did(2, "a", "status"), did(3, "a", "note"), did(4, "b", "note"), did(5, "a", "status"), did(6, "a", "write"), did(7, "a", "message"), did(8, null, "note")];
+
+  it("is everything the agent did, newest first", () => {
+    expect(doneBy(log, "a").map((e) => e.seq)).toEqual([7, 6, 3, 1]);
+  });
+
+  it("leaves out status flips, which say what state it was in and not what it did", () => {
+    expect(doneBy(log, "a").some((e) => e.kind === "status")).toBe(false);
+  });
+
+  it("is empty for someone who has done nothing yet, or a log not loaded", () => {
+    expect(doneBy(log, "nobody")).toEqual([]);
+    expect(doneBy(undefined, "a")).toEqual([]);
+  });
+});
+
+describe("ago", () => {
+  const now = 1_000_000_000;
+  it("says how long ago in the largest unit that fits", () => {
+    expect(ago(now - 4_000, now)).toBe("just now");
+    expect(ago(now - 45_000, now)).toBe("45s ago");
+    expect(ago(now - 5 * 60_000, now)).toBe("5m ago");
+    expect(ago(now - 3 * 3_600_000, now)).toBe("3h ago");
+    expect(ago(now - 2 * 86_400_000, now)).toBe("2d ago");
+  });
+
+  it("does not go negative when clocks disagree", () => {
+    expect(ago(now + 5_000, now)).toBe("just now");
   });
 });

@@ -55,7 +55,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
   // The same events the activity pane shows, retold by name for the map.
   useEffect(() => watchActivity(workspaceId), [workspaceId]);
   const log = useActivity(workspaceId);
-  const chat = useMemo(() => {
+  const who = useMemo(() => {
     const names = new Map(office.employees.map(({ agent, persona }) => [agent.id, persona.name]));
     const labels = new Map<string, string>();
     for (const { agent, persona } of office.employees) {
@@ -63,8 +63,9 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
       const pane = workspace?.panes.find((candidate) => candidate.id === agent.pane_id);
       for (const label of [agent.label, pane?.label]) if (label) labels.set(label, persona.name);
     }
-    return chatLines(log?.events, { names, labels }, CHAT_LINES);
-  }, [log, office.employees, workspace]);
+    return { names, labels };
+  }, [office.employees, workspace]);
+  const chat = useMemo(() => chatLines(log?.events, who, CHAT_LINES), [log, who]);
 
   const seats = headcount(office.employees.length, maxConcurrent);
   const note = hrNote(seats, office.pods, refused);
@@ -120,6 +121,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
           workspaceId={workspaceId}
           employee={picked}
           staff={office.employees}
+          who={who}
           screen={screens.get(picked.agent.id) ?? []}
           onGoToPane={onGoToPane}
           onClose={() => setPickedId(null)}

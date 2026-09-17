@@ -7,17 +7,19 @@ import { AgentStatusDot, STATUS_WORDS } from "../agents";
 import { Avatar } from "./Avatar";
 import { clockOutArgs, clockOutQuestion, memoArgs } from "./hire";
 import type { Employee } from "./officeStore";
-import { eventsOf, reportsTo } from "./panel";
+import { ago, doneBy, reportsTo } from "./panel";
+import { phrase, type Who } from "./phrasing";
 import { promptArgs, whyNoPrompt } from "./prompt";
 
 /** How much of each the panel has room for. */
 export const PANEL_SCREEN_LINES = 12;
-const PANEL_EVENTS = 5;
 
 interface Props {
   workspaceId: string;
   employee: Employee;
   staff: readonly Employee[];
+  /** Who is who, for retelling what they did by name. */
+  who: Who;
   /** The last lines on their terminal. */
   screen: string[];
   /** Leaves the view for the terminals, on this pane. */
@@ -26,9 +28,11 @@ interface Props {
 }
 
 /** One employee's work: what they were asked, what is on their screen, what they have done. */
-export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, onClose }: Props) {
+export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPane, onClose }: Props) {
   const { agent, persona, role } = employee;
-  const events = eventsOf(useActivity(workspaceId)?.events, agent.id, PANEL_EVENTS);
+  const done = doneBy(useActivity(workspaceId)?.events, agent.id);
+  // Re-rendered by the screen poll every second, which keeps the times honest.
+  const now = Date.now();
   // What is being written, if anything: a memo for their inbox, or a prompt
   // typed into their terminal as the owner's turn.
   const [writing, setWriting] = useState<"memo" | "prompt" | null>(null);
@@ -116,18 +120,22 @@ export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, on
         {screen.length > 0 ? screen.map((line, i) => <div key={i}>{line}</div>) : <div className="quiet">nothing on screen</div>}
       </div>
 
-      {events.length > 0 && (
-        <>
-          <span className="office-panel-label">Lately</span>
-          <div className="office-panel-events">
-            {events.map((event) => (
-              <div key={event.seq}>
-                <span>{event.kind}</span> {event.body}
+      <span className="office-panel-label">What they have done</span>
+      <div className="office-panel-done">
+        {done.length > 0 ? (
+          done.map((event) => {
+            const line = phrase(event, who);
+            return (
+              <div key={event.seq} className={`office-panel-did ${line.tone}`}>
+                <span className="when">{ago(event.created_at, now)}</span>
+                <span className="what">{line.who === persona.name ? line.text : `${line.who} ${line.text}`}</span>
               </div>
-            ))}
-          </div>
-        </>
-      )}
+            );
+          })
+        ) : (
+          <div className="quiet">Nothing on record yet. Notes, messages and what they store show up here.</div>
+        )}
+      </div>
 
       {writing !== null && (
         <textarea
