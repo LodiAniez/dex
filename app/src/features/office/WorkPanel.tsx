@@ -30,7 +30,9 @@ interface Props {
 /** One employee's work: what they were asked, what is on their screen, what they have done. */
 export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPane, onClose }: Props) {
   const { agent, persona, role } = employee;
-  const done = doneBy(useActivity(workspaceId)?.events, agent.id);
+  // The labels this agent goes by, so that the agents it hired count as its doing.
+  const theirLabels = [...who.labels].filter(([, name]) => name === persona.name).map(([label]) => label);
+  const done = doneBy(useActivity(workspaceId)?.events, agent.id, theirLabels);
   // Re-rendered by the screen poll every second, which keeps the times honest.
   const now = Date.now();
   // What is being written, if anything: a memo for their inbox, or a prompt

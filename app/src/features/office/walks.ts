@@ -238,3 +238,18 @@ export function deliveries(events: readonly MessageEvent[], sinceSeq: number, se
 export function awayFromDesk(queue: readonly Walk[]): string | null {
   return queue[0]?.kind === "deliver" ? queue[0].id : null;
 }
+
+/**
+ * The queue once whoever was at its head has finished. `visited` is how many
+ * stops a round made. If its round has grown past that - a message added in
+ * the instant the walker decided it was done - they go out again for the
+ * rest, rather than the message being dropped from view.
+ */
+export function afterWalk<T extends Walk>(queue: readonly T[], visited: number | undefined): T[] {
+  const [head, ...rest] = queue;
+  if (!head) return [];
+  const stops = head.stops ?? [];
+  if (head.kind !== "deliver" || visited === undefined || stops.length <= visited) return rest;
+  const keys = (head.keys ?? []).slice(visited);
+  return [{ ...head, stops: stops.slice(visited), keys, key: keys[0] ?? head.key }, ...rest];
+}

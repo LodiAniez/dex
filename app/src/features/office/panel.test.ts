@@ -33,6 +33,23 @@ describe("doneBy", () => {
     expect(doneBy(log, "a").some((e) => e.kind === "status")).toBe(false);
   });
 
+  it("counts a hire as the hirer's doing, though the daemon files it under the one hired", () => {
+    // A spawn event belongs to the new agent; its body names who asked.
+    const hires = [
+      { seq: 1, agent_id: "kid", kind: "spawn", body: "main started an agent for: write the tests" },
+      { seq: 2, agent_id: "other", kind: "spawn", body: "porter started an agent for: review it" },
+      { seq: 3, agent_id: "lead", kind: "note", body: "briefed everyone" },
+    ];
+    expect(doneBy(hires, "lead", ["main"]).map((e) => e.seq)).toEqual([3, 1]);
+    // And it is still the first thing on the record of the one who was hired.
+    expect(doneBy(hires, "kid", ["tests"]).map((e) => e.seq)).toEqual([1]);
+  });
+
+  it("is not fooled by a label that only begins the same way", () => {
+    const hires = [{ seq: 1, agent_id: "kid", kind: "spawn", body: "main-2 started an agent for: x" }];
+    expect(doneBy(hires, "lead", ["main"])).toEqual([]);
+  });
+
   it("is empty for someone who has done nothing yet, or a log not loaded", () => {
     expect(doneBy(log, "nobody")).toEqual([]);
     expect(doneBy(undefined, "a")).toEqual([]);

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgents } from "../agents";
 import type { Employee } from "./officeStore";
 import type { Persona } from "./persona";
-import { DOOR_PAUSE, TALK_SECONDS, deliveries, deskOf, enqueue, movements, nextLegs, routeOf, type Walk } from "./walks";
+import { DOOR_PAUSE, TALK_SECONDS, afterWalk, deliveries, deskOf, enqueue, movements, nextLegs, routeOf, type Walk } from "./walks";
 
 /** A walk, and who is doing it — kept with the walk because a leaver is no longer on the staff. */
 export interface StaffWalk extends Walk {
@@ -33,7 +33,7 @@ export function useWalks(
   workspaceId: string,
   employees: readonly Employee[],
   events: readonly LoggedEvent[] | undefined,
-): { queue: StaffWalk[]; finish: () => void } {
+): { queue: StaffWalk[]; finish: (visited?: number) => void } {
   const list = useAgents();
   const [queue, setQueue] = useState<StaffWalk[]>([]);
   const before = useRef<NonNullable<typeof list>["agents"] | null>(null);
@@ -74,19 +74,20 @@ export function useWalks(
     if (trips.length > 0) setQueue((current) => enqueue(current, trips, { still: prefersStill() }));
   }, [events, employees]);
 
-  return { queue, finish: () => setQueue((current) => current.slice(1)) };
+  return { queue, finish: (visited) => setQueue((current) => afterWalk(current, visited)) };
 }
 
 interface WalkerProps {
   walk: StaffWalk;
   /** Whose desk the walker is talking at, or null; the map shows them answering. */
   onTalk: (pod: number | null) => void;
-  onDone: () => void;
+  /** Finished; a round says how many stops it made, in case it grew as it ended. */
+  onDone: (visited?: number) => void;
 }
 
 /** Whoever is crossing the floor: a hire or a leaver on a fixed route, or someone on a round of messages. */
 export function Walker(props: WalkerProps) {
-  return props.walk.kind === "deliver" ? <RoundWalker {...props} /> : <RouteWalker walk={props.walk} onDone={props.onDone} />;
+  return props.walk.kind === "deliver" ? <RoundWalker {...props} /> : <RouteWalker walk={props.walk} onDone={() => props.onDone()} />;
 }
 
 /** The figure itself, wherever it is and whatever it is doing. */
@@ -176,7 +177,7 @@ function RoundWalker({ walk, onTalk, onDone }: WalkerProps) {
           visited += 1;
         }
       }
-      if (!cancelled) calls.current.onDone();
+      if (!cancelled) calls.current.onDone(visited);
     })();
     return () => {
       cancelled = true;
