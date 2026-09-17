@@ -79,6 +79,9 @@ pub struct EventView {
     /// Id of that agent, or `null` for the human. Labels can repeat; this is
     /// what to filter on.
     pub agent_id: Option<String>,
+    /// For a `message`, the id of the agent it was sent to. Its body stays
+    /// the recipient's alone; who it was for does not.
+    pub target_agent_id: Option<String>,
     /// The entry key, for `write` and `delete`.
     pub key: Option<String>,
     /// What happened.

@@ -22,6 +22,11 @@ author: string | null,
  */
 agent_id: string | null, 
 /**
+ * For a `message`, the id of the agent it was sent to. Its body stays
+ * the recipient's alone; who it was for does not.
+ */
+target_agent_id: string | null, 
+/**
  * The entry key, for `write` and `delete`.
  */
 key: string | null, 

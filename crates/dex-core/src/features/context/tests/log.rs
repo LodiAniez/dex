@@ -105,6 +105,18 @@ async fn a_message_reaches_its_target_once_and_hides_its_body_from_others() {
         .await
         .unwrap();
     assert_eq!(log.events.len(), 1);
+    // Who it was for is not a secret, and a label can be shared: the office
+    // walks the sender to the recipient's desk, which needs both by id.
+    assert_eq!(log.events[0].agent_id.as_deref(), Some(sender_id.as_str()));
+    let recipient_id = crate::features::agent::list(&state, Default::default())
+        .await
+        .unwrap()
+        .agents
+        .into_iter()
+        .find(|agent| agent.id != sender_id)
+        .unwrap()
+        .id;
+    assert_eq!(log.events[0].target_agent_id, Some(recipient_id));
     assert!(
         !log.events[0].body.contains("schema moved"),
         "a directed message's body is for its recipient: {:?}",

@@ -109,6 +109,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
           seats={seats}
           hrNote={note}
           chat={chat}
+          events={log?.events}
           onPick={pick}
           onHire={hire}
           onAnnounce={() => setAnnouncing(true)}

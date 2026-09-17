@@ -54,7 +54,14 @@ function Tag({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Pod({ employee, onPick }: { employee: Employee; onPick: (employee: Employee) => void }) {
+interface PodProps {
+  employee: Employee;
+  /** Out delivering a message: the desk is theirs, the chair is empty. */
+  away?: boolean;
+  onPick: (employee: Employee) => void;
+}
+
+export function Pod({ employee, away = false, onPick }: PodProps) {
   const { agent, persona, role, pod } = employee;
   const { x, y } = podOrigin(pod);
   const pose = poseOf(agent.status);
@@ -93,23 +100,27 @@ export function Pod({ employee, onPick }: { employee: Employee; onPick: (employe
         <Furniture plant />
         <rect className={typing ? "office-tap1" : undefined} x="103" y="36" width={line1} height="4" rx="2" fill={code1} />
         <rect className={typing ? "office-tap2" : undefined} x="103" y="43" width={line2} height="4" rx="2" fill={code2} />
-        {pose === "raised" && (
-          <path d="M186 128 Q192 112 188 102" stroke={persona.skin} strokeWidth="8" strokeLinecap="round" fill="none" />
-        )}
-        <path d="M100 154 v-16 a22 22 0 0 1 44 0 v16 z" fill={persona.shirt} />
-        <circle className={typing ? "office-tap1" : undefined} cx="96" cy="138" r="5.5" fill={persona.skin} />
-        <circle className={typing ? "office-tap2" : undefined} cx="148" cy="138" r="5.5" fill={persona.skin} />
-        <circle cx="122" cy="118" r="13" fill={persona.skin} />
-        <path d="M107 116 a15 15 0 0 1 30 0 v-2 a15 12 0 0 0 -30 0 z" fill={persona.hair} />
-        <ellipse cx="122" cy="107" rx="15" ry="8" fill={persona.hair} />
-        {(pose === "raised" || pose === "error") && (
-          <g className="office-bubble">
-            {/* Rounded on three corners, pointed at the one nearest the speaker. */}
-            <path d="M194 4 h8 a10 10 0 0 1 10 10 v6 a10 10 0 0 1 -10 10 h-16 a2 2 0 0 1 -2 -2 v-14 a10 10 0 0 1 10 -10 z" fill="#f8f5ec" />
-            <text x="198" y="23" textAnchor="middle" fontSize="16" fontWeight="600" fill={pose === "error" ? "#c23b38" : "#185fa5"}>
-              {pose === "error" ? "!" : "?"}
-            </text>
-          </g>
+        {!away && (
+          <>
+            {pose === "raised" && (
+              <path d="M186 128 Q192 112 188 102" stroke={persona.skin} strokeWidth="8" strokeLinecap="round" fill="none" />
+            )}
+            <path d="M100 154 v-16 a22 22 0 0 1 44 0 v16 z" fill={persona.shirt} />
+            <circle className={typing ? "office-tap1" : undefined} cx="96" cy="138" r="5.5" fill={persona.skin} />
+            <circle className={typing ? "office-tap2" : undefined} cx="148" cy="138" r="5.5" fill={persona.skin} />
+            <circle cx="122" cy="118" r="13" fill={persona.skin} />
+            <path d="M107 116 a15 15 0 0 1 30 0 v-2 a15 12 0 0 0 -30 0 z" fill={persona.hair} />
+            <ellipse cx="122" cy="107" rx="15" ry="8" fill={persona.hair} />
+            {(pose === "raised" || pose === "error") && (
+              <g className="office-bubble">
+                {/* Rounded on three corners, pointed at the one nearest the speaker. */}
+                <path d="M194 4 h8 a10 10 0 0 1 10 10 v6 a10 10 0 0 1 -10 10 h-16 a2 2 0 0 1 -2 -2 v-14 a10 10 0 0 1 10 -10 z" fill="#f8f5ec" />
+                <text x="198" y="23" textAnchor="middle" fontSize="16" fontWeight="600" fill={pose === "error" ? "#c23b38" : "#185fa5"}>
+                  {pose === "error" ? "!" : "?"}
+                </text>
+              </g>
+            )}
+          </>
         )}
       </g>
     </g>
