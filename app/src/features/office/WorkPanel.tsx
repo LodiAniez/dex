@@ -33,6 +33,12 @@ export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, on
   // Takes focus when it opens: a terminal that kept it would eat Escape.
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => panel.current?.focus(), [agent.id]);
+  // And takes it back when the memo box goes: the button that was focused went
+  // with it, and focus left on the page body would make Escape do nothing.
+  const writing = memo !== null;
+  useEffect(() => {
+    if (!writing) panel.current?.focus();
+  }, [writing]);
 
   const send = async () => {
     const args = memoArgs(workspaceId, agent.id, memo ?? "");

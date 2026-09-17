@@ -22,6 +22,7 @@
   /* The layout answers to the width it is given, not the window's: the
      sidebar takes some of that, and may be open or shut. */
   container-type: inline-size;
+  outline: none;
 }
 
 .office button {
