@@ -347,3 +347,15 @@
   flex: 0 0 auto;
   padding: 0 20px;
 }
+
+/* How their turn ended, in their own words. */
+.office-panel-said {
+  padding: 8px 12px;
+  color: var(--office-soft);
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 2px solid var(--office-line);
+  border-radius: 0 8px 8px 0;
+}

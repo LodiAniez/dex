@@ -8,9 +8,13 @@
 //!
 //! The agent stays `idle`: answering it is an ordinary prompt, which a waiting
 //! agent - one at a dialog, where typed text would answer the dialog - refuses.
-//! What it asked goes in its status detail, and an idle agent has a detail for
-//! no other reason. A guess, so a careful one: only how the message *ends*
+//! What it asked goes in its status detail, as `asked you: ...`. A guess, so a
+//! careful one, and one with a net under it: an idle agent that did not ask
+//! anything still says how its turn ended (`said: ...`), so the owner can read
+//! a closing line the guess got wrong. The guess: only how the message *ends*
 //! counts, and the closing pleasantries every assistant uses are not questions.
+//! A question need not end in a question mark: the owner's first test of this
+//! was "ask me something, but end it with a period".
 
 /// How many closing sentences are read. A question is usually last, or followed
 /// by one "otherwise..." sentence; one further back has been moved on from.
@@ -61,11 +65,26 @@ const PLEASANTRIES: [&str; 6] = [
     "any questions",
 ];
 
+const ASKED: &str = "asked you: ";
+const SAID: &str = "said: ";
+
 /// An idle agent's status detail, from the input of the `Stop` that made it
-/// idle: what it asked the owner, or `None`.
-pub fn asked(stop_input: &serde_json::Value) -> Option<String> {
+/// idle: what it asked the owner, or else what it said last - the guess about
+/// questions can miss, and the owner can read a closing line for themselves.
+pub fn idle_detail(stop_input: &serde_json::Value) -> Option<String> {
     let last = stop_input.get("last_assistant_message")?.as_str()?;
-    question_for_owner(last).map(|question| format!("asked you: {question}"))
+    if let Some(question) = question_for_owner(last) {
+        return Some(format!("{ASKED}{question}"));
+    }
+    let closing = last.trim().rsplit("\n\n").next().map(one_line)?;
+    (!closing.is_empty()).then(|| format!("{SAID}{closing}"))
+}
+
+/// Whether a detail is for the owner's eyes only and stays out of the workspace
+/// log, which every agent's digest is drawn from: an agent's last words may
+/// quote anything, and every finished turn has some.
+pub fn stays_out_of_the_log(detail: &str) -> bool {
+    detail.starts_with(SAID)
 }
 
 /// What the agent asked the owner as its turn ended, as one short line, or
@@ -86,7 +105,44 @@ fn asks(sentence: &str) -> bool {
     if PLEASANTRIES.iter().any(|phrase| lower.contains(phrase)) {
         return false;
     }
-    lower.trim_end().ends_with('?') || CUES.iter().any(|cue| lower.contains(cue))
+    lower.trim_end().ends_with('?')
+        || CUES.iter().any(|cue| lower.contains(cue))
+        || is_inverted(&lower)
+}
+
+const AUXILIARIES: [&str; 17] = [
+    "do", "does", "did", "is", "are", "was", "were", "can", "could", "would", "will", "should",
+    "shall", "have", "has", "may", "might",
+];
+const SUBJECTS: [&str; 8] = ["you", "i", "we", "it", "they", "this", "that", "your"];
+const QUESTION_WORDS: [&str; 9] = [
+    "what", "which", "who", "whom", "whose", "where", "when", "why", "how",
+];
+/// How far after a question word its verb may come: "which of the two do you".
+const REACH: usize = 5;
+
+/// Whether the sentence is built as a question, whatever it ends with: English
+/// asks by putting the verb before its subject. "Would you like..." opens with
+/// one; "what would it be" has one after its question word, where the statement
+/// "what it would be" does not.
+fn is_inverted(lower: &str) -> bool {
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric() && c != '\'')
+        .filter(|word| !word.is_empty())
+        .collect();
+    let inverted_at = |at: usize| {
+        words.get(at).is_some_and(|word| AUXILIARIES.contains(word))
+            && words
+                .get(at + 1)
+                .is_some_and(|word| SUBJECTS.contains(word))
+    };
+    if inverted_at(0) || (words.first() == Some(&"is") && words.get(1) == Some(&"there")) {
+        return true;
+    }
+    words
+        .iter()
+        .enumerate()
+        .any(|(at, word)| QUESTION_WORDS.contains(word) && (at + 1..=at + REACH).any(inverted_at))
 }
 
 /// The message as sentences: split after `.`, `!` or `?` where whitespace

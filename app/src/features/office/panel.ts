@@ -52,7 +52,7 @@ export function needsYou(status: string, detail: string | null): string | null {
   switch (status) {
     // Idle with something to say: their turn ended on a question. A prompt answers it.
     case "idle":
-      return detail ? `Asked you: ${detail.replace(/^asked you: /, "")} Answer with Prompt, or in their pane.` : null;
+      return detail?.startsWith("asked you: ") ? `Asked you: ${detail.slice("asked you: ".length)} Answer with Prompt, or in their pane.` : null;
     case "waiting":
       return detail ? `Waiting for you: ${detail}. Answer it in their pane.` : "Waiting for you to answer something in their pane.";
     case "error":

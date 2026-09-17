@@ -76,8 +76,9 @@ describe("needsYou for an agent that asked something", () => {
     expect(needsYou("idle", "asked you: Should I run it against staging?")).toBe("Asked you: Should I run it against staging? Answer with Prompt, or in their pane.");
   });
 
-  it("says nothing for an agent that simply finished", () => {
+  it("says nothing for an agent that simply finished, whatever it said last", () => {
     expect(needsYou("idle", null)).toBeNull();
+    expect(needsYou("idle", "said: All 14 tests pass.")).toBeNull();
   });
 });
 

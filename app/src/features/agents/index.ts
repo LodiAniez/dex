@@ -8,5 +8,5 @@ export {
   watchAgentChanges,
   workspaceAttention,
 } from "./agentStore";
-export { askedYou, seenAs } from "./attention";
+export { askedYou, lastSaid, seenAs } from "./attention";
 export { notifyTransitions, type PaneContext } from "./notifications";

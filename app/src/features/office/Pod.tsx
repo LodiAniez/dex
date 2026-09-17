@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { STATUS_WORDS, seenAs } from "../agents";
+import { STATUS_WORDS, lastSaid, seenAs } from "../agents";
 import { poseOf, type Pose } from "./floor";
 import { POD, podOrigin } from "./mapGeometry";
 import type { Employee } from "./officeStore";
@@ -76,6 +76,7 @@ export function Pod({ employee, away = false, listening = false, antic = null, s
   // As the owner should see them: someone who asked them something has a hand up.
   const shown = seenAs(agent);
   const pose = poseOf(shown);
+  const said = lastSaid(agent);
   const typing = pose === "typing";
   const passing = !away && !listening && !shouting && pose === "still" ? antic : null;
   const [code1, code2] = SCREEN[pose];
@@ -106,6 +107,14 @@ export function Pod({ employee, away = false, listening = false, antic = null, s
           <span className="office-tag-role">{role}</span>
         </span>
       </Tag>
+      {/* How their turn ended, under their desk, so nobody has to open a pane to learn they were asked something. */}
+      {said !== null && (
+        <foreignObject x="6" y={POD.height - 6} width={POD.width - 12} height="24">
+          <div className={`office-said${shown === "waiting" ? " asks" : ""}`} title={said}>
+            “{said}”
+          </div>
+        </foreignObject>
+      )}
       <g transform="translate(4 30)">
         <rect x="6" y="26" width="232" height="166" rx="18" fill={persona.rug} />
         <rect x="6" y="26" width="232" height="166" rx="18" fill="none" stroke={persona.rugLine} strokeWidth="4" />

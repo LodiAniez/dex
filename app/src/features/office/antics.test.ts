@@ -24,6 +24,10 @@ describe("isLoafing", () => {
     expect(isLoafing({ status: "idle", status_detail: null, started: false })).toBe(false);
   });
 
+  it("is someone who finished and said so: last words are not a question", () => {
+    expect(isLoafing({ status: "idle", status_detail: "said: All 14 tests pass.", started: true })).toBe(true);
+  });
+
   it("is not someone who asked the owner something and is waiting to hear: they stay at their desk with a hand up", () => {
     expect(isLoafing({ status: "idle", status_detail: "asked you: Should I run it?", started: true })).toBe(false);
   });

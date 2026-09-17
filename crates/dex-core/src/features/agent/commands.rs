@@ -198,7 +198,9 @@ fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<
         ),
         AgentStatus::Waiting => super::reason::waiting_reason(&hook.args.input),
         // A turn that ended by asking the owner something: idle, and waiting on them.
-        AgentStatus::Idle if hook.kind == HookKind::Stop => super::asking::asked(&hook.args.input),
+        AgentStatus::Idle if hook.kind == HookKind::Stop => {
+            super::asking::idle_detail(&hook.args.input)
+        }
         _ => None,
     };
     let ended = (next == AgentStatus::Dead).then_some(hook.now);
@@ -210,7 +212,10 @@ fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<
         hook.args.stamp,
         ended,
     )?;
-    record_status(conn, agent, hook, next, detail.as_deref())
+    let logged = detail
+        .as_deref()
+        .filter(|why| !super::asking::stays_out_of_the_log(why));
+    record_status(conn, agent, hook, next, logged)
 }
 
 /// Puts a status change in the workspace log, for the activity pane (PRD §10.1).

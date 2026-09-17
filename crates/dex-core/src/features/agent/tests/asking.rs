@@ -5,7 +5,7 @@ use dex_protocol::agent::{AgentStatus, ListAgentsArgs};
 use serde_json::json;
 
 use super::{agents, fire, pane};
-use crate::features::agent::asking::question_for_owner;
+use crate::features::agent::asking::{idle_detail, question_for_owner};
 use crate::features::agent::list;
 
 #[test]
@@ -29,6 +29,57 @@ fn a_closing_question_is_a_question() {
     ] {
         assert!(question_for_owner(message).is_some(), "{message}");
     }
+}
+
+#[test]
+fn a_question_is_a_question_without_its_question_mark() {
+    // The owner's test: "ask me a question, but use a period instead of a question mark."
+    for message in [
+        "If you could instantly master any skill without practice, what would it be.",
+        "Would you like the long version or the short one.",
+        "Which of the two do you prefer.",
+        "The draft is ready. How should I name the branch.",
+        "Do you want me to push it.",
+        "Can you give me the staging URL.",
+    ] {
+        assert!(question_for_owner(message).is_some(), "{message}");
+    }
+}
+
+#[test]
+fn a_statement_that_only_mentions_a_question_word_is_not_a_question() {
+    for message in [
+        "I checked what it would be under load, and it holds.",
+        "When the tests ran, two failed and I fixed both.",
+        "What I did was rename the module.",
+        "How it works is documented in the README.",
+        "That is why the retry is there.",
+        "I can do the rest tomorrow.",
+        "It would be faster with a cache.",
+    ] {
+        assert_eq!(question_for_owner(message), None, "{message}");
+    }
+}
+
+#[test]
+fn an_idle_agent_always_says_how_its_turn_ended() {
+    assert_eq!(
+        idle_detail(&json!({ "last_assistant_message": "Should I run it?" })).as_deref(),
+        Some("asked you: Should I run it?")
+    );
+    // Not a question: what it said last, so the owner can see for themselves.
+    assert_eq!(
+        idle_detail(&json!({ "last_assistant_message": "I renamed the module.
+
+All 14 tests pass. Nothing else was touched." }))
+        .as_deref(),
+        Some("said: All 14 tests pass. Nothing else was touched.")
+    );
+    assert_eq!(
+        idle_detail(&json!({ "last_assistant_message": "  " })),
+        None
+    );
+    assert_eq!(idle_detail(&json!({})), None);
 }
 
 #[test]
@@ -124,7 +175,10 @@ async fn answering_it_clears_what_it_asked() {
     fire(&state, "stop", &pane, 5, stop_saying("Ran it. All green.")).await;
     let agent = &agents(&state).await[0];
     assert_eq!(agent.status, AgentStatus::Idle);
-    assert_eq!(agent.status_detail, None);
+    assert_eq!(
+        agent.status_detail.as_deref(),
+        Some("said: Ran it. All green.")
+    );
 }
 
 #[tokio::test]
@@ -207,4 +261,50 @@ async fn other_agents_are_not_told_what_was_asked() {
         .find(|agent| agent.pane_id.as_deref() == Some(pane.as_str()))
         .unwrap();
     assert_eq!(asker.status_detail, None);
+}
+
+#[tokio::test]
+async fn what_an_agent_merely_said_is_not_put_in_the_workspace_log() {
+    // Every finished turn would otherwise copy its last words to every other agent's digest.
+    let (_dir, state, pane) = pane().await;
+    fire(
+        &state,
+        "session-start",
+        &pane,
+        1,
+        json!({ "session_id": "s1" }),
+    )
+    .await;
+    fire(&state, "prompt", &pane, 2, json!({ "session_id": "s1" })).await;
+    fire(
+        &state,
+        "stop",
+        &pane,
+        3,
+        stop_saying("The token is hunter2. All done."),
+    )
+    .await;
+    let log = crate::features::context::events(
+        &state,
+        dex_protocol::context::ScopeArgs::for_caller(dex_protocol::context::Caller {
+            pane: Some(pane.clone()),
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap();
+    assert!(
+        log.events
+            .iter()
+            .all(|event| !event.body.contains("hunter2")),
+        "{:?}",
+        log.events
+    );
+    assert!(
+        log.events
+            .iter()
+            .any(|event| event.body.ends_with("is idle")),
+        "{:?}",
+        log.events
+    );
 }
