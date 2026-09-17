@@ -1,13 +1,13 @@
 import { VIEW_MODES, type ViewMode } from "./viewMode";
 
 /**
- * Terminal · Cards · Office. The same control sits in the title bar, where it
- * is always in reach, and in the pill at the foot of the cards and office
- * views, where the design put it.
+ * Terminal · Cards · Office, in the title bar: one switch, in reach from every
+ * view. The design had a second at the foot of the office views; with this one
+ * always on screen it only said the same thing twice.
  */
-export function ViewSwitch({ mode, onChoose, compact }: { mode: ViewMode; onChoose: (mode: ViewMode) => void; compact?: boolean }) {
+export function ViewSwitch({ mode, onChoose }: { mode: ViewMode; onChoose: (mode: ViewMode) => void }) {
   return (
-    <span className={`view-switch${compact ? " compact" : ""}`} role="group" aria-label="View">
+    <span className="view-switch" role="group" aria-label="View">
       {VIEW_MODES.map(({ id, label, hint }) => (
         <button key={id} type="button" title={hint} aria-pressed={mode === id} onClick={() => onChoose(id)}>
           {label}

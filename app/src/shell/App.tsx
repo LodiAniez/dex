@@ -28,7 +28,6 @@ import { neighborPane } from "./paneGeometry";
 import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
 import { Setup } from "./SetupPanel";
 import { Sidebar } from "./Sidebar";
-import { ViewSwitch } from "./ViewSwitch";
 import { chooseMode, modeOfAction, rememberMode, showsPanes, storedMode, type ViewMode } from "./viewMode";
 import { TitleBar } from "./TitleBar";
 
@@ -310,7 +309,6 @@ export function App() {
                 workspaceId={active.id}
                 view={mode === "office" ? "office" : "cards"}
                 onGoToPane={goToPane}
-                switcher={<ViewSwitch mode={mode} onChoose={chooseView} />}
               />
             </div>
           )}

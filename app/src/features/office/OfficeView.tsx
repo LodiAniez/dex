@@ -5,7 +5,7 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "./office.css";
 import "./map.css";
 import "./panel.css";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUiSettings } from "../../platform/config";
 import { useActivity, watchActivity } from "../activity";
 import { useWorkspaces } from "../workspaces";
@@ -22,8 +22,6 @@ interface Props {
   view: "cards" | "office";
   /** Leaves the view for the terminals, on this pane. */
   onGoToPane: (paneId: string) => void;
-  /** The control that changes view, shown in the pill at the foot beside the headcount. */
-  switcher: ReactNode;
 }
 
 /** Seats to draw before the daemon has said how many there are: its own default. */
@@ -41,7 +39,7 @@ const CHAT_LINES = 3;
  * Which of its two faces to show is the caller's business: the views are
  * chosen for the whole workspace, from the title bar.
  */
-export function OfficeView({ workspaceId, view, onGoToPane, switcher }: Props) {
+export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
   const settings = useUiSettings();
   const maxConcurrent = settings?.maxConcurrent ?? DEFAULT_SEATS;
   const office = useOffice(workspaceId, maxConcurrent);
@@ -104,12 +102,6 @@ export function OfficeView({ workspaceId, view, onGoToPane, switcher }: Props) {
       {hiring && workspace && (
         <HireDialog workspace={workspace} onClose={() => setHiring(false)} onFreeze={() => setRefused(true)} />
       )}
-      <div className="office-toolbar">
-        <span className="office-count">
-          headcount {seats.used}/{seats.max}
-        </span>
-        {switcher}
-      </div>
     </div>
   );
 }

@@ -44,8 +44,8 @@
   min-height: 0;
   display: flex;
   gap: 16px;
-  /* Room above for the title tag and below for the pill, as the design has it. */
-  padding: 64px 24px 76px;
+  /* Room above for the title tag. */
+  padding: 64px 24px 24px;
   overflow-y: auto;
 }
 
@@ -232,10 +232,9 @@
   font-weight: 500;
 }
 
-/* ---- the tag at the top left, and the pill at the foot ---- */
+/* ---- the tag at the top left ---- */
 
-.office-title,
-.office-toolbar {
+.office-title {
   position: absolute;
   z-index: 8;
   display: flex;
@@ -265,19 +264,6 @@
   color: var(--office-dim);
   font-family: var(--office-mono);
   font-size: 12px;
-}
-
-.office-toolbar {
-  left: 50%;
-  bottom: 18px;
-  gap: 12px;
-  padding: 6px 8px 6px 18px;
-  transform: translateX(-50%);
-}
-
-.office-count {
-  color: #aab3c5;
-  font-size: 13px;
 }
 
 /* ---- a narrow window: HR becomes a strip, the grid loses columns ---- */
