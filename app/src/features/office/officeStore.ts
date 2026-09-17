@@ -5,7 +5,7 @@ import { useAgents } from "../agents";
 import { useWorkspaces } from "../workspaces";
 import { keepOnly, occupants, podCount, seat, type Seating } from "./floor";
 import { labelFor, nameStaff, personaOf, roleOf, type Persona } from "./persona";
-import { lastLines } from "./screen";
+import { lastLines, sameLines } from "./screen";
 
 /** An agent as the office shows it. */
 export interface Employee {
@@ -78,33 +78,25 @@ export function useOffice(workspaceId: string, maxConcurrent: number): Office {
 const GLANCE_MS = 1000;
 
 /**
- * The last `lines` lines on each agent's screen, by agent id. Polled, because a
- * terminal announces nothing when it draws; state only changes when a screen
- * does, so a quiet office does not re-render.
+ * The last `lines` lines on one pane's screen, or none with no pane to look
+ * at. Polled, because a terminal announces nothing when it draws - and only
+ * while someone is looking: the panel is the one place a screen is shown.
+ * State changes only when the screen does, so a quiet one does not re-render.
  */
-export function useScreens(employees: readonly Employee[], lines: number): ReadonlyMap<string, string[]> {
-  const [screens, setScreens] = useState<ReadonlyMap<string, string[]>>(new Map());
-  const panes = employees.map(({ agent }) => `${agent.id}=${agent.pane_id ?? ""}`).join(",");
+export function useScreen(paneId: string | null | undefined, lines: number): string[] {
+  const [screen, setScreen] = useState<string[]>([]);
   useEffect(() => {
+    if (!paneId) {
+      setScreen([]);
+      return;
+    }
     const glance = () => {
-      const next = new Map<string, string[]>();
-      for (const pair of panes.split(",")) {
-        const [id, pane] = pair.split("=");
-        if (id && pane) next.set(id, lastLines(readScreen(pane), lines));
-      }
-      setScreens((current) => (sameScreens(current, next) ? current : next));
+      const next = lastLines(readScreen(paneId), lines);
+      setScreen((current) => (sameLines(current, next) ? current : next));
     };
     glance();
     const timer = setInterval(glance, GLANCE_MS);
     return () => clearInterval(timer);
-  }, [panes, lines]);
-  return screens;
-}
-
-function sameScreens(a: ReadonlyMap<string, string[]>, b: ReadonlyMap<string, string[]>): boolean {
-  if (a.size !== b.size) return false;
-  for (const [id, lines] of b) {
-    if (a.get(id)?.join("\n") !== lines.join("\n")) return false;
-  }
-  return true;
+  }, [paneId, lines]);
+  return screen;
 }

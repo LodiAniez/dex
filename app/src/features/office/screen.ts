@@ -23,3 +23,8 @@ export function lastLines(captured: string | undefined, count: number): string[]
     .filter((line) => line.trim() !== "")
     .slice(-count);
 }
+
+/** Whether two readings of a screen say the same thing. */
+export function sameLines(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((line, i) => line === b[i]);
+}

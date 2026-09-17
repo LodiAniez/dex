@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lastLines } from "./screen";
+import { lastLines, sameLines } from "./screen";
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
@@ -29,5 +29,18 @@ describe("lastLines", () => {
 
   it("does not pad when there is less than was asked for", () => {
     expect(lastLines("only", 5)).toEqual(["only"]);
+  });
+});
+
+describe("sameLines", () => {
+  it("is what lets a quiet screen not redraw the panel every second", () => {
+    expect(sameLines(["a", "b"], ["a", "b"])).toBe(true);
+    expect(sameLines([], [])).toBe(true);
+  });
+
+  it("notices a changed, added or removed line", () => {
+    expect(sameLines(["a", "b"], ["a", "c"])).toBe(false);
+    expect(sameLines(["a"], ["a", "b"])).toBe(false);
+    expect(sameLines(["a", "b"], ["a"])).toBe(false);
   });
 });

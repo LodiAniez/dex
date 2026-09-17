@@ -15,7 +15,7 @@ import { AnnounceDialog } from "./Announce";
 import { headcount, hrNote } from "./floor";
 import { HireDialog } from "./HireDialog";
 import { MapFloor } from "./MapFloor";
-import { useOffice, useScreens, type Employee } from "./officeStore";
+import { useOffice, useScreen, type Employee } from "./officeStore";
 import { knownAs } from "./persona";
 import { CHAT_LINES } from "./ActivityBox";
 import { chatLines } from "./phrasing";
@@ -40,7 +40,6 @@ export function OfficeView({ workspaceId, onGoToPane }: Props) {
   const maxConcurrent = settings?.maxConcurrent ?? DEFAULT_SEATS;
   const office = useOffice(workspaceId, maxConcurrent);
   const workspace = useWorkspaces()?.workspaces.find((ws) => ws.id === workspaceId);
-  const screens = useScreens(office.employees, PANEL_SCREEN_LINES);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [hiring, setHiring] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
@@ -64,6 +63,8 @@ export function OfficeView({ workspaceId, onGoToPane }: Props) {
   const note = hrNote(seats, office.pods, refused);
   // Whoever is picked may leave while their panel is open; it closes with them.
   const picked = office.employees.find((employee) => employee.agent.id === pickedId);
+  // Only whoever's panel is open has their screen read.
+  const screen = useScreen(picked?.agent.pane_id, PANEL_SCREEN_LINES);
 
   const pick = (employee: Employee) => setPickedId(employee.agent.id);
   const hire = () => {
@@ -105,7 +106,7 @@ export function OfficeView({ workspaceId, onGoToPane }: Props) {
           employee={picked}
           staff={office.employees}
           who={who}
-          screen={screens.get(picked.agent.id) ?? []}
+          screen={screen}
           onGoToPane={onGoToPane}
           onClose={() => setPickedId(null)}
         />
