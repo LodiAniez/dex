@@ -1,0 +1,242 @@
+/* The work panel and HR's form: what opens over either view. Shares .office's variables. */
+
+/* ---- work panel ---- */
+
+.office-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 64px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, calc(100% - 32px));
+  padding: 18px;
+  overflow-y: auto;
+  background: #171b24;
+  border: 1px solid var(--office-line);
+  border-radius: 16px;
+  outline: none;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+.office-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.office-panel-head svg {
+  flex: none;
+}
+
+.office-panel-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.office-panel-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.office-panel-role {
+  color: var(--office-dim);
+  font-size: 11.5px;
+}
+
+.office-panel-close {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  margin-left: auto;
+  color: var(--office-dim);
+  background: transparent;
+  border: 1px solid #2a3040;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.office-panel-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #aab3c5;
+  font-size: 12px;
+}
+
+.office-panel-task {
+  padding: 10px 12px;
+  color: var(--office-soft);
+  background: #11141c;
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.office-panel-label {
+  color: var(--office-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.office-panel-screen,
+.office-panel-events {
+  padding: 12px;
+  overflow: hidden;
+  background: #0f141c;
+  border-radius: 12px;
+  font-family: var(--office-mono);
+  font-size: 11.5px;
+  line-height: 1.8;
+}
+
+.office-panel-screen {
+  flex: 1 0 auto;
+  min-height: 80px;
+  color: #aab3c5;
+}
+
+.office-panel-screen div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.office-panel-screen .quiet {
+  color: #4a5164;
+}
+
+.office-panel-events {
+  flex: none;
+  color: var(--office-soft);
+  line-height: 1.6;
+}
+
+.office-panel-events div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.office-panel-events span {
+  color: var(--office-faint);
+}
+
+.office-panel-memo,
+.office-hire textarea,
+.office-hire input {
+  width: 100%;
+  padding: 9px 11px;
+  color: var(--office-text);
+  background: #0f141c;
+  border: 1px solid #2a3040;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.office-panel-memo:focus,
+.office-hire textarea:focus,
+.office-hire input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.office-panel-actions,
+.office-hire-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.office-panel-actions button,
+.office-hire-actions button {
+  flex: 1;
+  height: 38px;
+  color: var(--office-soft);
+  background: transparent;
+  border: 1px solid #2a3040;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.office-panel-actions button.primary,
+.office-hire-actions button.primary {
+  color: #eaf3fc;
+  background: #378add;
+  border: none;
+  font-weight: 500;
+}
+
+.office-panel-actions button:disabled,
+.office-hire-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ---- HR's form ---- */
+
+.office-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 10, 14, 0.6);
+}
+
+.office-hire {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  padding: 18px;
+  background: #171b24;
+  border: 1px solid var(--office-line);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.office-hire-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.office-hire label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #aab3c5;
+  font-size: 12px;
+}
+
+.office-hire .optional {
+  color: var(--office-faint);
+}
+
+.office-hire-problem {
+  padding: 8px 10px;
+  color: #f4b8b6;
+  background: rgba(242, 95, 92, 0.12);
+  border: 1px solid rgba(242, 95, 92, 0.35);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.office-hire-actions {
+  justify-content: flex-end;
+}
+
+.office-hire-actions button {
+  flex: 0 0 auto;
+  padding: 0 20px;
+}

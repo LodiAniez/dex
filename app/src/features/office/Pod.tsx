@@ -116,12 +116,12 @@ export function Pod({ employee, onPick }: { employee: Employee; onPick: (employe
   );
 }
 
-export function VacantPod({ pod }: { pod: number }) {
+export function VacantPod({ pod, sign }: { pod: number; sign?: string }) {
   const { x, y } = podOrigin(pod);
   return (
     <g transform={`translate(${x} ${y})`} aria-hidden="true">
       <Tag>
-        <span className="office-tag vacant">office {pod + 1} — vacant</span>
+        <span className="office-tag vacant">{sign ?? `office ${pod + 1} — vacant`}</span>
       </Tag>
       <g transform="translate(4 30)" opacity="0.8">
         <rect x="6" y="26" width="232" height="166" rx="18" fill="#d3ccba" />
