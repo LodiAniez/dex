@@ -163,6 +163,8 @@ Claude Code lets you register commands that run at points in an agent's life. De
 
 They are how Dex knows an agent's status without reading its screen. Each takes about ten milliseconds. Outside a Dex pane they exit immediately and do nothing, so Claude Code sessions you run elsewhere are unaffected — the hooks check for a Dex pane before doing anything else.
 
+Hooks cannot tell Dex everything: Claude Code quit with Ctrl+C, crashed or killed says nothing on its way out. So Dex also looks: **an agent whose pane no longer runs Claude Code is dead.** Every fifteen seconds it checks that each started agent still has a Claude Code process in its pane, looks again two seconds later to be sure, and ends the ones that do not - they leave the agent list, walk out of the office, and stop counting toward `agents.max_concurrent`. The pane stays; running `claude` in it again starts a new agent. Panes running inside WSL are not checked.
+
 Two of them also carry information *into* the agent: on `SessionStart`, a full digest of the workspace; on `UserPromptSubmit` and `PostToolBatch`, a short delta of what other agents have done since the agent last looked. Nothing is injected when nothing changed.
 
 ### The MCP server

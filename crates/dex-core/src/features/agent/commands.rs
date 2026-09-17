@@ -9,6 +9,7 @@ use rusqlite::Connection;
 use super::identity;
 use super::logic::{self, HookInput, HookKind, SessionStart};
 use super::model::{Agent, AgentError};
+use super::presence;
 use super::store;
 use crate::app::AppState;
 use crate::features::{context, workspace};
@@ -309,7 +310,8 @@ pub async fn pane_exited(
     Ok(EventOutcome { applied: ended > 0 })
 }
 
-/// `agent.sweep`: the watchdog. Agents whose pane is gone are ended; running
+/// `agent.sweep`: the watchdog. Agents whose pane is gone are ended, and so are
+/// those whose pane no longer runs Claude Code (`presence`); running
 /// agents with no hook event and no pane output for two minutes become
 /// `unknown`, which covers every way hook delivery can fail. Announces a
 /// change only when it made one.
@@ -322,6 +324,8 @@ pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
         .db
         .call(move |conn| store::end_orphans(conn, now))
         .await?;
+    // Then whoever is in the list with no Claude Code behind them.
+    let orphaned = orphaned + presence::end_the_departed(state).await?;
     let running = state
         .db
         .call(|conn| store::list_by_status(conn, AgentStatus::Running))

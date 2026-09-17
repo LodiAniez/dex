@@ -288,6 +288,18 @@ pub fn started_ids(conn: &Connection) -> rusqlite::Result<std::collections::Hash
     Ok(ids)
 }
 
+/// Living agents whose Claude Code has started, with the pane each runs in:
+/// those the process table can be asked about.
+pub fn presence_candidates(conn: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, pane_id FROM agent
+         WHERE status != 'dead' AND session_id IS NOT NULL AND pane_id IS NOT NULL
+         ORDER BY started_at, rowid",
+    )?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    rows.collect()
+}
+
 pub fn has_session(conn: &Connection, agent_id: &str) -> rusqlite::Result<bool> {
     let started: Option<bool> = conn
         .query_row(

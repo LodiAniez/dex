@@ -4,12 +4,13 @@
 //! always get to say goodbye: quit with Ctrl+C, or crashed, it fires no
 //! `SessionEnd`, and the agent goes on reading "idle" over what is now a bare
 //! shell. Anything typed there, the shell runs. The process table is the only
-//! thing that knows, so before Dex types at an agent it looks.
+//! thing that knows: Dex looks before it types at an agent, and the watchdog
+//! looks every sweep and ends whoever is not there (`agent/presence.rs`).
 //!
 //! The table is read by asking PowerShell, which every supported Windows has;
 //! `#![forbid(unsafe_code)]` rules out the Toolhelp API. It takes a few hundred
-//! milliseconds, which is why it is asked only when the owner is about to type
-//! at an agent, not on a timer.
+//! milliseconds, so the watchdog reads it only when there is an agent to ask
+//! about.
 
 #[cfg(test)]
 mod tests;
