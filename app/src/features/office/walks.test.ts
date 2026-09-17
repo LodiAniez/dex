@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { HR_DOOR, TALK_SECONDS, afterWalk, awayFromDesk, deliveries, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
+import { EXIT_DOOR, HR_DOOR, TALK_SECONDS, WAVE_SECONDS, afterWalk, awayFromDesk, deliveries, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
 
 const agent = (id: string, extra: Partial<{ status: AgentStatus; parent_id: string | null; depth: number; workspace_id: string }> = {}) => ({
   id,
@@ -100,14 +100,42 @@ describe("routeOf", () => {
     expect(route.legs).toEqual(legsTo(5));
   });
 
-  it("walks a leaver the same way back, at the same pace", () => {
+  it("walks a leaver out of the door, not back into HR, which only hires", () => {
     const route = routeOf({ kind: "leave", pod: 5 });
     expect(route.from).toEqual({ x: 1040, y: 560 });
-    expect(route.legs).toEqual([
-      { x: 1040, y: 400, seconds: 0.8 },
-      { x: 150, y: 400, seconds: 1.9 },
-      { x: HR_DOOR.x, y: HR_DOOR.y, seconds: 0.9 },
+    expect(route.legs.map(({ x, y }) => [x, y])).toEqual([
+      [1040, 400], // out of their pod, up to the corridor
+      [EXIT_DOOR.x, EXIT_DOOR.y], // and along it to the door at its end
     ]);
+    expect(route.legs.at(-1)).not.toMatchObject({ x: HR_DOOR.x, y: HR_DOOR.y });
+  });
+
+  it("puts the door on the left wall at the end of the main corridor, clear of HR and the break room", () => {
+    // HR's room ends at y = 342 and the break room starts at y = 560.
+    expect(EXIT_DOOR.y).toBe(400);
+    expect(EXIT_DOOR.x).toBeLessThan(40);
+    expect(EXIT_DOOR.y).toBeGreaterThan(342);
+    expect(EXIT_DOOR.y + 60).toBeLessThan(560);
+  });
+
+  it("brings someone from a lower row up the side aisle to the door, never through desks", () => {
+    const stops = routeOf({ kind: "leave", pod: 8 }).legs.map(({ x, y }) => [x, y]);
+    expect(stops).toEqual([
+      [1040, 1100], // their own corridor
+      [HR_DOOR.x, 1100], // along it to the aisle
+      [HR_DOOR.x, 400], // up the aisle to the main corridor
+      [EXIT_DOOR.x, EXIT_DOOR.y],
+    ]);
+  });
+
+  it("takes them the same time per step as any other walk", () => {
+    const legs = routeOf({ kind: "leave", pod: 5 }).legs;
+    expect(legs[0].seconds).toBe(0.9);
+    expect(legs[1].seconds).toBeGreaterThan(1.9); // further than HR's column: all the way to the wall
+  });
+
+  it("gives them a moment at the door to wave", () => {
+    expect(WAVE_SECONDS).toBeGreaterThanOrEqual(1);
   });
 });
 
