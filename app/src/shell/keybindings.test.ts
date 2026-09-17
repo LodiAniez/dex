@@ -39,7 +39,7 @@ describe("the shipped bindings", () => {
   it("leave unbound only what the PRD gives no key", () => {
     // Everything else in the palette is reachable from the keyboard out of the box.
     const unbound = Object.keys(ACTIONS).filter((action) => !(action in DEFAULT_BINDINGS));
-    expect(unbound).toEqual(["open-diff", "view-terminal", "view-cards", "view-office", "cycle-view", "open-setup"]);
+    expect(unbound).toEqual(["open-diff", "open-activity", "view-terminal", "view-cards", "view-office", "cycle-view", "open-setup"]);
   });
 
   it("bind no two actions to the same keys", () => {

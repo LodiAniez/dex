@@ -15,6 +15,7 @@ export type AppAction =
   | { kind: "cycle-layout" }
   | { kind: "command-palette" }
   | { kind: "open-diff" }
+  | { kind: "open-activity" }
   | { kind: "view-terminal" }
   | { kind: "view-cards" }
   | { kind: "view-office" }
@@ -43,6 +44,7 @@ export const ACTIONS: Record<string, AppAction> = {
   "cycle-layout": { kind: "cycle-layout" },
   // Palette-only unless the owner binds them: PRD §13 gives them no key.
   "open-diff": { kind: "open-diff" },
+  "open-activity": { kind: "open-activity" },
   "view-terminal": { kind: "view-terminal" },
   "view-cards": { kind: "view-cards" },
   "view-office": { kind: "view-office" },
