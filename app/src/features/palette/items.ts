@@ -53,7 +53,6 @@ export const COMMAND_LABELS: Record<string, string> = {
   "open-diff": "Show git diff",
   "open-activity": "Show activity",
   "view-terminal": "Terminal view",
-  "view-cards": "Cards view",
   "view-office": "Office view",
   "cycle-view": "Next view",
   "open-setup": "Setup checks",

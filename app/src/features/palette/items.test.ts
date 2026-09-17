@@ -98,7 +98,7 @@ describe("what the palette offers", () => {
 
   it("offers each view by the name people will type", () => {
     expect(COMMAND_LABELS["view-terminal"]).toBe("Terminal view");
-    expect(COMMAND_LABELS["view-cards"]).toBe("Cards view");
+    expect("view-cards" in COMMAND_LABELS).toBe(false);
     expect(COMMAND_LABELS["view-office"]).toBe("Office view");
     expect(COMMAND_LABELS["cycle-view"]).toBe("Next view");
   });

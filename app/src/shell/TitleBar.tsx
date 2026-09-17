@@ -40,7 +40,7 @@ export function TitleBar({ title, color, counts, onShowActivity, view }: Props) 
             activity
           </button>
         )}
-        {/* The same workspace three ways: its panes, its agents as cards, its agents in an office. */}
+        {/* The same workspace two ways: its panes, or its agents in an office. */}
         {view && <ViewSwitch mode={view.mode} onChoose={view.onChoose} />}
         {/* Only while a newer release exists; clicking opens its page. Nothing
             is downloaded or installed from here — the owner reads the notes

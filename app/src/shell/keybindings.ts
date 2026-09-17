@@ -17,7 +17,6 @@ export type AppAction =
   | { kind: "open-diff" }
   | { kind: "open-activity" }
   | { kind: "view-terminal" }
-  | { kind: "view-cards" }
   | { kind: "view-office" }
   | { kind: "cycle-view" }
   | { kind: "open-setup" };
@@ -46,7 +45,6 @@ export const ACTIONS: Record<string, AppAction> = {
   "open-diff": { kind: "open-diff" },
   "open-activity": { kind: "open-activity" },
   "view-terminal": { kind: "view-terminal" },
-  "view-cards": { kind: "view-cards" },
   "view-office": { kind: "view-office" },
   "cycle-view": { kind: "cycle-view" },
   "open-setup": { kind: "open-setup" },

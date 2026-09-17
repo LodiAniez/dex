@@ -171,39 +171,25 @@ export function captureTerminal(paneId: string): string | undefined {
   return entries.get(paneId)?.serialize.serialize();
 }
 
-/** Rows `from` to `to` of a pane's buffer as the lines that were printed, wrapped rows rejoined. */
-function readRows(paneId: string, from: (baseY: number, rows: number) => number): string | undefined {
+/**
+ * What is on the pane's screen right now, as plain text, one printed line per
+ * line, wrapped rows rejoined. Reads the buffer rather than serializing it:
+ * this is polled, and a serialize walks the whole scrollback to produce escapes
+ * nobody here wants. From `baseY`, not `viewportY`: what the program last drew,
+ * wherever the owner has scrolled to.
+ */
+export function readScreen(paneId: string): string | undefined {
   const term = entries.get(paneId)?.term;
   if (!term) return undefined;
   const buffer = term.buffer.active;
   const end = buffer.baseY + term.rows;
   const rows: BufferRow[] = [];
-  for (let row = Math.max(0, from(buffer.baseY, term.rows)); row < end; row += 1) {
+  for (let row = buffer.baseY; row < end; row += 1) {
     const line = buffer.getLine(row);
     // Untrimmed: where a wrap fell on a space, the space is part of the line.
     rows.push({ text: line?.translateToString(false) ?? "", wrapped: line?.isWrapped ?? false });
   }
   return joinWrapped(rows).join("\n");
-}
-
-/**
- * What is on the pane's screen right now, as plain text, one printed line per
- * line. Reads the buffer rather than serializing it: this is polled, and a
- * serialize walks the whole scrollback to produce escapes nobody here wants.
- * From `baseY`, not `viewportY`: what the program last drew, wherever the
- * owner has scrolled to.
- */
-export function readScreen(paneId: string): string | undefined {
-  return readRows(paneId, (baseY) => baseY);
-}
-
-/**
- * The last `lines` rows a pane has printed, scrollback included. What
- * `readScreen` is to the visible screen, this is to the history behind it: for
- * a view with room to show more than fits on the terminal at once.
- */
-export function readTail(paneId: string, lines: number): string | undefined {
-  return readRows(paneId, (baseY, rows) => baseY + rows - lines);
 }
 
 function loadWebgl(entry: Entry): void {

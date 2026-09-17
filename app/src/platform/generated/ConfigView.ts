@@ -22,8 +22,7 @@ keys: { [key in string]: string },
  */
 max_concurrent: number, 
 /**
- * How a workspace is shown until the owner chooses: `terminal`, `cards` or
- * `office`.
+ * How a workspace is shown until the owner chooses: `terminal` or `office`.
  */
 view: string, 
 /**

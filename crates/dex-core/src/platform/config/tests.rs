@@ -207,11 +207,27 @@ fn the_update_check_is_on_by_default_and_can_be_turned_off() {
 #[test]
 fn a_workspace_opens_as_terminals_unless_the_owner_prefers_another_view() {
     assert_eq!(Config::default().ui.view, "terminal");
-    for view in ["terminal", "cards", "office"] {
+    for view in ["terminal", "office"] {
         let (config, problems) = parse(&format!("[ui]\nview = \"{view}\"\n"));
         assert_eq!(config.ui.view, view);
         assert!(problems.is_empty(), "{problems:?}");
     }
+}
+
+#[test]
+fn a_config_that_still_asks_for_the_cards_view_gets_the_office_and_is_told() {
+    // 0.2.0 had a cards view. A config written for it must not read as a typo.
+    let (config, problems) = parse(
+        "[ui]
+view = \"cards\"
+",
+    );
+    assert_eq!(config.ui.view, "office");
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert!(
+        problems[0].contains("cards view was removed"),
+        "{problems:?}"
+    );
 }
 
 #[test]
