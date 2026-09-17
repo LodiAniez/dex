@@ -5,7 +5,7 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "./office.css";
 import "./map.css";
 import "./panel.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useUiSettings } from "../../platform/config";
 import { useActivity, watchActivity } from "../activity";
 import { useWorkspaces } from "../workspaces";
@@ -74,9 +74,15 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
     setRefused(false);
     setHiring(true);
   };
+  // When HR's form goes, so does whatever in it had focus; the office takes it
+  // back rather than leave it on the page body.
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!hiring) root.current?.focus();
+  }, [hiring]);
 
   return (
-    <div className={`office ${view}`}>
+    <div className={`office ${view}`} ref={root} tabIndex={-1}>
       {workspace && (
         <div className="office-title">
           <span className="office-title-dot" style={{ background: workspace.color ?? "#d85a30" }} />
