@@ -24,7 +24,7 @@ export const NAMES = [
   "Vik", "Yara", "Zed", "Alba", "Beck", "Cyd", "Dov", "Esme",
   "Finn", "Gia", "Hugo", "Ines", "Jude", "Koa", "Lior", "Maz",
   "Nell", "Oren", "Priya", "Rue", "Sami", "Tova", "Ugo", "Vera",
-  "Wes", "Xan", "Yuki", "Zora", "Ari", "Bea", "Cass", "Dex",
+  "Wes", "Xan", "Yuki", "Zora", "Ari", "Bea", "Cass", "Dee",
 ] as const;
 
 export const SKINS = ["#f2c9a0", "#c68642", "#f8d8b8", "#8d5a3b"] as const;
