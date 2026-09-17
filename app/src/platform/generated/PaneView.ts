@@ -17,7 +17,7 @@ label: string | null,
  */
 cwd: string, 
 /**
- * `terminal`, `markdown`, `diff`, or `activity`.
+ * `terminal`, `markdown`, `diff`, `activity`, or `office`.
  */
 kind: string, 
 /**

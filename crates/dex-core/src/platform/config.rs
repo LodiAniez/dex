@@ -52,8 +52,30 @@ pub struct Config {
     pub digest: DigestSettings,
     /// The update check.
     pub updates: UpdateSettings,
+    /// How the window starts out.
+    pub ui: UiSettings,
     /// Keybinding overrides, action to binding. Only what the owner changed.
     pub keys: BTreeMap<String, String>,
+}
+
+/// How the window starts out. Dex only reads this: what the owner clicks is
+/// remembered by the window, and never written back over their file.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct UiSettings {
+    /// What an office pane shows first: `cards` or `office` (the floor map).
+    pub office_view: String,
+}
+
+/// The views an office pane has.
+const OFFICE_VIEWS: [&str; 2] = ["cards", "office"];
+
+impl Default for UiSettings {
+    fn default() -> Self {
+        Self {
+            office_view: "cards".into(),
+        }
+    }
 }
 
 /// Whether the app may ask GitHub for the latest release.
@@ -117,6 +139,7 @@ impl Default for Config {
             agents: AgentSettings::default(),
             digest: DigestSettings::default(),
             updates: UpdateSettings::default(),
+            ui: UiSettings::default(),
             keys: BTreeMap::new(),
         }
     }
@@ -214,6 +237,15 @@ impl Config {
                 defaults.digest.full_chars, defaults.digest.delta_chars
             ));
             self.digest = defaults.digest;
+        }
+        if !OFFICE_VIEWS.contains(&self.ui.office_view.as_str()) {
+            problems.push(format!(
+                "ui.office_view \"{}\" is not one of {}; using \"{}\"",
+                self.ui.office_view,
+                OFFICE_VIEWS.join(", "),
+                defaults.ui.office_view
+            ));
+            self.ui = defaults.ui;
         }
         problems
     }
