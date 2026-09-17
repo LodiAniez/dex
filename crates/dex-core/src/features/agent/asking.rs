@@ -24,7 +24,7 @@ const CLOSING_SENTENCES: usize = 2;
 const QUESTION_CHARS: usize = 120;
 
 /// Ways of asking the owner for something without a question mark.
-const CUES: [&str; 28] = [
+const CUES: [&str; 35] = [
     "reply \"",
     "reply with",
     "reply yes",
@@ -53,6 +53,14 @@ const CUES: [&str; 28] = [
     "need your",
     "need you to",
     "please choose",
+    // From real closing messages the first list missed.
+    "say the word",
+    "say go",
+    "say if you",
+    "tell me first",
+    "tell me when",
+    "your call",
+    "send me the",
 ];
 
 /// Closings that ask for nothing.

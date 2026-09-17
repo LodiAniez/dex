@@ -47,6 +47,34 @@ fn a_question_is_a_question_without_its_question_mark() {
 }
 
 #[test]
+fn asking_for_the_go_ahead_is_a_question_however_it_is_put() {
+    // Missed when the detector was run over 247 real closing messages from this machine.
+    for message in [
+        "Version is bumped to 0.1.4 with release notes drafted. Say the word and I'll commit, push, and publish.",
+        "Tag, publish with short release notes. Say go and I'll do it, or push and tag yourself if you'd rather.",
+        "Nothing is committed. Tell me first whether you want help with recovery; M5 can wait.",
+        "I'd number the next release 0.3.0; tell me when you want it published.",
+        "I'm still not running anything; it's your call on the recovery steps.",
+        "The three agents are still sitting idle in their panes; say if you want me to stop them.",
+        "If beta is meant to do real work, send me the brief.",
+    ] {
+        assert!(question_for_owner(message).is_some(), "{message}");
+    }
+}
+
+#[test]
+fn an_offer_that_blocks_nothing_is_not_a_question() {
+    // The agent has finished; it is not waiting to hear.
+    for message in [
+        "The three merged branches are still there locally and on GitHub; I can delete them if you want.",
+        "Dex doesn't do that today. I can build it if you want it.",
+        "I can fold these fixes into the PRD if you'd like.",
+    ] {
+        assert_eq!(question_for_owner(message), None, "{message}");
+    }
+}
+
+#[test]
 fn a_statement_that_only_mentions_a_question_word_is_not_a_question() {
     for message in [
         "I checked what it would be under load, and it holds.",
