@@ -1,7 +1,7 @@
 //! `agent.stop` and the pane an agent leaves behind. Dex made a spawned
 //! agent's pane, so Dex removes it; a pane the owner opened is the owner's.
 
-use dex_protocol::agent::{AgentStatus, SpawnArgs};
+use dex_protocol::agent::{AgentStatus, SpawnArgs, Spawned};
 
 use super::{agents, fire, pane, session, stop_args};
 use crate::features::agent::{spawn, stop};
@@ -158,6 +158,7 @@ async fn clocking_out_closes_the_pane_even_of_an_agent_the_owner_started() {
             agent: id,
             graceful: true,
             close_pane: true,
+            from_pane: None,
         },
     )
     .await
@@ -165,4 +166,76 @@ async fn clocking_out_closes_the_pane_even_of_an_agent_the_owner_started() {
 
     assert!(stopped.closed_pane, "{stopped:?}");
     assert_eq!(pane_ids(&state).await, [first]);
+}
+
+/// A lead, the child it spawned, and that child's own child, each in its pane.
+async fn family(state: &crate::app::AppState, first: &str) -> (String, Spawned, Spawned) {
+    fire(state, "session-start", first, 1, session("lead")).await;
+    let lead = agents(state).await[0].id.clone();
+    let child = spawn(state, brief("first level", first)).await.unwrap();
+    fire(state, "session-start", &child.pane, 2, session("child")).await;
+    let grandchild = spawn(state, brief("second level", &child.pane))
+        .await
+        .unwrap();
+    (lead, child, grandchild)
+}
+
+fn stop_from(pane: &str, target: &str) -> dex_protocol::agent::StopAgentArgs {
+    dex_protocol::agent::StopAgentArgs {
+        from_pane: Some(pane.into()),
+        ..stop_args(target)
+    }
+}
+
+#[tokio::test]
+async fn an_agent_may_stop_the_agents_it_spawned_however_far_down() {
+    let (_dir, state, first) = pane().await;
+    let (_lead, child, grandchild) = family(&state, &first).await;
+
+    assert!(
+        stop(&state, stop_from(&first, &grandchild.agent))
+            .await
+            .is_ok()
+    );
+    assert!(stop(&state, stop_from(&first, &child.agent)).await.is_ok());
+}
+
+#[tokio::test]
+async fn an_agent_may_not_stop_its_parent_or_anyone_elses_agents() {
+    // "Stop the other agents", said to a confused child, must not end the
+    // lead or the lead's other children - least of all now that stopping
+    // closes panes.
+    let (_dir, state, first) = pane().await;
+    let (lead, child, _grandchild) = family(&state, &first).await;
+    let sibling = spawn(&state, brief("another first level", &first))
+        .await
+        .unwrap();
+
+    for target in [lead.as_str(), sibling.agent.as_str()] {
+        let refused = stop(&state, stop_from(&child.pane, target)).await;
+        assert!(
+            matches!(
+                refused,
+                Err(crate::features::agent::AgentError::NotYours(_))
+            ),
+            "{target}: {refused:?}"
+        );
+    }
+    assert_eq!(agents(&state).await.len(), 4, "nobody was ended");
+}
+
+#[tokio::test]
+async fn an_agent_may_stop_itself_and_the_owner_may_stop_anyone() {
+    let (_dir, state, first) = pane().await;
+    let (lead, child, grandchild) = family(&state, &first).await;
+
+    // Itself.
+    assert!(
+        stop(&state, stop_from(&grandchild.pane, &grandchild.agent))
+            .await
+            .is_ok()
+    );
+    // The owner: no pane at all (the office), or a pane with no agent in it.
+    assert!(stop(&state, stop_args(&child.agent)).await.is_ok());
+    assert!(stop(&state, stop_args(&lead)).await.is_ok());
 }

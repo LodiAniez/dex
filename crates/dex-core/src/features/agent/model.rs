@@ -54,6 +54,9 @@ pub enum AgentError {
     /// The agent has already ended.
     #[error("agent {0} has already ended")]
     NotRunning(String),
+    /// `agent.stop` by an agent, of an agent that is not itself or one it spawned.
+    #[error("agent {0} is not yours to stop")]
+    NotYours(String),
     /// `agent.prompt` with nothing to say.
     #[error("a prompt needs some text")]
     EmptyPrompt,

@@ -38,14 +38,39 @@ const EXIT_POLL: Duration = Duration::from_millis(250);
 /// row of empty shells. A pane the owner opened and ran `claude` in is theirs,
 /// and stays unless they ask (`close_pane`). A workspace's last pane always stays.
 ///
+/// **An agent may stop only itself and the agents it spawned.** "Stop the
+/// other agents", said to a confused child, must not end the lead or the lead's
+/// other children, least of all now that stopping closes panes. The owner - the
+/// office, or a pane with no agent in it - may stop anyone.
+///
 /// **Gracefully** (`graceful`) asks first: `/exit`, after an Escape if the
 /// agent is mid-turn, and a few seconds for its `SessionEnd` hook to report
 /// it gone. Ctrl+C follows only if it is still there.
 pub async fn stop(state: &AppState, args: StopAgentArgs) -> Result<Stopped, AgentError> {
     let target = args.agent.clone();
+    let from_pane = args.from_pane.clone();
     let agent = state
         .db
-        .call(move |conn| find_target(conn, &target))
+        .call(move |conn| -> rusqlite::Result<Result<_, AgentError>> {
+            let agent = match find_target(conn, &target)? {
+                Ok(agent) => agent,
+                Err(err) => return Ok(Err(err)),
+            };
+            // Who is asking? An agent, if one is running in the pane the
+            // request came from; otherwise the owner, who may stop anyone.
+            let asker = match from_pane.as_deref() {
+                Some(pane) => store::find_live_in_pane(conn, pane)?,
+                None => None,
+            };
+            if let Some(asker) = asker {
+                let theirs =
+                    asker.id == agent.id || store::descends_from(conn, &agent.id, &asker.id)?;
+                if !theirs {
+                    return Ok(Err(AgentError::NotYours(agent.id)));
+                }
+            }
+            Ok(Ok(agent))
+        })
         .await??;
     if agent.status == AgentStatus::Dead {
         return Err(AgentError::NotRunning(agent.id));

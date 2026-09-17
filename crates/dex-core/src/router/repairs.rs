@@ -47,6 +47,10 @@ pub(super) fn error_body(err: &CoreError) -> ErrorBody {
             ErrorCode::NoSuchAgent,
             "That agent has already ended; `dex agent list` shows the running ones.".to_owned(),
         ),
+        CoreError::Agent(AgentError::NotYours(_)) => (
+            ErrorCode::InvalidArgs,
+            "An agent may stop itself and the agents it spawned, nobody else's. If this one should end, tell the owner or the agent that spawned it (`message_send`).".to_owned(),
+        ),
         CoreError::Agent(AgentError::EmptyPrompt) => (
             ErrorCode::InvalidArgs,
             "Say what to tell the agent.".to_owned(),
