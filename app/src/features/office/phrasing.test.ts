@@ -28,13 +28,25 @@ describe("phrase", () => {
     });
   });
 
-  it("credits a hire to HR, for whoever asked", () => {
-    expect(phrase(event("spawn", "main started an agent for: refactor the config loader"), who)).toEqual({
+  it("credits a hire to HR: the event is the new agent's, and its body names who asked", () => {
+    // The daemon records a spawn against the agent that was spawned.
+    const hire = event("spawn", "main started an agent for: write the tests", { agent_id: "b", author: "tests" });
+    expect(phrase(hire, { names, labels: new Map([["main", "Morgan"]]) })).toEqual({
       seq: 1,
       who: "HR",
-      text: "hired for Morgan: refactor the config loader",
+      text: "hired Pip for Morgan: write the tests",
       tone: "good",
     });
+  });
+
+  it("says you, when it was you who hired them", () => {
+    const hire = event("spawn", "you started an agent for: write the tests", { agent_id: "b" });
+    expect(phrase(hire, who).text).toBe("hired Pip for you: write the tests");
+  });
+
+  it("keeps the label of a hirer the office cannot place", () => {
+    const hire = event("spawn", "porter started an agent for: write the tests", { agent_id: "b" });
+    expect(phrase(hire, who).text).toBe("hired Pip for porter: write the tests");
   });
 
   it("says what a status change means rather than what it is called", () => {
