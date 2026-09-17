@@ -66,3 +66,12 @@ export function announceSummary<A extends Promptable, M extends Member<A>>(plan:
   const list = missed.length === 1 ? missed[0] : `${missed.slice(0, -1).join(", ")} or ${missed[missed.length - 1]}`;
   return `${heard} Not to ${list}.`;
 }
+
+/**
+ * Whether a key press in a prompt box sends the prompt: Enter, as in any chat
+ * box, with Shift+Enter left for a new line - and never while an input method
+ * is still composing, when Enter only picks a candidate.
+ */
+export function sendsOn(event: { key: string; shiftKey: boolean; ctrlKey: boolean; isComposing: boolean }): boolean {
+  return event.key === "Enter" && !event.shiftKey && !event.isComposing;
+}

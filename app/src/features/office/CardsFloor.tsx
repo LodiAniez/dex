@@ -1,5 +1,4 @@
-import { AgentStatusDot, STATUS_WORDS } from "../agents";
-import { Avatar } from "./Avatar";
+import { AgentCard } from "./AgentCard";
 import type { Headcount } from "./floor";
 import type { Employee, Office } from "./officeStore";
 
@@ -11,12 +10,14 @@ interface Props {
   /** The last lines on each agent's screen, by agent id; a card shows the last `cardLines`. */
   screens: ReadonlyMap<string, string[]>;
   cardLines: number;
-  onPick: (employee: Employee) => void;
+  onGoToPane: (paneId: string) => void;
+  /** Opens someone's panel, from the Details button on their card. */
+  onDetails: (employee: Employee) => void;
   onHire: () => void;
 }
 
 /** The office as a grid of cards, one per pod, with HR's column beside it. */
-export function CardsFloor({ office, seats, hrNote, screens, cardLines, onPick, onHire }: Props) {
+export function CardsFloor({ office, seats, hrNote, screens, cardLines, onGoToPane, onDetails, onHire }: Props) {
   return (
     <div className="office-cards">
       <aside className="office-hr">
@@ -33,12 +34,18 @@ export function CardsFloor({ office, seats, hrNote, screens, cardLines, onPick, 
           {seats.full ? "Office full" : "Hire an agent"}
         </button>
         <div className="office-hr-note">{hrNote}</div>
-        <div className="office-hr-hint">Click a card to see their work.</div>
+        <div className="office-hr-hint">Each card is that agent's screen. Type under it to prompt them.</div>
       </aside>
       <div className="office-grid">
         {office.pods.map((employee, pod) =>
           employee ? (
-            <Card key={employee.agent.id} employee={employee} screen={(screens.get(employee.agent.id) ?? []).slice(-cardLines)} onPick={onPick} />
+            <AgentCard
+              key={employee.agent.id}
+              employee={employee}
+              screen={(screens.get(employee.agent.id) ?? []).slice(-cardLines)}
+              onGoToPane={onGoToPane}
+              onDetails={onDetails}
+            />
           ) : (
             // Keyed by pod: a vacancy is a place, not a person.
             <div key={`vacant-${pod}`} className="office-vacant">
@@ -52,28 +59,5 @@ export function CardsFloor({ office, seats, hrNote, screens, cardLines, onPick, 
         )}
       </div>
     </div>
-  );
-}
-
-function Card({ employee, screen, onPick }: { employee: Employee; screen: string[]; onPick: (employee: Employee) => void }) {
-  const { agent, persona, role } = employee;
-  return (
-    <button type="button" className={`office-card ${agent.status}`} onClick={() => onPick(employee)}>
-      <span className="office-card-head">
-        <Avatar persona={persona} size={30} />
-        <span className="office-card-who">
-          <span className="office-card-name">{persona.name}</span>
-          <span className="office-card-role">{role}</span>
-        </span>
-        <span className="office-card-status">
-          <AgentStatusDot status={agent.status} />
-          {STATUS_WORDS[agent.status]}
-        </span>
-      </span>
-      <span className="office-card-task">{agent.task_brief ?? "Started by you; no brief."}</span>
-      <span className="office-card-screen">
-        {screen.length > 0 ? screen.map((line, i) => <span key={i}>{line}</span>) : <span className="quiet">nothing on screen</span>}
-      </span>
-    </button>
   );
 }

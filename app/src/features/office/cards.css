@@ -1,0 +1,196 @@
+/* An agent's card in the cards view. Shares .office's variables. */
+
+/* A card is an agent's screen: who they are, what they are printing, and what
+   the owner can do about it. It is not a button - nothing opens when it is
+   clicked, because it is already the thing worth looking at. */
+.office-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  color: var(--office-text);
+  background: var(--office-card);
+  border: 1px solid var(--office-line);
+  border-radius: 14px;
+}
+
+.office-card:focus-within {
+  border-color: var(--office-line-strong);
+}
+
+/* The one that is waiting for a person is the one to find first. */
+.office-card.waiting {
+  border-color: rgba(79, 140, 255, 0.55);
+}
+
+.office-card.error {
+  border-color: rgba(242, 95, 92, 0.5);
+}
+
+.office-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: none;
+}
+
+.office-card-head svg {
+  flex: none;
+}
+
+.office-card-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.office-card-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.office-card-role {
+  overflow: hidden;
+  color: var(--office-dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.office-card-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  flex: none;
+  color: #aab3c5;
+  font-size: 11px;
+}
+
+/* What they need from the owner; the whole line goes to their pane. */
+.office-card-needs {
+  flex: none;
+  padding: 6px 10px;
+  text-align: left;
+  color: #cfe0ff;
+  background: rgba(79, 140, 255, 0.12);
+  border: 1px solid rgba(79, 140, 255, 0.5);
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.office-card-needs.error,
+.office-card-needs.unknown {
+  color: #f4c9c7;
+  background: rgba(242, 95, 92, 0.1);
+  border-color: rgba(242, 95, 92, 0.45);
+}
+
+.office-card-needs .go {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Their terminal. It takes whatever height the card has left, and holds its
+   lines to the bottom, as a terminal does: the newest line is what matters. */
+.office-card-screen {
+  flex: 1 1 0;
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 8px 10px;
+  overflow: hidden;
+  color: #aab3c5;
+  background: #0b0e14;
+  border: 1px solid #1d2230;
+  border-radius: 8px;
+  font-family: var(--office-mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.office-card-lines {
+  display: flex;
+  flex-direction: column;
+}
+
+.office-card-lines span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.office-card-lines .quiet {
+  color: #4a5164;
+}
+
+.office-card-prompt {
+  flex: none;
+  width: 100%;
+  padding: 7px 9px;
+  color: var(--office-text);
+  background: #0f141c;
+  border: 1px solid #2a3040;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: none;
+}
+
+.office-card-prompt:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.office-card-prompt:disabled {
+  color: var(--office-faint);
+  background: transparent;
+}
+
+.office-card-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.office-card-actions button {
+  flex: 1 1 auto;
+  height: 28px;
+  padding: 0 10px;
+  color: var(--office-soft);
+  background: transparent;
+  border: 1px solid #2a3040;
+  border-radius: 999px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.office-card-actions button:hover:not(:disabled) {
+  border-color: var(--office-line-strong);
+}
+
+.office-card-actions button.primary {
+  color: #eaf3fc;
+  background: #378add;
+  border-color: transparent;
+  font-weight: 500;
+}
+
+.office-card-actions button.danger {
+  flex: 0 0 auto;
+  color: #f4b8b6;
+  border-color: rgba(242, 95, 92, 0.4);
+}
+
+.office-card-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
