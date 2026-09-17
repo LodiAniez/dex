@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { announcePlan, announceSummary, promptArgs, sendsOn, whyNoPrompt } from "./prompt";
+import { announcePlan, announceSummary, boxState, promptArgs, sendsOn, whyNoPrompt } from "./prompt";
 
 const member = (name: string, status: AgentStatus, pane: string | null = `pane-${name}`, started = true) => ({
   agent: { id: `id-${name}`, status, pane_id: pane, started },
@@ -80,5 +80,21 @@ describe("sendsOn", () => {
 
   it("ignores every other key", () => {
     expect(sendsOn(key("a"))).toBe(false);
+  });
+});
+
+describe("boxState", () => {
+  it("is an ordinary box when the agent can be prompted", () => {
+    expect(boxState(null, false)).toEqual({ disabled: false, readOnly: false });
+  });
+
+  it("is disabled when the agent cannot be typed at", () => {
+    expect(boxState("waiting for you", false)).toEqual({ disabled: true, readOnly: false });
+  });
+
+  it("is read-only, not disabled, while a prompt is on its way", () => {
+    // A disabled box drops the keyboard and nothing gives it back: the next
+    // thing typed goes nowhere. Read-only keeps the caret where it was.
+    expect(boxState(null, true)).toEqual({ disabled: false, readOnly: true });
   });
 });

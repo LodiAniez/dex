@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { EXIT_DOOR, HR_DOOR, TALK_SECONDS, WAVE_SECONDS, afterWalk, awayFromDesk, deliveries, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
+import { AISLE_X, EXIT_DOOR, HR_DOOR, TALK_SECONDS, WAVE_SECONDS, afterWalk, awayFromDesk, deliveries, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
 
 const agent = (id: string, extra: Partial<{ status: AgentStatus; parent_id: string | null; depth: number; workspace_id: string }> = {}) => ({
   id,
@@ -74,13 +74,18 @@ describe("legsTo", () => {
 
   it("uses the corridor beside a lower row rather than walking through desks", () => {
     const legs = legsTo(8);
-    expect(legs[0]).toMatchObject({ x: HR_DOOR.x, y: 1100 });
-    expect(legs[2]).toMatchObject({ x: 1040, y: 910 });
+    // Out of HR to the main corridor, across to the aisle, and down it.
+    expect(legs.map(({ x, y }) => [x, y]).slice(0, 3)).toEqual([
+      [HR_DOOR.x, 400],
+      [AISLE_X, 400],
+      [AISLE_X, 1100],
+    ]);
+    expect(legs.at(-1)).toMatchObject({ x: 1040, y: 910 });
   });
 
   it("takes longer over a longer walk, at the design's pace", () => {
     expect(legsTo(3)[1].seconds).toBeLessThan(legsTo(5)[1].seconds);
-    expect(legsTo(8)[0].seconds).toBeGreaterThan(legsTo(5)[0].seconds);
+    expect(walkDuration(legsTo(8))).toBeGreaterThan(walkDuration(legsTo(5)));
   });
 });
 
@@ -122,8 +127,8 @@ describe("routeOf", () => {
     const stops = routeOf({ kind: "leave", pod: 8 }).legs.map(({ x, y }) => [x, y]);
     expect(stops).toEqual([
       [1040, 1100], // their own corridor
-      [HR_DOOR.x, 1100], // along it to the aisle
-      [HR_DOOR.x, 400], // up the aisle to the main corridor
+      [AISLE_X, 1100], // along it to the aisle
+      [AISLE_X, 400], // up the aisle to the main corridor
       [EXIT_DOOR.x, EXIT_DOOR.y],
     ]);
   });
@@ -249,8 +254,8 @@ describe("nextLegs: a round, one decision at a time", () => {
     const far: Walk = { kind: "deliver", id: "a", pod: 1, stops: [7], key: "m1" };
     expect(stops(nextLegs(far, 0, "home")?.legs ?? [])).toEqual([
       [730, 400],
-      [HR_DOOR.x, 400],
-      [HR_DOOR.x, 1100],
+      [AISLE_X, 400],
+      [AISLE_X, 1100],
       [680, 1100],
       [680, 940],
     ]);
@@ -325,5 +330,32 @@ describe("afterWalk", () => {
 
   it("copes with an empty queue", () => {
     expect(afterWalk([], 0)).toEqual([]);
+  });
+});
+
+describe("the side aisle", () => {
+  it("runs between the break room and the first column of desks, through neither", () => {
+    // The break room spans x 36..266 (y 560..664); the first pods start at x 340.
+    // A walker is 48 wide and stands at its left edge.
+    expect(AISLE_X).toBeGreaterThanOrEqual(266);
+    expect(AISLE_X + 48).toBeLessThanOrEqual(340);
+  });
+
+  it("is what every walk between corridors uses: in, out, and on a round", () => {
+    // A leg that changes corridor is a long vertical one (corridors are 700 apart).
+    const changes = (from: { x: number; y: number }, legs: { x: number; y: number }[]) => {
+      const stops = [from, ...legs];
+      return legs.filter((leg, i) => Math.abs(leg.y - stops[i].y) > 300);
+    };
+    const leave = routeOf({ kind: "leave", pod: 8 });
+    const routes = [
+      changes(HR_DOOR, legsTo(8)),
+      changes(leave.from, leave.legs),
+      changes({ x: 730, y: 210 }, nextLegs({ pod: 1, stops: [7] }, 0, "home")?.legs ?? []),
+    ];
+    for (const between of routes) {
+      expect(between).toHaveLength(1);
+      expect(between[0].x).toBe(AISLE_X);
+    }
   });
 });

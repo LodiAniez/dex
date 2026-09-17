@@ -4,7 +4,7 @@ import { AgentStatusDot, STATUS_WORDS } from "../agents";
 import { useAgentActions } from "./agentActions";
 import { Avatar } from "./Avatar";
 import type { Employee } from "./officeStore";
-import { sendsOn, whyNoPrompt } from "./prompt";
+import { boxState, sendsOn, whyNoPrompt } from "./prompt";
 import { followsBottom, screenText } from "./screen";
 
 /** How far back the expanded view reaches into the terminal's history. */
@@ -59,11 +59,14 @@ export function OutputModal({ employee, onGoToPane, onClose }: Props) {
   // Without scrolling anything to do it: the office underneath must stay put.
   useEffect(() => box.current?.focus({ preventScroll: true }), []);
 
+  const field = useRef<HTMLTextAreaElement>(null);
   const send = async () => {
     if (await prompt(text)) {
       setText("");
       following.current = true;
     }
+    // Sent or refused, the keyboard stays with the box.
+    field.current?.focus();
   };
 
   return (
@@ -75,7 +78,9 @@ export function OutputModal({ employee, onGoToPane, onClose }: Props) {
         aria-label={`${persona.name}'s output`}
         tabIndex={-1}
         onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
+          // Not while an input method is composing: Escape there cancels the
+          // composition, and must not take the whole popup with it.
+          if (event.key === "Escape" && !event.nativeEvent.isComposing) onClose();
         }}
       >
         <div className="office-output-head">
@@ -106,10 +111,11 @@ export function OutputModal({ employee, onGoToPane, onClose }: Props) {
         </div>
         <div className="office-output-prompt">
           <textarea
+            ref={field}
             className="office-card-prompt"
             rows={2}
             value={text}
-            disabled={noPrompt !== null || sending}
+            {...boxState(noPrompt, sending)}
             placeholder={noPrompt ? `Cannot prompt ${persona.name}: ${noPrompt}.` : `Prompt ${persona.name}… (Enter to send, Shift+Enter for a new line)`}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {

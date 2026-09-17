@@ -72,3 +72,12 @@ The rules are unit-tested and the pane has been run live against fake agents; wh
 5. Have the lead message three agents: on the map he goes desk to desk - never home in between - talks at each (bubbles taking turns), and goes home at the end. His own chair is empty meanwhile. A memo from you walks nobody.
 6. Open an agent's panel: **What they have done** lists its notes, stores, memos and - for a lead - who it hired, newest first, with no idle/working flips.
 7. With ten agents the map grows to four rows and scrolls; with five it is two rows and fits.
+
+## Cards as screens, and the way out - by eye
+
+1. **Cards** view: each card is that agent's terminal, live, with their brief in a line under their name. Clicking a card opens nothing.
+2. Type in a card's box and press Enter: the prompt appears on the card, then the answer. The caret is still in the box; type again without clicking. Shift+Enter makes a new line.
+3. An agent at a permission dialog: its card says what for across the top, and its box is disabled and says why.
+4. **Expand** on a card with a long run behind it (a test suite, a build): the popup shows the history, opens on the newest line, is centred and wholly on screen, and a long line is not chopped. Scroll up and wait: new output arrives and you are left where you were. Escape closes it.
+5. **Details** opens the panel; **Clock out** asks first.
+6. Office view: clock someone out, or let one finish - they walk along the corridor to the EXIT in the left wall, turn, wave, and go. Nobody leaves through HR. With agents in a third row, arrivals and leavers use the aisle beside the break room, not through it.
