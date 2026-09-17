@@ -128,6 +128,50 @@
   color: var(--office-faint);
 }
 
+/* What they have done: their own record, newest first, as long as it needs to be. */
+.office-panel-done {
+  flex: 1 1 120px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  background: #0f141c;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.office-panel-did {
+  display: flex;
+  gap: 10px;
+  color: var(--office-soft);
+}
+
+.office-panel-did .when {
+  flex: none;
+  width: 58px;
+  color: var(--office-faint);
+  font-family: var(--office-mono);
+  font-size: 10.5px;
+  line-height: 1.7;
+}
+
+.office-panel-did .what {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.office-panel-did.good .what { color: #9fe1cb; }
+.office-panel-did.asks .what { color: #9db9f2; }
+.office-panel-did.bad .what { color: #f4b8b6; }
+
+.office-panel-done .quiet {
+  color: #4a5164;
+}
+
 .office-panel-memo,
 .office-hire textarea,
 .office-hire input {
