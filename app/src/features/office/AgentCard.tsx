@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AgentStatusDot, STATUS_WORDS } from "../agents";
 import { useAgentActions } from "./agentActions";
 import { Avatar } from "./Avatar";
 import type { Employee } from "./officeStore";
 import { needsYou } from "./panel";
-import { sendsOn, whyNoPrompt } from "./prompt";
+import { boxState, sendsOn, whyNoPrompt } from "./prompt";
 
 interface Props {
   employee: Employee;
@@ -30,8 +30,13 @@ export function AgentCard({ employee, screen, onGoToPane, onDetails, onExpand }:
   const attention = needsYou(agent.status, agent.status_detail);
   const noPrompt = whyNoPrompt(agent);
 
+  const box = useRef<HTMLTextAreaElement>(null);
+
   const send = async () => {
     if (await prompt(text)) setText("");
+    // Sent or refused, the keyboard stays with the box: the next thing typed is
+    // the next thing to tell them.
+    box.current?.focus();
   };
 
   return (
@@ -49,6 +54,13 @@ export function AgentCard({ employee, screen, onGoToPane, onDetails, onExpand }:
           {STATUS_WORDS[agent.status]}
         </span>
       </div>
+
+      {/* What they were asked to do, in a line; the whole of it is in Details. */}
+      {agent.task_brief && (
+        <div className="office-card-brief" title={agent.task_brief}>
+          {agent.task_brief}
+        </div>
+      )}
 
       {attention && (
         <button type="button" className={`office-card-needs ${agent.status}`} disabled={!agent.pane_id} onClick={() => agent.pane_id && onGoToPane(agent.pane_id)}>
@@ -70,10 +82,11 @@ export function AgentCard({ employee, screen, onGoToPane, onDetails, onExpand }:
       </div>
 
       <textarea
+        ref={box}
         className="office-card-prompt"
         rows={2}
         value={text}
-        disabled={noPrompt !== null || sending}
+        {...boxState(noPrompt, sending)}
         placeholder={noPrompt ? `Cannot prompt ${persona.name}: ${noPrompt}.` : `Prompt ${persona.name}… (Enter to send, Shift+Enter for a new line)`}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {

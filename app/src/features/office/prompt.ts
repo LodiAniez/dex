@@ -75,3 +75,13 @@ export function announceSummary<A extends Promptable, M extends Member<A>>(plan:
 export function sendsOn(event: { key: string; shiftKey: boolean; ctrlKey: boolean; isComposing: boolean }): boolean {
   return event.key === "Enter" && !event.shiftKey && !event.isComposing;
 }
+
+/**
+ * How a prompt box stands: disabled when the agent cannot be typed at, and
+ * read-only - not disabled - while a prompt is on its way. A disabled box drops
+ * the keyboard and nothing gives it back, so the next thing typed would go
+ * nowhere; read-only keeps the caret where it was.
+ */
+export function boxState(noPrompt: string | null, sending: boolean): { disabled: boolean; readOnly: boolean } {
+  return { disabled: noPrompt !== null, readOnly: noPrompt === null && sending };
+}

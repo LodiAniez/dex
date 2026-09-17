@@ -54,6 +54,12 @@ export const HR_DOOR = { x: 150, y: 240 } as const;
 export const EXIT_DOOR = { x: 24, y: 400 } as const;
 /** How long someone stands at the door waving before they go. */
 export const WAVE_SECONDS = 1.4;
+/**
+ * The side aisle: the way between one corridor and the next. It runs down the
+ * gap between the break room (which ends at x = 266) and the first column of
+ * desks (which starts at 340), so nobody changing corridor walks through either.
+ */
+export const AISLE_X = 286;
 /** How long a new hire stands at the door before setting off. */
 export const DOOR_PAUSE = 0.6;
 
@@ -79,9 +85,20 @@ export function legsTo(pod: number): Leg[] {
   const x = origin.x + INTO_POD;
   const y = origin.y + INTO_POD;
   // `timed` rounds to the millisecond: these become CSS durations, and 0.9000000000000001 s is nobody's friend.
+  if (corridor === FIRST_CORRIDOR) {
+    return [
+      { x: HR_DOOR.x, y: corridor, seconds: timed(corridor - HR_DOOR.y, PACE.down) },
+      { x, y: corridor, seconds: timed(x - HR_DOOR.x, PACE.across) },
+      { x, y, seconds: timed(y - corridor, PACE.into) },
+    ];
+  }
+  // A lower row: out of HR to the main corridor, across to the side aisle,
+  // down it to their own corridor, and along that.
   return [
-    { x: HR_DOOR.x, y: corridor, seconds: timed(corridor - HR_DOOR.y, PACE.down) },
-    { x, y: corridor, seconds: timed(x - HR_DOOR.x, PACE.across) },
+    { x: HR_DOOR.x, y: FIRST_CORRIDOR, seconds: timed(FIRST_CORRIDOR - HR_DOOR.y, PACE.down) },
+    { x: AISLE_X, y: FIRST_CORRIDOR, seconds: timed(AISLE_X - HR_DOOR.x, PACE.across) },
+    { x: AISLE_X, y: corridor, seconds: timed(corridor - FIRST_CORRIDOR, PACE.down) },
+    { x, y: corridor, seconds: timed(x - AISLE_X, PACE.across) },
     { x, y, seconds: timed(y - corridor, PACE.into) },
   ];
 }
@@ -126,11 +143,11 @@ function besideDeskOf(pod: number): Spot {
 
 /**
  * From one spot in a pod to another: out to the corridor, along it, and in.
- * Between corridors, by the aisle outside HR and never through a row of desks.
+ * Between corridors, by the side aisle, and never through a row of desks or the break room.
  */
 function between(from: Spot, to: Spot): Leg[] {
   const stops = [{ x: from.x, y: from.y }, { x: from.x, y: from.corridor }];
-  if (from.corridor !== to.corridor) stops.push({ x: HR_DOOR.x, y: from.corridor }, { x: HR_DOOR.x, y: to.corridor });
+  if (from.corridor !== to.corridor) stops.push({ x: AISLE_X, y: from.corridor }, { x: AISLE_X, y: to.corridor });
   stops.push({ x: to.x, y: to.corridor }, { x: to.x, y: to.y });
   return stops
     .slice(1)
