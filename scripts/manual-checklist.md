@@ -82,7 +82,7 @@ The rules are unit-tested and the pane has been run live against fake agents; wh
 ## The way out - by eye
 
 1. Office view: clock someone out, or let one finish - they walk along the corridor to the EXIT in the left wall, turn, wave, and go. Nobody leaves through HR. With agents in a third row, arrivals and leavers use the aisle beside the break room, not through it.
-2. A `config.toml` that still says `view = "cards"` (from 0.2.0): Dex opens in Office and the setup panel says the cards view was removed.
+2. A `config.toml` that still says `view = "cards"` (from 0.2.0): Dex opens in Office, and `dex config show` warns that the cards view was removed.
 
 ## Idle antics - by eye, with real agents
 
