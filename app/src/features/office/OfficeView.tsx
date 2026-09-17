@@ -3,6 +3,7 @@ import "@fontsource/ibm-plex-sans/latin-500.css";
 import "@fontsource/ibm-plex-sans/latin-600.css";
 import "@fontsource/jetbrains-mono/latin-400.css";
 import "./office.css";
+import "./cards.css";
 import "./map.css";
 import "./panel.css";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -28,8 +29,8 @@ interface Props {
 
 /** Seats to draw before the daemon has said how many there are: its own default. */
 const DEFAULT_SEATS = 10;
-/** Lines of an agent's screen that fit on a card. */
-const CARD_LINES = 2;
+/** Lines of an agent's screen a card asks for: the card is their screen, and shows as many as fit. */
+const CARD_LINES = 30;
 /** Lines of chat the map has room for. */
 const CHAT_LINES = 3;
 
@@ -47,7 +48,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
   const office = useOffice(workspaceId, maxConcurrent);
   const workspace = useWorkspaces()?.workspaces.find((ws) => ws.id === workspaceId);
   // One poll serves both: the panel wants more lines than a card shows.
-  const screens = useScreens(office.employees, PANEL_SCREEN_LINES);
+  const screens = useScreens(office.employees, Math.max(PANEL_SCREEN_LINES, CARD_LINES));
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [hiring, setHiring] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
@@ -102,7 +103,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
         )}
       </div>
       {view === "cards" ? (
-        <CardsFloor office={office} seats={seats} hrNote={note} cardLines={CARD_LINES} screens={screens} onPick={pick} onHire={hire} />
+        <CardsFloor office={office} seats={seats} hrNote={note} cardLines={CARD_LINES} screens={screens} onGoToPane={onGoToPane} onDetails={pick} onHire={hire} />
       ) : (
         <MapFloor
           workspaceId={workspaceId}
@@ -122,7 +123,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
           employee={picked}
           staff={office.employees}
           who={who}
-          screen={screens.get(picked.agent.id) ?? []}
+          screen={(screens.get(picked.agent.id) ?? []).slice(-PANEL_SCREEN_LINES)}
           onGoToPane={onGoToPane}
           onClose={() => setPickedId(null)}
         />

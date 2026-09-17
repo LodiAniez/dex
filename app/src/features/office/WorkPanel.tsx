@@ -1,15 +1,15 @@
-import { ask } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
 import { request } from "../../platform/daemon";
 import { showError } from "../../platform/notices";
 import { useActivity } from "../activity";
 import { AgentStatusDot, STATUS_WORDS } from "../agents";
 import { Avatar } from "./Avatar";
-import { clockOutArgs, clockOutQuestion, memoArgs } from "./hire";
+import { useAgentActions } from "./agentActions";
+import { memoArgs } from "./hire";
 import type { Employee } from "./officeStore";
 import { ago, doneBy, needsYou, reportsTo } from "./panel";
 import { phrase, type Who } from "./phrasing";
-import { promptArgs, whyNoPrompt } from "./prompt";
+import { whyNoPrompt } from "./prompt";
 
 /** How much of each the panel has room for. */
 export const PANEL_SCREEN_LINES = 12;
@@ -57,14 +57,15 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
   }, [composing]);
 
   const send = async () => {
-    const call =
-      writing === "prompt"
-        ? { cmd: "agent.prompt", args: promptArgs(agent.id, text) }
-        : { cmd: "context.message_send", args: memoArgs(workspaceId, agent.id, text) };
-    if (!call || !call.args) return;
+    if (writing === "prompt") {
+      if (await prompt(text)) setWriting(null);
+      return;
+    }
+    const args = memoArgs(workspaceId, agent.id, text);
+    if (!args) return;
     setSending(true);
     try {
-      await request(call.cmd, call.args);
+      await request("context.message_send", args);
       setWriting(null);
     } catch (err) {
       showError(err);
@@ -74,18 +75,7 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
   };
 
   const attention = needsYou(agent.status, agent.status_detail);
-  const [leaving, setLeaving] = useState(false);
-  const clockOut = async () => {
-    if (!(await ask(clockOutQuestion(persona.name, role), { title: "Clock out", kind: "warning" }))) return;
-    setLeaving(true);
-    try {
-      // The panel closes by itself: it follows the agent, and the agent is about to go.
-      await request("agent.stop", clockOutArgs(agent.id));
-    } catch (err) {
-      showError(err);
-      setLeaving(false);
-    }
-  };
+  const { prompt, clockOut, leaving } = useAgentActions(employee);
 
   return (
     <div
