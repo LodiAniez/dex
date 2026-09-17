@@ -12,4 +12,5 @@ pub mod job;
 pub mod paths;
 pub mod pipe;
 pub mod proc;
+pub mod proctree;
 pub mod pty;
