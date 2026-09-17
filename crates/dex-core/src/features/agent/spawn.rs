@@ -17,7 +17,7 @@ use dex_protocol::agent::{SpawnArgs, Spawned};
 use dex_protocol::workspace::{SplitDirection, SplitPaneArgs};
 
 use super::model::{Agent, AgentError};
-use super::store;
+use super::{logic, store};
 use crate::app::AppState;
 use crate::features::{context, repo, workspace};
 use crate::platform::config::AgentSettings;
@@ -147,6 +147,7 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         pane: pane.clone(),
         agent_id: agent_id.clone(),
         mode: settings.agents.spawn_permission_mode.clone(),
+        chrome: settings.agents.spawn_chrome,
         answer_trust,
     });
     // A spawn changes two things, and the router only announces one. Without
@@ -273,6 +274,7 @@ fn launch(launch: Launch) {
             pane,
             agent_id,
             mode,
+            chrome,
             answer_trust,
         } = launch;
         let deadline = tokio::time::Instant::now() + LAUNCH_WAIT;
@@ -290,7 +292,7 @@ fn launch(launch: Launch) {
                         ),
                     );
                 }
-                let command = format!("claude --permission-mode {mode} \"{KICKOFF}\"\r");
+                let command = logic::launch_command(&mode, chrome, KICKOFF);
                 let pty = state.pty.clone();
                 let pane = pane.clone();
                 let _ =
@@ -333,6 +335,8 @@ struct Launch {
     /// The permission mode, taken from the same snapshot as the agent row's, so
     /// the pane header and the command line can never disagree.
     mode: String,
+    /// Whether the child may connect to Claude in Chrome (`agents.spawn_chrome`).
+    chrome: bool,
     /// Whether to answer Claude Code's folder-trust dialog for this child.
     /// Always, today; kept as a field so the reason is a decision in `spawn`
     /// and not an accident of `launch`.

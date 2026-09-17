@@ -12,6 +12,7 @@ use super::{AgentError, event, list, pane_exited, stop, store, sweep};
 use crate::app::AppState;
 use crate::features::workspace::{self, WorkspaceError};
 
+mod launch;
 mod orphans;
 mod spawn;
 

@@ -114,6 +114,9 @@ pub struct AgentSettings {
     pub max_concurrent: i64,
     /// The permission mode spawned agents run in.
     pub spawn_permission_mode: String,
+    /// Whether spawned agents may connect to Claude in Chrome. Off: each one
+    /// that does brings claude.ai up in the owner's browser.
+    pub spawn_chrome: bool,
 }
 
 /// Digest budgets, in characters.
@@ -162,6 +165,7 @@ impl Default for AgentSettings {
             max_depth: 2,
             max_concurrent: 6,
             spawn_permission_mode: "auto".into(),
+            spawn_chrome: false,
         }
     }
 }

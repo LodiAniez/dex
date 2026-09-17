@@ -135,6 +135,7 @@ worktree_base = "D:/work/worktrees"                # default: %USERPROFILE%\dex\
 max_depth = 2                # how deep spawning may go
 max_concurrent = 6           # live agents per workspace
 spawn_permission_mode = "auto"   # what spawned agents run with
+spawn_chrome = false         # true lets spawned agents connect to Claude in Chrome
 
 [digest]
 full_chars = 2000            # budget for an agent's opening briefing
