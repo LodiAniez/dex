@@ -296,6 +296,7 @@ pub async fn events(state: &AppState, args: ScopeArgs) -> Result<EventList, Cont
                         seq: event.seq,
                         kind: event.kind,
                         author: author(conn, event.agent_id.as_deref())?,
+                        agent_id: event.agent_id,
                         key: event.key,
                         // A directed message's body belongs to its recipient only.
                         body: if event.target_agent.is_some() {

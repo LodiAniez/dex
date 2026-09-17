@@ -32,6 +32,41 @@ async fn a_note_lands_in_the_event_log() {
 }
 
 #[tokio::test]
+async fn an_event_names_the_agent_behind_it_by_id_and_the_human_by_nothing() {
+    // A label is for reading and two agents can share one; whoever filters the
+    // log down to one agent needs the id.
+    let (_root, _dir, state, pane) = workspace_at().await;
+    let second = second_pane(&state, &pane).await;
+    let say = |pane: &str, body: &str| NoteArgs {
+        body: body.into(),
+        tags: None,
+        caller: from(pane),
+    };
+    note(&state, say(&pane, "before anyone started"))
+        .await
+        .unwrap();
+    let first_id = start_agent(&state, &pane, "s-a").await;
+    let second_id = start_agent(&state, &second, "s-b").await;
+    note(&state, say(&pane, "from the first")).await.unwrap();
+    note(&state, say(&second, "from the second")).await.unwrap();
+
+    let log = events(&state, ScopeArgs::for_caller(from(&pane)))
+        .await
+        .unwrap();
+    let by = |body: &str| {
+        log.events
+            .iter()
+            .find(|event| event.body == body)
+            .unwrap_or_else(|| panic!("no event {body:?} in {:?}", log.events))
+            .agent_id
+            .clone()
+    };
+    assert_eq!(by("before anyone started"), None, "the human has no id");
+    assert_eq!(by("from the first"), Some(first_id));
+    assert_eq!(by("from the second"), Some(second_id));
+}
+
+#[tokio::test]
 async fn a_message_reaches_its_target_once_and_hides_its_body_from_others() {
     let (_root, _dir, state, pane) = workspace_at().await;
     // Two real agents, one per pane, as two `claude` sessions in a workspace.
