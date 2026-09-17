@@ -75,6 +75,40 @@ fn an_offer_that_blocks_nothing_is_not_a_question() {
 }
 
 #[test]
+fn a_cue_is_whole_words_not_letters_that_happen_to_be_inside_others() {
+    for message in [
+        "I would say good things about this design.",
+        "Set your callback URL in the config and restart.",
+        "The endpoint will reply with 404 for an unknown id.",
+        "They need yourself-hosted runners for that.",
+    ] {
+        assert_eq!(question_for_owner(message), None, "{message}");
+    }
+    // And the real thing still asks.
+    assert!(question_for_owner("Reply with \"yes\" and I'll continue.").is_some());
+    assert!(question_for_owner("It's your call.").is_some());
+}
+
+#[test]
+fn a_closing_list_is_read_line_by_line_not_as_one_long_sentence() {
+    // A summary in bullets, one of which happens to hold a cue: the turn is over.
+    let summary = "Done. What changed:
+- The importer no longer needs your API key in the URL
+- Retries are capped at three
+- All 14 tests pass";
+    assert_eq!(question_for_owner(summary), None);
+    // A list that ends on the ask shows the ask, not the top of the list.
+    let asks = "Two ways to do it:
+- a lock file
+- a lease in the database
+Which would you like?";
+    assert_eq!(
+        question_for_owner(asks).as_deref(),
+        Some("Which would you like?")
+    );
+}
+
+#[test]
 fn a_statement_that_only_mentions_a_question_word_is_not_a_question() {
     for message in [
         "I checked what it would be under load, and it holds.",

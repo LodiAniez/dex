@@ -18,9 +18,13 @@ interface Stated {
 const ASKED = "asked you: ";
 const SAID = "said: ";
 
-/** What an idle agent asked the owner as its turn ended, or null. */
+/**
+ * What an agent asked the owner, or null: as its turn ended (idle), or with
+ * Claude Code's question dialog (waiting, and for certain - a hook said so).
+ */
 export function askedYou(agent: Stated): string | null {
-  if (agent.status !== "idle" || !agent.status_detail?.startsWith(ASKED)) return null;
+  const asking = agent.status === "idle" || agent.status === "waiting";
+  if (!asking || !agent.status_detail?.startsWith(ASKED)) return null;
   return agent.status_detail.slice(ASKED.length);
 }
 

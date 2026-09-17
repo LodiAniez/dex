@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { request } from "../../platform/daemon";
 import type { Employee } from "./officeStore";
-import { announcePlan, announceSummary, promptArgs } from "./prompt";
+import { announcePlan, announceSummary, midQuestion, promptArgs } from "./prompt";
 
 /** A loudspeaker horn: the office's public address. */
 export function Horn({ size }: { size: number }) {
@@ -29,6 +29,7 @@ export function AnnounceDialog({ staff, onClose }: { staff: readonly Employee[];
   useEffect(() => field.current?.focus(), []);
 
   const plan = announcePlan(staff);
+  const asking = midQuestion(plan.to);
   const ready = plan.to.length > 0 && text.trim() !== "" && !busy;
   const announce = async () => {
     if (!ready) return;
@@ -73,6 +74,11 @@ export function AnnounceDialog({ staff, onClose }: { staff: readonly Employee[];
               <textarea ref={field} rows={4} value={text} placeholder="Stop and commit what you have; we are changing approach." onChange={(event) => setText(event.target.value)} />
             </label>
             <div className="office-announce-who">{announceSummary(plan).replace(/^Announced to/, "Goes to")}</div>
+            {asking.length > 0 && (
+              <div className="office-announce-asking">
+                {asking.map((member) => member.persona.name).join(", ")} {asking.length === 1 ? "has" : "have"} asked you something and may take this for the answer.
+              </div>
+            )}
           </>
         ) : (
           <div className="office-announce-result">{result}</div>

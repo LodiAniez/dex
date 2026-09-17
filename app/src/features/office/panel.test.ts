@@ -76,6 +76,10 @@ describe("needsYou for an agent that asked something", () => {
     expect(needsYou("idle", "asked you: Should I run it against staging?")).toBe("Asked you: Should I run it against staging? Answer with Prompt, or in their pane.");
   });
 
+  it("sends the owner to the pane when it was asked in a dialog: typed text would answer the dialog", () => {
+    expect(needsYou("waiting", "asked you: Do you prefer red or blue?")).toBe("Asked you: Do you prefer red or blue? Answer it in their pane.");
+  });
+
   it("says nothing for an agent that simply finished, whatever it said last", () => {
     expect(needsYou("idle", null)).toBeNull();
     expect(needsYou("idle", "said: All 14 tests pass.")).toBeNull();

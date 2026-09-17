@@ -15,6 +15,17 @@ const REASON_CHARS: usize = 120;
 /// aimed at says more than which tool it is.
 const TARGETS: [&str; 5] = ["file_path", "path", "command", "url", "pattern"];
 
+/// Claude Code's dialog for asking the owner a question. The one way of asking
+/// that reaches Dex as a hook rather than as prose to be guessed at.
+const QUESTION_TOOL: &str = "AskUserQuestion";
+
+/// Whether a wait keeps the reason it has rather than take a new one. A dialog
+/// says what it is for; the notification Claude Code sends a few seconds later
+/// says only "Claude needs your permission", and must not replace that.
+pub fn keeps_its_reason(is_notification: bool, current: Option<&str>) -> bool {
+    is_notification && current.is_some()
+}
+
 /// Why the agent is waiting, as one short line, or `None` when the hook does
 /// not say.
 pub fn waiting_reason(input: &Value) -> Option<String> {
@@ -27,6 +38,23 @@ pub fn waiting_reason(input: &Value) -> Option<String> {
             .map(str::to_owned)
     };
     let reason = match text(input, "tool_name") {
+        // Not a permission at all: the dialog is the agent asking the owner something.
+        Some(tool) if tool == QUESTION_TOOL => {
+            let questions = input
+                .get("tool_input")
+                .and_then(|args| args.get("questions"));
+            let asked = questions
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            match asked.first().and_then(|first| text(first, "question")) {
+                Some(first) if asked.len() > 1 => {
+                    format!("asked you: {first} (+{} more)", asked.len() - 1)
+                }
+                Some(first) => format!("asked you: {first}"),
+                None => "asked you something".to_owned(),
+            }
+        }
         Some(tool) => {
             let target = input.get("tool_input").and_then(|args| {
                 TARGETS

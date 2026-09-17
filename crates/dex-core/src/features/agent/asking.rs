@@ -24,9 +24,10 @@ const CLOSING_SENTENCES: usize = 2;
 const QUESTION_CHARS: usize = 120;
 
 /// Ways of asking the owner for something without a question mark.
-const CUES: [&str; 35] = [
+const CUES: [&str; 36] = [
     "reply \"",
-    "reply with",
+    "reply with \"",
+    "reply with yes",
     "reply yes",
     "say yes",
     "say \"",
@@ -88,9 +89,10 @@ pub fn idle_detail(stop_input: &serde_json::Value) -> Option<String> {
     (!closing.is_empty()).then(|| format!("{SAID}{closing}"))
 }
 
-/// Whether a detail is for the owner's eyes only and stays out of the workspace
-/// log, which every agent's digest is drawn from: an agent's last words may
-/// quote anything, and every finished turn has some.
+/// Whether a detail stays out of the workspace log. The log is the activity
+/// feed, and every finished turn has last words: written there they would bury
+/// what happened under what was said, and the owner already sees them on the
+/// agent. (Other agents' digests skip status events in any case.)
 pub fn stays_out_of_the_log(detail: &str) -> bool {
     detail.starts_with(SAID)
 }
@@ -113,9 +115,29 @@ fn asks(sentence: &str) -> bool {
     if PLEASANTRIES.iter().any(|phrase| lower.contains(phrase)) {
         return false;
     }
-    lower.trim_end().ends_with('?')
-        || CUES.iter().any(|cue| lower.contains(cue))
-        || is_inverted(&lower)
+    lower.trim_end().ends_with('?') || has_cue(&lower) || is_inverted(&lower)
+}
+
+/// Whether one of `CUES` is in the sentence as whole words: "say go" is not in
+/// "say good things", nor "your call" in "your callback". A cue that ends in a
+/// quotation mark is followed by whatever is being quoted.
+fn has_cue(lower: &str) -> bool {
+    let spaced: String = lower
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '\'' | '"') {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    let words = spaced.split_whitespace().collect::<Vec<_>>().join(" ");
+    let padded = format!(" {words} ");
+    CUES.iter().any(|cue| {
+        let end = if cue.ends_with('"') { "" } else { " " };
+        padded.contains(&format!(" {cue}{end}"))
+    })
 }
 
 const AUXILIARIES: [&str; 17] = [
@@ -154,10 +176,11 @@ fn is_inverted(lower: &str) -> bool {
 }
 
 /// The message as sentences: split after `.`, `!` or `?` where whitespace
-/// follows (so not inside `essay-1.md`), and at blank lines.
+/// follows (so not inside `essay-1.md`), and at every line end - a closing list
+/// is so many separate things said, not one long sentence to find a cue in.
 fn sentences(text: &str) -> Vec<String> {
     let mut found = Vec::new();
-    for paragraph in text.split("\n\n") {
+    for paragraph in text.lines() {
         let mut current = String::new();
         let mut chars = paragraph.chars().peekable();
         while let Some(c) = chars.next() {
@@ -172,7 +195,13 @@ fn sentences(text: &str) -> Vec<String> {
     }
     found
         .into_iter()
-        .map(|sentence| sentence.trim().to_owned())
+        // A list item is what it says, without its bullet or number.
+        .map(|sentence| {
+            let item = sentence.trim().trim_start_matches(|c: char| {
+                matches!(c, '-' | '*' | '•' | '.' | ')') || c.is_ascii_digit()
+            });
+            item.trim().to_owned()
+        })
         .filter(|sentence| !sentence.is_empty())
         .collect()
 }

@@ -1,7 +1,7 @@
-import { seenAs } from "./attention";
 import { useEffect, useState } from "react";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
 import type { AgentView } from "../../platform/generated/AgentView";
+import { seenAs } from "./attention";
 
 /** What each status means to the person looking at it. */
 export const STATUS_WORDS: Record<AgentStatus, string> = {

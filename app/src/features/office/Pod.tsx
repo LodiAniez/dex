@@ -96,7 +96,7 @@ export function Pod({ employee, away = false, listening = false, antic = null, s
       transform={`translate(${x} ${y})`}
       role="button"
       tabIndex={0}
-      aria-label={`${persona.name}, ${role}, ${STATUS_WORDS[shown]}`}
+      aria-label={`${persona.name}, ${role}, ${STATUS_WORDS[shown]}${askedYou(agent) === null ? "" : `, asked you: ${askedYou(agent)}`}`}
       onClick={() => onPick(employee)}
       onKeyDown={onKey}
     >

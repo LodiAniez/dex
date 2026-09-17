@@ -10,8 +10,13 @@ describe("askedYou", () => {
     expect(askedYou({ status: "idle", status_detail: null })).toBeNull();
   });
 
+  it("is what an agent asked with Claude Code's question dialog, where it is truly waiting", () => {
+    expect(askedYou({ status: "waiting", status_detail: "asked you: Do you prefer red or blue?" })).toBe("Do you prefer red or blue?");
+  });
+
   it("is nothing for any other status, whatever its detail says", () => {
     expect(askedYou({ status: "waiting", status_detail: "permission to Edit a.rs" })).toBeNull();
+    expect(askedYou({ status: "running", status_detail: "asked you: stale" })).toBeNull();
     expect(askedYou({ status: "error", status_detail: "rate_limit" })).toBeNull();
   });
 });

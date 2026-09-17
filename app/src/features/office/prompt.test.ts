@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { announcePlan, announceSummary, promptArgs, whyNoPrompt } from "./prompt";
+import { announcePlan, announceSummary, midQuestion, promptArgs, whyNoPrompt } from "./prompt";
 
 const member = (name: string, status: AgentStatus, pane: string | null = `pane-${name}`, started = true) => ({
   agent: { id: `id-${name}`, status, pane_id: pane, started },
@@ -59,5 +59,18 @@ describe("announcePlan", () => {
     expect(announceSummary(announcePlan(staff))).toBe("Announced to 2 agents. Not to Juno (waiting for you) or Ravi (no pane).");
     expect(announceSummary(announcePlan([member("Pip", "idle")]))).toBe("Announced to 1 agent.");
     expect(announceSummary(announcePlan([member("Juno", "waiting")]))).toBe("Nobody to announce to. Not to Juno (waiting for you).");
+  });
+});
+
+describe("midQuestion", () => {
+  const who = (name: string, status_detail: string | null) => ({ agent: { status: "idle" as const, status_detail, pane_id: "p", started: true }, persona: { name } });
+
+  it("is whoever an announcement would reach while they wait on an answer: it would be taken for one", () => {
+    const staff = [who("Pip", "asked you: Should I run it?"), who("Juno", "said: All green."), who("Ravi", null)];
+    expect(midQuestion(announcePlan(staff).to).map((member) => member.persona.name)).toEqual(["Pip"]);
+  });
+
+  it("is nobody in an office where nobody asked anything", () => {
+    expect(midQuestion(announcePlan([who("Juno", "said: All green.")]).to)).toEqual([]);
   });
 });

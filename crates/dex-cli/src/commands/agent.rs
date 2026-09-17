@@ -184,6 +184,8 @@ fn status_text(agent: &AgentView) -> String {
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_default();
     match &agent.status_detail {
+        // What an idle agent said last is for the office; what it asked is worth a column.
+        Some(detail) if detail.starts_with("said: ") => name,
         Some(detail) => format!("{name} ({detail})"),
         None => name,
     }

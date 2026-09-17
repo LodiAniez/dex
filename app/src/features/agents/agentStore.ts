@@ -1,4 +1,3 @@
-import { seenAs } from "./attention";
 import { useSyncExternalStore } from "react";
 import { request } from "../../platform/daemon";
 import { onDaemonChange } from "../../platform/events";
@@ -6,6 +5,7 @@ import type { AgentList } from "../../platform/generated/AgentList";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
 import type { AgentView } from "../../platform/generated/AgentView";
 import { showError } from "../../platform/notices";
+import { seenAs } from "./attention";
 
 /**
  * Agents as the daemon last reported them. Responses can arrive out of order,

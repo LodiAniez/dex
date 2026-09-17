@@ -21,6 +21,29 @@ fn a_permission_request_names_the_tool_and_what_it_is_aimed_at() {
 }
 
 #[test]
+fn the_question_dialog_says_what_was_asked_not_that_a_tool_wants_permission() {
+    // Claude Code's AskUserQuestion: a dialog in the terminal, and the one way of
+    // asking the owner something that Dex hears about for certain.
+    let one = json!({ "tool_name": "AskUserQuestion", "tool_input": { "questions": [
+        { "question": "Do you prefer red or blue?", "header": "Colour", "options": [{ "label": "Red" }, { "label": "Blue" }] }
+    ] } });
+    assert_eq!(
+        waiting_reason(&one).as_deref(),
+        Some("asked you: Do you prefer red or blue?")
+    );
+    let two = json!({ "tool_name": "AskUserQuestion", "tool_input": { "questions": [
+        { "question": "Which database?" }, { "question": "Which region?" }
+    ] } });
+    assert_eq!(
+        waiting_reason(&two).as_deref(),
+        Some("asked you: Which database? (+1 more)")
+    );
+    // A shape this version does not know: still true, just less said.
+    let odd = json!({ "tool_name": "AskUserQuestion", "tool_input": {} });
+    assert_eq!(waiting_reason(&odd).as_deref(), Some("asked you something"));
+}
+
+#[test]
 fn a_tool_with_nothing_recognisable_in_its_input_is_still_named() {
     let odd = json!({ "tool_name": "mcp__dex__message_inbox", "tool_input": {} });
     assert_eq!(
@@ -246,5 +269,47 @@ fn a_long_path_keeps_its_end_which_is_the_part_that_says_which_file() {
     assert_eq!(
         waiting_reason(&short).as_deref(),
         Some("permission to Edit src/main.rs")
+    );
+}
+
+#[tokio::test]
+async fn the_notification_that_follows_a_dialog_does_not_replace_what_the_dialog_said() {
+    // Seen live: PermissionRequest says what is asked; the Notification a few
+    // seconds later says only "Claude needs your permission", and used to win.
+    let (_dir, state, pane) = pane().await;
+    fire(&state, "session-start", &pane, 1, session("s1")).await;
+    fire(&state, "prompt", &pane, 2, session("s1")).await;
+    let dialog = json!({ "session_id": "s1", "tool_name": "AskUserQuestion", "tool_input": { "questions": [{ "question": "Red or blue?" }] } });
+    fire(&state, "permission", &pane, 3, dialog).await;
+    fire(
+        &state,
+        "waiting",
+        &pane,
+        4,
+        json!({ "session_id": "s1", "message": "Claude needs your permission" }),
+    )
+    .await;
+    assert_eq!(
+        agents(&state).await[0].status_detail.as_deref(),
+        Some("asked you: Red or blue?")
+    );
+}
+
+#[tokio::test]
+async fn a_notification_still_gives_the_reason_when_nothing_better_is_known() {
+    let (_dir, state, pane) = pane().await;
+    fire(&state, "session-start", &pane, 1, session("s1")).await;
+    fire(&state, "prompt", &pane, 2, session("s1")).await;
+    fire(
+        &state,
+        "waiting",
+        &pane,
+        3,
+        json!({ "session_id": "s1", "message": "Claude is waiting for your input" }),
+    )
+    .await;
+    assert_eq!(
+        agents(&state).await[0].status_detail.as_deref(),
+        Some("Claude is waiting for your input")
     );
 }
