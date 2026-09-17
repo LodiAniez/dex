@@ -163,7 +163,7 @@ impl Default for AgentSettings {
     fn default() -> Self {
         Self {
             max_depth: 2,
-            max_concurrent: 6,
+            max_concurrent: 10,
             spawn_permission_mode: "auto".into(),
             spawn_chrome: false,
         }

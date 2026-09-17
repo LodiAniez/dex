@@ -49,10 +49,15 @@ export function seat(previous: Seating, present: readonly { id: string }[]): Sea
   return next;
 }
 
-/** How many pods to draw: whole rows, enough for the limit and for everyone seated. */
+/**
+ * How many pods to draw: whole rows, enough for everyone seated and for the
+ * next hire the limit would allow. Not the whole limit: ten seats drawn for one
+ * agent would be an office nobody works in, and a floor plan too tall to fit.
+ */
 export function podCount(seating: Seating, maxConcurrent: number): number {
   const furthest = Math.max(-1, ...seating.values()) + 1;
-  const needed = Math.max(maxConcurrent, furthest, MIN_ROWS * PODS_PER_ROW);
+  const withNextHire = Math.min(furthest + 1, maxConcurrent);
+  const needed = Math.max(withNextHire, furthest, MIN_ROWS * PODS_PER_ROW);
   return Math.ceil(needed / PODS_PER_ROW) * PODS_PER_ROW;
 }
 
