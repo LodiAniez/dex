@@ -1,15 +1,14 @@
 /**
- * The three ways of looking at a workspace. `terminal` is the panes, as Dex
- * has always shown them; `cards` and `office` show the same workspace's agents
- * instead, over the whole workspace area. The panes keep running underneath:
+ * The two ways of looking at a workspace. `terminal` is the panes, as Dex has
+ * always shown them; `office` shows the same workspace's agents instead, over
+ * the whole workspace area. The panes keep running underneath:
  * a view is a way of looking, not a place agents live.
  */
-export type ViewMode = "terminal" | "cards" | "office";
+export type ViewMode = "terminal" | "office";
 
 /** In the order the title bar offers them. */
 export const VIEW_MODES: readonly { id: ViewMode; label: string; hint: string }[] = [
   { id: "terminal", label: "Terminal", hint: "The panes" },
-  { id: "cards", label: "Cards", hint: "Every agent as a card" },
   { id: "office", label: "Office", hint: "Every agent at a desk" },
 ];
 
@@ -52,7 +51,7 @@ const REVEAL_ONLY: readonly string[] = ["close-pane", "move-pane", "focus-pane",
 const REVEAL_THEN_RUN: readonly string[] = ["split-pane", "open-diff", "cycle-layout"];
 
 /**
- * What an app action does while the panes are hidden behind the cards or the
+ * What an app action does while the panes are hidden behind the
  * office. Nothing acts on a pane nobody can see: closing one kills an agent's
  * terminal. The first press brings the panes back; only the harmless ones then
  * go ahead.

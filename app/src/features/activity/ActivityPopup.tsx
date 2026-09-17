@@ -3,7 +3,7 @@ import { ActivityPane } from "./ActivityPane";
 
 /**
  * The workspace's activity as a dialog over whatever view is up. It used to
- * open as a pane, which meant leaving the cards or the office to read it; a
+ * open as a pane, which meant leaving the office to read it; a
  * pane of it can still be made from the CLI for anyone who wants it docked.
  */
 export function ActivityPopup({ workspaceId, workspaceName, onClose }: { workspaceId: string; workspaceName: string; onClose: () => void }) {

@@ -8,35 +8,40 @@ describe("chooseMode", () => {
 
   it("opens as the owner's config says when they have never chosen", () => {
     expect(chooseMode(null, "office")).toBe("office");
-    expect(chooseMode(null, "cards")).toBe("cards");
+    expect(chooseMode(null, "terminal")).toBe("terminal");
   });
 
   it("prefers what they last clicked over the config", () => {
     expect(chooseMode("terminal", "office")).toBe("terminal");
-    expect(chooseMode("office", "cards")).toBe("office");
+    expect(chooseMode("office", "terminal")).toBe("office");
   });
 
   it("ignores a stored value, or a config from a newer Dex, that it does not understand", () => {
-    expect(chooseMode("penthouse", "cards")).toBe("cards");
+    expect(chooseMode("penthouse", "office")).toBe("office");
     expect(chooseMode(null, "hologram")).toBe("terminal");
+  });
+
+  it("forgets the cards view, which is gone: a window that remembered it opens as configured", () => {
+    expect(chooseMode("cards", "office")).toBe("office");
+    expect(chooseMode("cards", undefined)).toBe("terminal");
+    expect(chooseMode(null, "cards")).toBe("terminal");
   });
 });
 
 describe("the views", () => {
-  it("are the three in the order they are offered", () => {
-    expect(VIEW_MODES.map((mode) => mode.id)).toEqual(["terminal", "cards", "office"]);
+  it("are the two in the order they are offered", () => {
+    expect(VIEW_MODES.map((mode) => mode.id)).toEqual(["terminal", "office"]);
     for (const mode of VIEW_MODES) expect(mode.label, mode.id).toBeTruthy();
   });
 
   it("show the panes in one of them only", () => {
     expect(showsPanes("terminal")).toBe(true);
-    expect(showsPanes("cards")).toBe(false);
     expect(showsPanes("office")).toBe(false);
   });
 
   it("each have an action that selects them", () => {
     expect(modeOfAction("view-terminal")).toBe("terminal");
-    expect(modeOfAction("view-cards")).toBe("cards");
+    expect(modeOfAction("view-cards")).toBeNull();
     expect(modeOfAction("view-office")).toBe("office");
     expect(modeOfAction("open-diff")).toBeNull();
   });
@@ -58,16 +63,15 @@ describe("whenPanesHidden", () => {
   });
 
   it("leaves alone everything that is not about a pane", () => {
-    for (const kind of ["command-palette", "new-workspace", "toggle-sidebar", "next-workspace", "switch-workspace", "open-setup", "view-cards"]) {
+    for (const kind of ["command-palette", "new-workspace", "toggle-sidebar", "next-workspace", "switch-workspace", "open-setup", "view-office"]) {
       expect(whenPanesHidden(kind), kind).toBe("run");
     }
   });
 });
 
 describe("nextMode", () => {
-  it("goes round the three in the order they are offered", () => {
-    expect(nextMode("terminal")).toBe("cards");
-    expect(nextMode("cards")).toBe("office");
+  it("goes back and forth between the two", () => {
+    expect(nextMode("terminal")).toBe("office");
     expect(nextMode("office")).toBe("terminal");
   });
 });

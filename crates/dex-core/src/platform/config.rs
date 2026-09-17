@@ -63,13 +63,15 @@ pub struct Config {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct UiSettings {
-    /// How a workspace is shown until the owner chooses: `terminal` (the panes),
-    /// `cards` (its agents as cards) or `office` (its agents on a floor plan).
+    /// How a workspace is shown until the owner chooses: `terminal` (the panes)
+    /// or `office` (its agents on a floor plan).
     pub view: String,
 }
 
 /// The ways of looking at a workspace.
-const VIEWS: [&str; 3] = ["terminal", "cards", "office"];
+const VIEWS: [&str; 2] = ["terminal", "office"];
+/// A view 0.2.0 had and later versions do not, and what a config asking for it gets.
+const REMOVED_VIEW: (&str, &str) = ("cards", "office");
 
 impl Default for UiSettings {
     fn default() -> Self {
@@ -243,7 +245,13 @@ impl Config {
             ));
             self.digest = defaults.digest;
         }
-        if !VIEWS.contains(&self.ui.view.as_str()) {
+        if self.ui.view == REMOVED_VIEW.0 {
+            problems.push(format!(
+                "ui.view \"{}\": the cards view was removed; using \"{}\"",
+                REMOVED_VIEW.0, REMOVED_VIEW.1
+            ));
+            self.ui.view = REMOVED_VIEW.1.into();
+        } else if !VIEWS.contains(&self.ui.view.as_str()) {
             problems.push(format!(
                 "ui.view \"{}\" is not one of {}; using \"{}\"",
                 self.ui.view,

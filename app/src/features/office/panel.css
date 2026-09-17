@@ -116,8 +116,7 @@
   text-transform: uppercase;
 }
 
-.office-panel-screen,
-.office-panel-events {
+.office-panel-screen {
   padding: 12px;
   overflow: hidden;
   background: #0f141c;
@@ -141,22 +140,6 @@
 
 .office-panel-screen .quiet {
   color: #4a5164;
-}
-
-.office-panel-events {
-  flex: none;
-  color: var(--office-soft);
-  line-height: 1.6;
-}
-
-.office-panel-events div {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.office-panel-events span {
-  color: var(--office-faint);
 }
 
 /* What they have done: their own record, newest first, as long as it needs to be. */

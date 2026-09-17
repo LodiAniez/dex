@@ -95,9 +95,9 @@ body,
   display: flex;
 }
 
-/* The cards and office views: over the whole workspace area. The panes stay
+/* The office view: over the whole workspace area. The panes stay
    mounted underneath at their real size, so their shells keep running and a
-   pane created while a view is up still starts. */
+   pane created while it is up still starts. */
 .view-overlay {
   position: absolute;
   inset: 0;
@@ -107,7 +107,7 @@ body,
   background: var(--bg);
 }
 
-/* Terminal · Cards · Office, sized for the 32px title bar. */
+/* Terminal · Office, sized for the 32px title bar. */
 .view-switch {
   display: inline-flex;
   padding: 1px;

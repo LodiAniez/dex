@@ -19,8 +19,8 @@ export function prefersStill(): boolean {
 
 /**
  * The queue of people crossing the floor, fed by changes to the agent list.
- * Lives with the map, so nobody is kept waiting by a view that cannot show them:
- * the cards view seats a new hire at once.
+ * Lives with the map: it starts empty each time the office is opened, so
+ * nobody walks in for something that happened while the terminals were up.
  */
 /** The part of an activity event a delivery is read from. */
 interface LoggedEvent {

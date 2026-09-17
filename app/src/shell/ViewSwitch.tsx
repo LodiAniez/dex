@@ -1,8 +1,8 @@
 import { VIEW_MODES, type ViewMode } from "./viewMode";
 
 /**
- * Terminal · Cards · Office, in the title bar: one switch, in reach from every
- * view. The design had a second at the foot of the office views; with this one
+ * Terminal · Office, in the title bar: one switch, in reach from either
+ * view. The design had a second at the foot of the office; with this one
  * always on screen it only said the same thing twice.
  */
 export function ViewSwitch({ mode, onChoose }: { mode: ViewMode; onChoose: (mode: ViewMode) => void }) {

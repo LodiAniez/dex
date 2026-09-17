@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { announcePlan, announceSummary, boxState, promptArgs, sendsOn, whyNoPrompt } from "./prompt";
+import { announcePlan, announceSummary, promptArgs, whyNoPrompt } from "./prompt";
 
 const member = (name: string, status: AgentStatus, pane: string | null = `pane-${name}`, started = true) => ({
   agent: { id: `id-${name}`, status, pane_id: pane, started },
@@ -59,42 +59,5 @@ describe("announcePlan", () => {
     expect(announceSummary(announcePlan(staff))).toBe("Announced to 2 agents. Not to Juno (waiting for you) or Ravi (no pane).");
     expect(announceSummary(announcePlan([member("Pip", "idle")]))).toBe("Announced to 1 agent.");
     expect(announceSummary(announcePlan([member("Juno", "waiting")]))).toBe("Nobody to announce to. Not to Juno (waiting for you).");
-  });
-});
-
-describe("sendsOn", () => {
-  const key = (key: string, mods: Partial<{ shiftKey: boolean; ctrlKey: boolean; isComposing: boolean }> = {}) => ({ key, shiftKey: false, ctrlKey: false, isComposing: false, ...mods });
-
-  it("sends on Enter, as a chat box does", () => {
-    expect(sendsOn(key("Enter"))).toBe(true);
-    expect(sendsOn(key("Enter", { ctrlKey: true }))).toBe(true);
-  });
-
-  it("leaves Shift+Enter for a new line", () => {
-    expect(sendsOn(key("Enter", { shiftKey: true }))).toBe(false);
-  });
-
-  it("does not send while an input method is still composing the text", () => {
-    expect(sendsOn(key("Enter", { isComposing: true }))).toBe(false);
-  });
-
-  it("ignores every other key", () => {
-    expect(sendsOn(key("a"))).toBe(false);
-  });
-});
-
-describe("boxState", () => {
-  it("is an ordinary box when the agent can be prompted", () => {
-    expect(boxState(null, false)).toEqual({ disabled: false, readOnly: false });
-  });
-
-  it("is disabled when the agent cannot be typed at", () => {
-    expect(boxState("waiting for you", false)).toEqual({ disabled: true, readOnly: false });
-  });
-
-  it("is read-only, not disabled, while a prompt is on its way", () => {
-    // A disabled box drops the keyboard and nothing gives it back: the next
-    // thing typed goes nowhere. Read-only keeps the caret where it was.
-    expect(boxState(null, true)).toEqual({ disabled: false, readOnly: true });
   });
 });

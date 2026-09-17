@@ -355,22 +355,3 @@ button.office-chat-toggle:focus-visible {
 .office-chat-line.good { color: #9fe1cb; }
 .office-chat-line.asks { color: #9db9f2; }
 .office-chat-line.bad { color: #f4b8b6; }
-
-/* ---- HR's button in the cards view ---- */
-
-.office-hire-open {
-  height: 38px;
-  color: #9fe1cb;
-  background: rgba(29, 158, 117, 0.16);
-  border: 1px solid rgba(29, 158, 117, 0.5);
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.office-hire-open:disabled {
-  color: var(--office-faint);
-  background: transparent;
-  border-color: var(--office-line);
-  cursor: default;
-}

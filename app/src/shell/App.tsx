@@ -240,7 +240,6 @@ export function App() {
         chooseView(nextMode(mode));
         return;
       case "view-terminal":
-      case "view-cards":
       case "view-office": {
         const next = modeOfAction(action.kind);
         if (next) chooseView(next);
@@ -323,7 +322,6 @@ export function App() {
             <div className="view-overlay" ref={overlay} tabIndex={-1}>
               <OfficeView
                 workspaceId={active.id}
-                view={mode === "office" ? "office" : "cards"}
                 onGoToPane={goToPane}
               />
             </div>
