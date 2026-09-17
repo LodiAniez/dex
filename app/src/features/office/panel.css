@@ -236,6 +236,16 @@
   line-height: 1.5;
 }
 
+/* The way out of a label that is taken: one click. */
+.office-hire-use {
+  padding: 0;
+  color: #9fe1cb;
+  font: inherit;
+  text-decoration: underline;
+  background: none;
+  border: 0;
+}
+
 /* Someone it would reach is waiting on an answer of their own. */
 .office-announce-asking {
   padding: 8px 10px;

@@ -35,6 +35,30 @@ export function hireArgs(workspace: Workspace, task: string, label: string): Hir
   return args;
 }
 
+/**
+ * Why a pane label cannot be used, and one that can, or null when it is free.
+ * Labels belong to panes, and the office shows agents: a pane left behind by an
+ * agent that has ended still holds its label, where nobody in the office can see
+ * it. "Already used", with no agent in sight, reads as a bug - so the form says
+ * what is holding the label before the daemon has to refuse it.
+ */
+export function labelClash(
+  panes: readonly { id: string; label: string | null }[],
+  wanted: string,
+  panesWithAgents: ReadonlySet<string>,
+): { why: string; free: string } | null {
+  const label = wanted.trim();
+  const holder = label ? panes.find((pane) => pane.label === label) : undefined;
+  if (!holder) return null;
+  const taken = new Set(panes.map((pane) => pane.label));
+  let next = 2;
+  while (taken.has(`${label}-${next}`)) next += 1;
+  const why = panesWithAgents.has(holder.id)
+    ? `An agent's pane is already labelled "${label}".`
+    : `A pane labelled "${label}" is still open in Terminal view, with no agent in it. Labels belong to panes.`;
+  return { why, free: `${label}-${next}` };
+}
+
 /** Whether a failed hire failed because every seat is taken. */
 export function isHiringFreeze(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "concurrency_limit";

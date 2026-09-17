@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockOutArgs, clockOutQuestion, hireArgs, isHiringFreeze, memoArgs } from "./hire";
+import { clockOutArgs, clockOutQuestion, hireArgs, isHiringFreeze, labelClash, memoArgs } from "./hire";
 
 const pane = (id: string, kind: string) => ({ id, kind });
 
@@ -62,5 +62,35 @@ describe("clocking out", () => {
     expect(question).toContain("Pip (tests)");
     expect(question).toContain("/exit");
     expect(question).toContain("pane");
+  });
+});
+
+describe("labelClash", () => {
+  const panes = [
+    { id: "p1", label: "lead" },
+    { id: "p2", label: "porter" },
+    { id: "p3", label: "lead-2" },
+    { id: "p4", label: null },
+  ];
+  const withAgents = new Set(["p2"]);
+
+  it("is nothing for a label nobody holds, or for no label at all", () => {
+    expect(labelClash(panes, "tests", withAgents)).toBeNull();
+    expect(labelClash(panes, "  ", withAgents)).toBeNull();
+  });
+
+  it("says a pane with no agent in it holds the label: from the office that pane cannot be seen", () => {
+    // The bug report: "lead is already used", with no agents anywhere in sight.
+    const clash = labelClash(panes, " lead ", withAgents);
+    expect(clash?.why).toBe('A pane labelled "lead" is still open in Terminal view, with no agent in it. Labels belong to panes.');
+  });
+
+  it("says an agent holds it when one does", () => {
+    expect(labelClash(panes, "porter", withAgents)?.why).toBe(`An agent's pane is already labelled "porter".`);
+  });
+
+  it("offers the next free label of the same name", () => {
+    expect(labelClash(panes, "lead", withAgents)?.free).toBe("lead-3");
+    expect(labelClash(panes, "porter", withAgents)?.free).toBe("porter-2");
   });
 });

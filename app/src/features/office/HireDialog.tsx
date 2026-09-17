@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { DexError, request } from "../../platform/daemon";
 import type { WorkspaceView } from "../../platform/generated/WorkspaceView";
-import { hireArgs, isHiringFreeze } from "./hire";
+import { useAgents } from "../agents";
+import { hireArgs, isHiringFreeze, labelClash } from "./hire";
 
 interface Props {
   workspace: WorkspaceView;
@@ -24,8 +25,12 @@ export function HireDialog({ workspace, onClose, onFreeze }: Props) {
   useEffect(() => field.current?.focus(), []);
 
   const args = hireArgs(workspace, task, label);
+  // Said here, before the daemon has to refuse: from the office, a pane with no agent in it cannot be seen.
+  const agents = useAgents()?.agents ?? [];
+  const panesWithAgents = new Set(agents.flatMap((agent) => (agent.status !== "dead" && agent.pane_id ? [agent.pane_id] : [])));
+  const clash = labelClash(workspace.panes, label, panesWithAgents);
   const hire = async () => {
-    if (!args || busy) return;
+    if (!args || busy || clash) return;
     setBusy(true);
     setProblem(null);
     try {
@@ -68,12 +73,20 @@ export function HireDialog({ workspace, onClose, onFreeze }: Props) {
           Pane label <span className="optional">optional — other agents message them by it</span>
           <input value={label} placeholder="porter" onChange={(event) => setLabel(event.target.value)} />
         </label>
+        {clash && (
+          <div className="office-hire-problem">
+            {clash.why}{" "}
+            <button type="button" className="office-hire-use" onClick={() => setLabel(clash.free)}>
+              Use “{clash.free}”
+            </button>
+          </div>
+        )}
         {problem && <div className="office-hire-problem">{problem}</div>}
         <div className="office-hire-actions">
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="primary" disabled={!args || busy}>
+          <button type="submit" className="primary" disabled={!args || busy || clash !== null}>
             {busy ? "Hiring…" : "Hire"}
           </button>
         </div>

@@ -247,7 +247,7 @@ fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
         ),
         WorkspaceError::LabelTaken(_) => (
             ErrorCode::InvalidArgs,
-            "Pick another label, or clear the other pane's label first.",
+            "Labels belong to panes, and a pane keeps its label after its agent has ended: look in `dex pane list`. Pick another label, or relabel or close that pane first.",
         ),
         WorkspaceError::InvalidLabel => (
             ErrorCode::InvalidArgs,
