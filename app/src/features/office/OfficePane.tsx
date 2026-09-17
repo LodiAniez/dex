@@ -4,6 +4,7 @@ import "@fontsource/ibm-plex-sans/latin-600.css";
 import "@fontsource/jetbrains-mono/latin-400.css";
 import "./office.css";
 import "./map.css";
+import "./panel.css";
 import { useState } from "react";
 import { useOfficeSettings } from "../../platform/config";
 import { useWorkspaces } from "../workspaces";
@@ -60,7 +61,7 @@ export function OfficePane({ workspaceId }: { workspaceId: string }) {
       {view === "cards" ? (
         <CardsFloor office={office} seats={seats} hrNote={note} cardLines={CARD_LINES} screens={screens} onPick={pick} onHire={hire} />
       ) : (
-        <MapFloor office={office} seats={seats} hrNote={note} onPick={pick} onHire={hire} />
+        <MapFloor workspaceId={workspaceId} office={office} seats={seats} hrNote={note} onPick={pick} onHire={hire} />
       )}
       {picked && (
         <WorkPanel

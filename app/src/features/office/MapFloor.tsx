@@ -1,22 +1,21 @@
-import type { ReactNode } from "react";
 import type { Headcount } from "./floor";
 import { MapBackdrop } from "./MapBackdrop";
 import { MAP_WIDTH, mapHeight } from "./mapGeometry";
 import type { Employee, Office } from "./officeStore";
 import { Pod, VacantPod } from "./Pod";
+import { Walker, useWalks } from "./Walker";
 
 /** Pods in the design's two rows; a map that size fits the pane, a taller one scrolls. */
 const FITTING_PODS = 6;
 
 interface Props {
+  workspaceId: string;
   office: Office;
   seats: Headcount;
   /** What HR has to say under its button. */
   hrNote: string;
   onPick: (employee: Employee) => void;
   onHire: () => void;
-  /** Whoever is on their way to or from a desk, drawn above the floor. */
-  children?: ReactNode;
 }
 
 /**
@@ -24,7 +23,10 @@ interface Props {
  * pane: everything on it — name tags and HR's button included — is inside, so
  * nothing drifts off its desk when the pane is resized.
  */
-export function MapFloor({ office, seats, hrNote, onPick, onHire, children }: Props) {
+export function MapFloor({ workspaceId, office, seats, hrNote, onPick, onHire }: Props) {
+  // One person crosses the floor at a time; the rest wait their turn at HR.
+  const { queue, finish } = useWalks(workspaceId, office.employees);
+  const onTheirWay = new Set(queue.filter((walk) => walk.kind === "arrive").map((walk) => walk.id));
   const height = mapHeight(office.pods.length);
   const fits = office.pods.length <= FITTING_PODS;
   return (
@@ -46,13 +48,16 @@ export function MapFloor({ office, seats, hrNote, onPick, onHire, children }: Pr
           <div className="office-room-label break">break room</div>
         </foreignObject>
         {office.pods.map((employee, pod) =>
-          employee ? (
+          employee && onTheirWay.has(employee.agent.id) ? (
+            // Theirs already, but they have not reached it yet.
+            <VacantPod key={`reserved-${pod}`} pod={pod} sign={`reserved for ${employee.persona.name}`} />
+          ) : employee ? (
             <Pod key={employee.agent.id} employee={employee} onPick={onPick} />
           ) : (
             <VacantPod key={`vacant-${pod}`} pod={pod} />
           ),
         )}
-        {children}
+        {queue[0] && <Walker key={`${queue[0].kind}-${queue[0].id}`} walk={queue[0]} onDone={finish} />}
       </svg>
     </div>
   );
