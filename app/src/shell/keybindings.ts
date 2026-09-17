@@ -18,6 +18,7 @@ export type AppAction =
   | { kind: "view-terminal" }
   | { kind: "view-cards" }
   | { kind: "view-office" }
+  | { kind: "cycle-view" }
   | { kind: "open-setup" };
 
 const DIRECTIONS: Direction[] = ["left", "right", "up", "down"];
@@ -45,6 +46,7 @@ export const ACTIONS: Record<string, AppAction> = {
   "view-terminal": { kind: "view-terminal" },
   "view-cards": { kind: "view-cards" },
   "view-office": { kind: "view-office" },
+  "cycle-view": { kind: "cycle-view" },
   "open-setup": { kind: "open-setup" },
   ...Object.fromEntries(
     DIRECTIONS.flatMap((direction): [string, AppAction][] => [

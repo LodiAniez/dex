@@ -54,6 +54,7 @@ export const COMMAND_LABELS: Record<string, string> = {
   "view-terminal": "Terminal view",
   "view-cards": "Cards view",
   "view-office": "Office view",
+  "cycle-view": "Next view",
   "open-setup": "Setup checks",
   "focus-left": "Focus pane left",
   "focus-right": "Focus pane right",

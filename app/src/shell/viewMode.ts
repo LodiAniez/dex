@@ -29,6 +29,12 @@ export function chooseMode(stored: string | null, configured: string | undefined
   return isMode(configured) ? configured : "terminal";
 }
 
+/** The view after this one, round and round: what one key can step through. */
+export function nextMode(mode: ViewMode): ViewMode {
+  const at = VIEW_MODES.findIndex((candidate) => candidate.id === mode);
+  return VIEW_MODES[(at + 1) % VIEW_MODES.length].id;
+}
+
 /** Whether the panes themselves are what is on screen. */
 export function showsPanes(mode: ViewMode): boolean {
   return mode === "terminal";

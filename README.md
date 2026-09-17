@@ -88,7 +88,7 @@ dex doctor            # the table above
 
 ### Three views
 
-A workspace can be looked at three ways, switched from **Terminal · Cards · Office** in the title bar (or *Terminal view*, *Cards view*, *Office view* in the palette). Cards and Office take over the whole workspace area; your panes keep running underneath, and **Terminal** brings them back exactly as they were.
+A workspace can be looked at three ways, switched from **Terminal · Cards · Office** in the title bar (or *Terminal view*, *Cards view*, *Office view*, *Next view* in the palette — none has a default key, but `"cycle-view" = "Ctrl+Shift+V"` under `[keys]` gives you one). Cards and Office take over the whole workspace area; your panes keep running underneath, and **Terminal** brings them back exactly as they were. Pane shortcuts never act on panes you cannot see: from Cards or Office, the first press just brings the panes back.
 
 The two office views show every agent in the workspace as a person: a name and a look worked out from the agent's id (so they are the same after a restart), and as their role the label you gave their pane — or, for a spawned agent, the start of its brief. An agent that has spawned others is the **lead**.
 
