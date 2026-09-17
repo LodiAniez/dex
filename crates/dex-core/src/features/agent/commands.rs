@@ -172,6 +172,19 @@ fn revive(
 fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<()> {
     let Some(next) = logic::next_status(agent.status, agent.status_at, hook.kind, hook.args.stamp)
     else {
+        // Still waiting, but on a new dialog: the reason follows the dialog on
+        // screen. Nothing is logged - the agent's state has not changed.
+        if logic::is_new_wait(agent.status, agent.status_at, hook.kind, hook.args.stamp) {
+            let reason = super::reason::waiting_reason(&hook.args.input);
+            store::update_status(
+                conn,
+                &agent.id,
+                AgentStatus::Waiting,
+                reason.as_deref(),
+                hook.args.stamp,
+                None,
+            )?;
+        }
         return Ok(());
     };
     // Why, where the hook says: what failed, or what the agent is waiting for.

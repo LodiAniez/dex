@@ -78,3 +78,68 @@ async fn the_reason_reaches_the_agents_view_and_goes_when_the_wait_is_over() {
         "answered: nothing to wait for"
     );
 }
+
+#[tokio::test]
+async fn a_second_dialog_in_a_row_replaces_the_first_ones_reason() {
+    // The status does not change - waiting, then waiting - so the hook used to
+    // be ignored, and the panel went on naming a dialog that was no longer the
+    // one on screen. A wrong reason is worse than none.
+    let (_dir, state, pane) = pane().await;
+    fire(&state, "session-start", &pane, 1, session("s1")).await;
+    fire(&state, "prompt", &pane, 2, session("s1")).await;
+    let ask = |tool: &str, key: &str, value: &str| json!({ "session_id": "s1", "tool_name": tool, "tool_input": { key: value } });
+    fire(
+        &state,
+        "permission",
+        &pane,
+        3,
+        ask("Edit", "file_path", "src/client.rs"),
+    )
+    .await;
+    fire(
+        &state,
+        "permission",
+        &pane,
+        4,
+        ask("Bash", "command", "rm -r build"),
+    )
+    .await;
+
+    assert_eq!(
+        agents(&state).await[0].status_detail.as_deref(),
+        Some("permission to Bash: rm -r build")
+    );
+
+    // One wait, one line in the activity log: the second dialog is not news
+    // about the agent's state.
+    let log = crate::features::context::events(
+        &state,
+        dex_protocol::context::ScopeArgs::for_caller(dex_protocol::context::Caller {
+            pane: Some(pane.clone()),
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap();
+    let waits = log
+        .events
+        .iter()
+        .filter(|event| event.body.contains("is waiting"))
+        .count();
+    assert_eq!(waits, 1, "{:?}", log.events);
+}
+
+#[tokio::test]
+async fn an_older_dialog_delivered_late_does_not_replace_a_newer_ones_reason() {
+    let (_dir, state, pane) = pane().await;
+    fire(&state, "session-start", &pane, 1, session("s1")).await;
+    fire(&state, "prompt", &pane, 2, session("s1")).await;
+    let ask = |tool: &str| json!({ "session_id": "s1", "tool_name": tool, "tool_input": {} });
+    fire(&state, "permission", &pane, 5, ask("Bash")).await;
+    fire(&state, "permission", &pane, 4, ask("Edit")).await;
+
+    assert_eq!(
+        agents(&state).await[0].status_detail.as_deref(),
+        Some("permission to Bash")
+    );
+}
