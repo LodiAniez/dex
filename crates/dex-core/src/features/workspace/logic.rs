@@ -111,9 +111,9 @@ pub fn resolve(target: &str, candidates: &[(&str, Option<&str>)]) -> Resolved {
 /// Pane kinds the app can render.
 ///
 /// What a pane's `cwd` means depends on its kind: a directory for `terminal`
-/// (the shell's), `activity` and `office` (unused) and `diff` (the repository
+/// (the shell's), `activity` (unused) and `diff` (the repository
 /// to diff); the file to show for `markdown`.
-const KINDS: [&str; 5] = ["terminal", "activity", "diff", "markdown", "office"];
+const KINDS: [&str; 4] = ["terminal", "activity", "diff", "markdown"];
 
 /// The pane kind a request asked for, defaulting to `terminal`.
 ///

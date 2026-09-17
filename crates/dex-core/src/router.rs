@@ -212,7 +212,7 @@ mod tests {
         .await;
         let error = refused.error.unwrap();
         assert_eq!(error.code, ErrorCode::InvalidArgs);
-        for kind in ["terminal", "activity", "diff", "markdown", "office"] {
+        for kind in ["terminal", "activity", "diff", "markdown"] {
             assert!(
                 error.repair.contains(&format!("`{kind}`")),
                 "{kind} is missing from: {}",

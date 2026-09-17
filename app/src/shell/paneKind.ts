@@ -14,8 +14,6 @@ export function paneTitle(pane: { kind: string; cwd: string }): string {
   switch (pane.kind) {
     case "activity":
       return "activity";
-    case "office":
-      return "office";
     case "diff":
       return `diff · ${shortPath(pane.cwd)}`;
     case "markdown":

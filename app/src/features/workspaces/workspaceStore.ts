@@ -116,7 +116,7 @@ export async function splitPane(
   pane: string,
   direction: "right" | "down",
   // `markdown` is missing on purpose: it needs a file, which only the CLI supplies.
-  kind?: "terminal" | "activity" | "diff" | "office",
+  kind?: "terminal" | "activity" | "diff",
 ): Promise<void> {
   publish(await request<WorkspaceList>("pane.split", { pane, direction, kind }));
 }
@@ -130,12 +130,7 @@ export async function showActivity(workspace: WorkspaceView): Promise<void> {
   await showSingleton(workspace, "activity");
 }
 
-/** Shows the office: the workspace's agents as a team. One is enough here too. */
-export async function showOffice(workspace: WorkspaceView): Promise<void> {
-  await showSingleton(workspace, "office");
-}
-
-async function showSingleton(workspace: WorkspaceView, kind: "activity" | "office"): Promise<void> {
+async function showSingleton(workspace: WorkspaceView, kind: "activity"): Promise<void> {
   const target = singletonTarget(workspace, kind);
   if (!target) return;
   if ("focus" in target) return focusPane(target.focus);
