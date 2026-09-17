@@ -46,6 +46,14 @@ export function movements(before: readonly Tracked[] | null, after: readonly Tra
 
 /** Where a walker stands when they step out of HR. A walker's position is their top-left. */
 export const HR_DOOR = { x: 150, y: 240 } as const;
+/**
+ * The way out: a door in the left wall at the end of the main corridor, in the
+ * stretch between HR's room and the break room. Whoever ends leaves by it. HR is
+ * where people are hired, and nothing else.
+ */
+export const EXIT_DOOR = { x: 24, y: 400 } as const;
+/** How long someone stands at the door waving before they go. */
+export const WAVE_SECONDS = 1.4;
 /** How long a new hire stands at the door before setting off. */
 export const DOOR_PAUSE = 0.6;
 
@@ -148,14 +156,14 @@ export function nextLegs(
   return where === "home" ? null : { legs: between(here, deskOf(walk.pod)), arrives: "home" };
 }
 
-/** Where a walk starts and the legs it takes: an arrival's route, or the same one backwards. */
+/** Where a walk starts and the legs it takes: a hire's way in from HR, or a leaver's way out of the door. */
 export function routeOf(walk: Pick<Walk, "kind" | "pod">): { from: { x: number; y: number }; legs: Leg[] } {
-  const legs = legsTo(walk.pod);
-  if (walk.kind === "arrive") return { from: { ...HR_DOOR }, legs };
-  const stops = [{ ...HR_DOOR }, ...legs.map(({ x, y }) => ({ x, y }))];
-  const back = legs.map((leg, i) => ({ ...stops[i], seconds: leg.seconds })).reverse();
-  const last = legs[legs.length - 1];
-  return { from: { x: last.x, y: last.y }, legs: back };
+  if (walk.kind === "arrive") return { from: { ...HR_DOOR }, legs: legsTo(walk.pod) };
+  // Out: from their desk to their corridor, up the side aisle if theirs is not
+  // the main one, and along the main corridor to the door at its end.
+  const desk = deskOf(walk.pod);
+  const door = { ...EXIT_DOOR, corridor: EXIT_DOOR.y };
+  return { from: { x: desk.x, y: desk.y }, legs: between(desk, door) };
 }
 
 /** A whole walk, door pause included. */
