@@ -15,6 +15,7 @@ import { CardsFloor } from "./CardsFloor";
 import { headcount, hrNote } from "./floor";
 import { HireDialog } from "./HireDialog";
 import { MapFloor } from "./MapFloor";
+import { OutputModal } from "./OutputModal";
 import { useOffice, useScreens, type Employee } from "./officeStore";
 import { knownAs } from "./persona";
 import { chatLines } from "./phrasing";
@@ -52,6 +53,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [hiring, setHiring] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [refused, setRefused] = useState(false);
 
   // The same events the activity pane shows, retold by name for the map.
@@ -74,6 +76,8 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
   const picked = office.employees.find((employee) => employee.agent.id === pickedId);
 
   const pick = (employee: Employee) => setPickedId(employee.agent.id);
+  // Whoever's output is expanded may leave while it is open; it closes with them.
+  const expanded = office.employees.find((employee) => employee.agent.id === expandedId);
   const hire = () => {
     setRefused(false);
     setHiring(true);
@@ -82,8 +86,8 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
   // back rather than leave it on the page body.
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!hiring && !announcing) root.current?.focus();
-  }, [hiring, announcing]);
+    if (!hiring && !announcing && !expandedId) root.current?.focus();
+  }, [hiring, announcing, expandedId]);
 
   return (
     <div className={`office ${view}`} ref={root} tabIndex={-1}>
@@ -103,7 +107,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
         )}
       </div>
       {view === "cards" ? (
-        <CardsFloor office={office} seats={seats} hrNote={note} cardLines={CARD_LINES} screens={screens} onGoToPane={onGoToPane} onDetails={pick} onHire={hire} />
+        <CardsFloor office={office} seats={seats} hrNote={note} cardLines={CARD_LINES} screens={screens} onGoToPane={onGoToPane} onDetails={pick} onExpand={(employee) => setExpandedId(employee.agent.id)} onHire={hire} />
       ) : (
         <MapFloor
           workspaceId={workspaceId}
@@ -128,6 +132,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
           onClose={() => setPickedId(null)}
         />
       )}
+      {expanded && <OutputModal employee={expanded} onGoToPane={onGoToPane} onClose={() => setExpandedId(null)} />}
       {announcing && <AnnounceDialog staff={office.employees} onClose={() => setAnnouncing(false)} />}
       {hiring && workspace && (
         <HireDialog workspace={workspace} onClose={() => setHiring(false)} onFreeze={() => setRefused(true)} />

@@ -303,6 +303,13 @@
 .office-scrim {
   position: absolute;
   inset: 0;
+  /* Whatever is shown over the office fits inside it; nothing here scrolls the office. */
+  overflow: hidden;
+  /* One cell exactly the size of the office. Left to size itself, the cell
+     grows to its content - a long line of output is wider than the window -
+     and what is centred in it is no longer centred on screen. */
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   z-index: 12;
   display: grid;
   place-items: center;

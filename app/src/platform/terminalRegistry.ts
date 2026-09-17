@@ -188,6 +188,23 @@ export function readScreen(paneId: string): string | undefined {
   return rows.join("\n");
 }
 
+/**
+ * The last `lines` rows a pane has printed, scrollback included, as plain text.
+ * What `readScreen` is to the visible screen, this is to the history behind
+ * it: for a view with room to show more than fits on the terminal at once.
+ */
+export function readTail(paneId: string, lines: number): string | undefined {
+  const term = entries.get(paneId)?.term;
+  if (!term) return undefined;
+  const buffer = term.buffer.active;
+  const end = buffer.baseY + term.rows;
+  const rows: string[] = [];
+  for (let row = Math.max(0, end - lines); row < end; row += 1) {
+    rows.push(buffer.getLine(row)?.translateToString(true) ?? "");
+  }
+  return rows.join("\n");
+}
+
 function loadWebgl(entry: Entry): void {
   if (entry.webgl) return;
   try {
