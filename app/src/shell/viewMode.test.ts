@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VIEW_MODES, chooseMode, modeOfAction, showsPanes } from "./viewMode";
+import { VIEW_MODES, chooseMode, modeOfAction, showsPanes, whenPanesHidden } from "./viewMode";
 
 describe("chooseMode", () => {
   it("is the terminals until anyone says otherwise", () => {
@@ -39,5 +39,27 @@ describe("the views", () => {
     expect(modeOfAction("view-cards")).toBe("cards");
     expect(modeOfAction("view-office")).toBe("office");
     expect(modeOfAction("open-diff")).toBeNull();
+  });
+});
+
+describe("whenPanesHidden", () => {
+  it("never acts on a pane nobody can see, where acting could not be undone or seen", () => {
+    // Closing a pane kills an agent's terminal. The first press only shows what
+    // the second would do it to.
+    for (const kind of ["close-pane", "move-pane", "focus-pane", "toggle-zoom"]) {
+      expect(whenPanesHidden(kind), kind).toBe("reveal");
+    }
+  });
+
+  it("shows the panes and then does what was asked, where that is harmless", () => {
+    for (const kind of ["split-pane", "open-diff", "cycle-layout"]) {
+      expect(whenPanesHidden(kind), kind).toBe("reveal-then-run");
+    }
+  });
+
+  it("leaves alone everything that is not about a pane", () => {
+    for (const kind of ["command-palette", "new-workspace", "toggle-sidebar", "next-workspace", "switch-workspace", "open-setup", "view-cards"]) {
+      expect(whenPanesHidden(kind), kind).toBe("run");
+    }
   });
 });
