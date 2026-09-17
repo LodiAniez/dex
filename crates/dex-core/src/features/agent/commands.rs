@@ -9,6 +9,7 @@ use rusqlite::Connection;
 use super::identity;
 use super::logic::{self, HookInput, HookKind, SessionStart};
 use super::model::{Agent, AgentError};
+use super::presence;
 use super::store;
 use crate::app::AppState;
 use crate::features::{context, workspace};
@@ -309,11 +310,25 @@ pub async fn pane_exited(
     Ok(EventOutcome { applied: ended > 0 })
 }
 
-/// `agent.sweep`: the watchdog. Agents whose pane is gone are ended; running
+/// `agent.sweep`: the watchdog. Agents whose pane is gone are ended, and so are
+/// those whose pane no longer runs Claude Code (`presence`); running
 /// agents with no hook event and no pane output for two minutes become
 /// `unknown`, which covers every way hook delivery can fail. Announces a
 /// change only when it made one.
 pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
+    let statuses = sweep_statuses(state).await?;
+    // Last, because it may take a couple of seconds and announces what it does
+    // itself; and never fatal - what the rest of the sweep found still stands.
+    let departed = presence::end_the_departed(state)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!(%err, "could not look for agents whose Claude Code has gone");
+            0
+        });
+    Ok(if departed > 0 { APPLIED } else { statuses })
+}
+
+async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
     let now = clock::now_millis();
     // Orphans first: a pane closed from the UI, or lost with a crashed
     // session, nulls `pane_id` but leaves status where it was. Left alone,

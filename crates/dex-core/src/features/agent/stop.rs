@@ -186,7 +186,7 @@ async fn interrupt(state: &AppState, pane: &str) -> Result<(), AgentError> {
 
 /// Closes the pane, and says whether it did. The UI ends the pane's shell when
 /// it sees the pane gone, exactly as when the owner closes one.
-async fn close(state: &AppState, pane: &str) -> Result<bool, AgentError> {
+pub(super) async fn close(state: &AppState, pane: &str) -> Result<bool, AgentError> {
     let args = PaneArgs {
         pane: pane.to_owned(),
     };
