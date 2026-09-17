@@ -60,7 +60,8 @@ export function AnticFigure({ persona, doing, heading }: Props) {
       )}
 
       {doing === "kart" && (
-        <g className="office-kart" style={{ transform: `scaleX(${heading})` }}>
+        // Turned about the middle of the figure, so a kart that turns round stays where it is.
+        <g className="office-kart" transform={heading === -1 ? "translate(48 0) scale(-1 1)" : undefined}>
           {/* Low, red, and too small for them. */}
           <rect x="-8" y="40" width="64" height="16" rx="7" fill="#d83a3a" />
           <rect x="40" y="34" width="14" height="10" rx="3" fill="#a92a2a" />

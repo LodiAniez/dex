@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ANTICS, isLoafing, pickAntic, planAntic, seedOf, wayHome, type AnticKind } from "./antics";
+import { ANTICS, canBreakOffAt, isLoafing, pickAntic, planAntic, seedOf, wayHome, type AnticKind } from "./antics";
 import { POD, podOrigin } from "./mapGeometry";
 import { deskOf } from "./walks";
 
@@ -46,6 +46,14 @@ describe("pickAntic", () => {
     for (const id of ["a", "b", "agent-7f3a"]) {
       for (let round = 1; round < 300; round += 1) {
         expect(pickAntic(id, 5, round), `${id} round ${round}`).not.toBe(pickAntic(id, 5, round - 1));
+      }
+    }
+  });
+
+  it("never picks what they were told they have just done, whatever spell or window the count is from", () => {
+    for (const not of KINDS) {
+      for (let round = 0; round < 60; round += 1) {
+        for (const since of [5, 6, 7]) expect(pickAntic("agent-1", since, round, not), `${not} ${since} ${round}`).not.toBe(not);
       }
     }
   });
@@ -193,6 +201,22 @@ describe("planAntic", () => {
     const plan = planAntic("rope", 4, 0);
     expect(plan.act).toEqual([]);
     expect(plan.seconds).toBeGreaterThan(4);
+  });
+});
+
+describe("canBreakOffAt", () => {
+  it("lets a kart driver stop anywhere on their own corridor, but not at the bottom of the block: the way home starts from a corridor", () => {
+    const plans = Array.from({ length: 40 }, (_, seed) => planAntic("kart", 1, seed, { mapHeight: 832 }));
+    const circuit = plans.find((plan) => new Set(plan.act.map((leg) => leg.y)).size > 1)!;
+    for (const leg of circuit.act) expect(canBreakOffAt(circuit, leg), `${leg.x},${leg.y}`).toBe(leg.y === circuit.to!.corridor);
+    expect(circuit.act.some((leg) => !canBreakOffAt(circuit, leg))).toBe(true);
+  });
+
+  it("lets anyone rolling, tumbling or lapping the corridor stop at any turn", () => {
+    for (const kind of ["roll", "tumble", "kart"] as const) {
+      const plan = planAntic(kind, 4, 1);
+      for (const leg of plan.act) expect(canBreakOffAt(plan, leg)).toBe(true);
+    }
   });
 });
 
