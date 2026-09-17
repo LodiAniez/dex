@@ -3,7 +3,7 @@ import type { AgentStatus } from "../../platform/generated/AgentStatus";
 import type { AgentView } from "../../platform/generated/AgentView";
 
 /** What each status means to the person looking at it. */
-const WORDS: Record<AgentStatus, string> = {
+export const STATUS_WORDS: Record<AgentStatus, string> = {
   idle: "idle",
   running: "working",
   waiting: "needs you",
@@ -14,7 +14,7 @@ const WORDS: Record<AgentStatus, string> = {
 
 /** The status dot — the most important pixel in the app (PRD §13), so it is bright and pulses when it needs you. */
 export function AgentStatusDot({ status }: { status: AgentStatus }) {
-  return <span className={`agent-dot ${status}`} aria-label={WORDS[status]} />;
+  return <span className={`agent-dot ${status}`} aria-label={STATUS_WORDS[status]} />;
 }
 
 /** Dot, state, time in state, and permission mode, for a pane header. */
@@ -23,10 +23,10 @@ export function AgentBadge({ agent }: { agent: AgentView }) {
   const detail = agent.status === "error" && agent.status_detail ? ` (${agent.status_detail})` : "";
   const mode = agent.permission_mode && agent.permission_mode !== "default" ? agent.permission_mode : null;
   return (
-    <span className={`agent-badge ${agent.status}`} title={`${agent.backend}: ${WORDS[agent.status]}${detail}`}>
+    <span className={`agent-badge ${agent.status}`} title={`${agent.backend}: ${STATUS_WORDS[agent.status]}${detail}`}>
       <AgentStatusDot status={agent.status} />
       <span className="agent-state">
-        {WORDS[agent.status]}
+        {STATUS_WORDS[agent.status]}
         {detail}
       </span>
       <span className="agent-elapsed">{elapsed(now - agent.status_at)}</span>

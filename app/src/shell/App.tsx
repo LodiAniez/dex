@@ -10,6 +10,7 @@ import {
   getWorkspaces,
   loadWorkspaces,
   showActivity,
+  showOffice,
   splitPane,
   swapPanes,
   switchWorkspace,
@@ -195,6 +196,12 @@ export function App() {
         setZoomed(null);
         if (pane) run(splitPane(pane, "right", "diff"));
         return;
+      case "open-office": {
+        setZoomed(null);
+        const ws = activeWorkspace();
+        if (ws) run(showOffice(ws));
+        return;
+      }
       case "open-setup":
         setSetupOpen(true);
         run(checkSetup(false));
@@ -255,6 +262,7 @@ export function App() {
         color={active?.color}
         counts={agentCounts(agents)}
         onShowActivity={active ? () => run(showActivity(active)) : undefined}
+        onShowOffice={active ? () => run(showOffice(active)) : undefined}
       />
       <div className="app-body">
         <Sidebar

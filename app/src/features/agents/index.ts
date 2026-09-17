@@ -1,4 +1,4 @@
-export { AgentBadge, AgentStatusDot } from "./AgentBadge";
+export { AgentBadge, AgentStatusDot, STATUS_WORDS } from "./AgentBadge";
 export {
   agentCounts,
   agentInPane,

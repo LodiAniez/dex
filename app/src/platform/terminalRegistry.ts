@@ -158,6 +158,24 @@ export function captureTerminal(paneId: string): string | undefined {
   return entries.get(paneId)?.serialize.serialize();
 }
 
+/**
+ * What is on the pane's screen right now, as plain text, one row per line.
+ * Reads the buffer rather than serializing it: this is polled, and a serialize
+ * walks the whole scrollback to produce escapes nobody here wants.
+ */
+export function readScreen(paneId: string): string | undefined {
+  const term = entries.get(paneId)?.term;
+  if (!term) return undefined;
+  const buffer = term.buffer.active;
+  const rows: string[] = [];
+  // From `baseY`, not `viewportY`: what the program last drew, wherever the
+  // owner has scrolled to.
+  for (let row = buffer.baseY; row < buffer.baseY + term.rows; row += 1) {
+    rows.push(buffer.getLine(row)?.translateToString(true) ?? "");
+  }
+  return rows.join("\n");
+}
+
 function loadWebgl(entry: Entry): void {
   if (entry.webgl) return;
   try {

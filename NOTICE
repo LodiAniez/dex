@@ -6,3 +6,11 @@ Licensed under the Apache License, Version 2.0. See LICENSE.
 Dex is not affiliated with or endorsed by Anthropic. "Claude" and "Claude
 Code" are trademarks of Anthropic, PBC; Dex drives Claude Code through the
 hook and MCP interfaces it publishes.
+
+Fonts
+
+The office pane ships two typefaces, each under the SIL Open Font License 1.1
+(https://openfontlicense.org), bundled through the Fontsource packages:
+
+  IBM Plex Sans     Copyright 2017 IBM Corp.
+  JetBrains Mono    Copyright 2020 The JetBrains Mono Project Authors

@@ -92,6 +92,10 @@ describe("what the palette offers", () => {
     }
   });
 
+  it("opens the office by the name people will type", () => {
+    expect(COMMAND_LABELS["open-office"]).toBe("Show the office");
+  });
+
   it("offers commands even before the workspaces have loaded", () => {
     const early = buildItems(null, SHIPPED_KEYMAP);
     expect(early.length).toBeGreaterThan(0);

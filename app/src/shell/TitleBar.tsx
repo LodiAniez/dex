@@ -11,12 +11,14 @@ interface Props {
   counts: { running: number; waiting: number; error: number };
   /** Opens the workspace's activity stream; absent when no workspace is open. */
   onShowActivity?: () => void;
+  /** Opens the office; absent when no workspace is open. */
+  onShowOffice?: () => void;
 }
 
 // Window decorations are off (PRD §13), so the app draws its own title bar.
 // `data-tauri-drag-region` must be on the exact element under the cursor, so
 // the title text carries it too; the buttons deliberately do not.
-export function TitleBar({ title, color, counts, onShowActivity }: Props) {
+export function TitleBar({ title, color, counts, onShowActivity, onShowOffice }: Props) {
   const win = getCurrentWindow();
   const update = useUpdate();
   return (
@@ -34,6 +36,12 @@ export function TitleBar({ title, color, counts, onShowActivity }: Props) {
         {onShowActivity && (
           <button type="button" className="activity-open" title="Show workspace activity" onClick={onShowActivity}>
             activity
+          </button>
+        )}
+        {/* The same agents, seen as a team rather than as a log. */}
+        {onShowOffice && (
+          <button type="button" className="activity-open" title="Show the office" onClick={onShowOffice}>
+            office
           </button>
         )}
         {/* Only while a newer release exists; clicking opens its page. Nothing

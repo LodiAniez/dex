@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HAIRS, NAMES, SHIRTS, SKINS, personaOf, roleOf } from "./persona";
+import { HAIRS, NAMES, SHIRTS, SKINS, nameStaff, personaOf, roleOf } from "./persona";
 
 /** Ids shaped like the daemon's: a prefix and hex. */
 const ids = Array.from({ length: 4000 }, (_, i) => `agent-${(i * 2654435761).toString(16)}`);
@@ -105,5 +105,52 @@ describe("roleOf", () => {
   it("treats a blank label or brief as missing", () => {
     const blank = agent("b", { label: "  ", task_brief: "\n " });
     expect(roleOf(blank, [blank])).toBe("agent");
+  });
+});
+
+describe("nameStaff", () => {
+  // Two ids that hash to the same name, found rather than assumed.
+  const [first, twin] = (() => {
+    const seen = new Map<string, string>();
+    for (const id of ids) {
+      const name = personaOf(id).name;
+      const other = seen.get(name);
+      if (other) return [other, id];
+      seen.set(name, id);
+    }
+    throw new Error("no two ids share a name");
+  })();
+
+  it("gives everyone the name their id asks for when nobody shares it", () => {
+    const names = nameStaff(new Map(), [{ id: "a" }, { id: "agent-7f3a" }]);
+    expect(names.get("a")).toBe("Jude");
+    expect(names.get("agent-7f3a")).toBe("Tova");
+  });
+
+  it("never has two people of one name in the office", () => {
+    const names = nameStaff(new Map(), [{ id: first }, { id: twin }]);
+    expect(names.get(first)).toBe(personaOf(first).name);
+    expect(names.get(twin)).not.toBe(names.get(first));
+    expect(NAMES).toContain(names.get(twin));
+  });
+
+  it("lets whoever arrived first keep the name", () => {
+    const names = nameStaff(new Map(), [{ id: twin }, { id: first }]);
+    expect(names.get(twin)).toBe(personaOf(twin).name);
+    expect(names.get(first)).not.toBe(names.get(twin));
+  });
+
+  it("does not rename anyone when their namesake leaves", () => {
+    const before = nameStaff(new Map(), [{ id: first }, { id: twin }]);
+    const after = nameStaff(before, [{ id: twin }]);
+    expect(after.get(twin)).toBe(before.get(twin));
+    expect(after.has(first)).toBe(false);
+  });
+
+  it("still names everyone in an office bigger than the list of names", () => {
+    const crowd = ids.slice(0, NAMES.length + 5).map((id) => ({ id }));
+    const names = nameStaff(new Map(), crowd);
+    expect(names.size).toBe(crowd.length);
+    for (const name of names.values()) expect(name).toBeTruthy();
   });
 });
