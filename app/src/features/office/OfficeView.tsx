@@ -5,6 +5,7 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "./office.css";
 import "./cards.css";
 import "./map.css";
+import "./antics.css";
 import "./panel.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUiSettings } from "../../platform/config";

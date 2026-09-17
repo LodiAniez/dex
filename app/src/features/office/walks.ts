@@ -121,11 +121,12 @@ export const TALK_SECONDS = 2.6;
 
 const timed = (distance: number, pace: number) => Math.round(Math.abs(distance) * pace * 1000) / 1000;
 
-function corridorOf(pod: number): number {
+/** The corridor a pod is reached from: there is one per pair of rows. */
+export function corridorOf(pod: number): number {
   return FIRST_CORRIDOR + Math.floor(Math.floor(pod / PODS_PER_ROW) / 2) * CORRIDOR_STEP;
 }
 
-interface Spot {
+export interface Spot {
   x: number;
   y: number;
   /** The corridor this spot is reached from. */
@@ -145,7 +146,7 @@ function besideDeskOf(pod: number): Spot {
  * From one spot in a pod to another: out to the corridor, along it, and in.
  * Between corridors, by the side aisle, and never through a row of desks or the break room.
  */
-function between(from: Spot, to: Spot): Leg[] {
+export function between(from: Spot, to: Spot): Leg[] {
   const stops = [{ x: from.x, y: from.y }, { x: from.x, y: from.corridor }];
   if (from.corridor !== to.corridor) stops.push({ x: AISLE_X, y: from.corridor }, { x: AISLE_X, y: to.corridor });
   stops.push({ x: to.x, y: to.corridor }, { x: to.x, y: to.y });
@@ -262,6 +263,14 @@ export function deliveries(events: readonly MessageEvent[], sinceSeq: number, se
 /** Whoever is out delivering right now, whose desk should therefore be shown empty. */
 export function awayFromDesk(queue: readonly Walk[]): string | null {
   return queue[0]?.kind === "deliver" ? queue[0].id : null;
+}
+
+/**
+ * The desks someone is on their way to with a message. Whoever sits there
+ * should be found at it: they stop fooling around and head back.
+ */
+export function expectingVisitor(queue: readonly Walk[]): number[] {
+  return queue[0]?.kind === "deliver" ? [...(queue[0].stops ?? [])] : [];
 }
 
 /**

@@ -3,6 +3,7 @@ import { STATUS_WORDS } from "../agents";
 import { poseOf, type Pose } from "./floor";
 import { POD, podOrigin } from "./mapGeometry";
 import type { Employee } from "./officeStore";
+import { Napper, Singer } from "./PodAntics";
 import { TalkBubble } from "./Walker";
 
 /** The two lines of "code" on a desk screen: their colours say what the agent is doing. */
@@ -61,14 +62,17 @@ interface PodProps {
   away?: boolean;
   /** A colleague is at their desk with a message: they are shown answering. */
   listening?: boolean;
+  /** Nothing to do, and passing the time at their desk. Work, or a visitor, comes first. */
+  antic?: "nap" | "sing" | null;
   onPick: (employee: Employee) => void;
 }
 
-export function Pod({ employee, away = false, listening = false, onPick }: PodProps) {
+export function Pod({ employee, away = false, listening = false, antic = null, onPick }: PodProps) {
   const { agent, persona, role, pod } = employee;
   const { x, y } = podOrigin(pod);
   const pose = poseOf(agent.status);
   const typing = pose === "typing";
+  const passing = !away && !listening && pose === "still" ? antic : null;
   const [code1, code2] = SCREEN[pose];
   // Line lengths differ from desk to desk so six screens do not tap in unison.
   const line1 = 22 + ((pod * 7) % 16);
@@ -103,7 +107,9 @@ export function Pod({ employee, away = false, listening = false, onPick }: PodPr
         <Furniture plant />
         <rect className={typing ? "office-tap1" : undefined} x="103" y="36" width={line1} height="4" rx="2" fill={code1} />
         <rect className={typing ? "office-tap2" : undefined} x="103" y="43" width={line2} height="4" rx="2" fill={code2} />
-        {!away && (
+        {passing === "nap" && <Napper persona={persona} />}
+        {passing === "sing" && <Singer persona={persona} />}
+        {!away && passing === null && (
           <>
             {pose === "raised" && (
               <path d="M186 128 Q192 112 188 102" stroke={persona.skin} strokeWidth="8" strokeLinecap="round" fill="none" />

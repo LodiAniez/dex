@@ -1,0 +1,125 @@
+/* ---- what people with nothing to do get up to ---- */
+
+/* On the way there and on the way home: the same walk as anyone crossing the floor. */
+.office-strolling { animation: office-bob 0.4s ease-in-out infinite; }
+.office-strolling .office-leg-a { animation: office-swing-a 0.4s linear infinite; }
+.office-strolling .office-leg-b { animation: office-swing-b 0.4s linear infinite; }
+
+/* Everything that turns, turns about its own middle. */
+.office-kart,
+.office-rolling,
+.office-tumbling,
+.office-rope,
+.office-sip,
+.office-snore,
+.office-note {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Coffee: the mug comes up to the mouth, stays a moment, and goes down again. */
+@keyframes office-sip {
+  0%, 45%, 100% { transform: translate(0, 0) rotate(0deg); }
+  60%, 80% { transform: translate(-10px, -10px) rotate(-18deg); }
+}
+
+@keyframes office-steam {
+  0% { opacity: 0; transform: translateY(2px); }
+  40% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
+
+.office-sip { animation: office-sip 3s ease-in-out infinite; }
+.office-steam { animation: office-steam 1.6s ease-out infinite; }
+
+/* Go kart: a rattle, spinning wheels, and something coming out of the back. */
+@keyframes office-rattle {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -1.5px; }
+}
+
+@keyframes office-exhaust {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.9; }
+}
+
+.office-kart > * { animation: office-rattle 0.12s linear infinite; }
+.office-kart .office-exhaust { animation: office-exhaust 0.18s linear infinite; }
+
+/* Skipping: up as the rope comes under, and the rope round and round. Seen from
+   the front a turning rope is an ellipse opening and closing. */
+@keyframes office-jump {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(-14px); }
+}
+
+@keyframes office-rope {
+  0% { transform: scaleY(1); }
+  25% { transform: scaleY(0.08); }
+  50% { transform: scaleY(1); }
+  75% { transform: scaleY(0.08); }
+  100% { transform: scaleY(1); }
+}
+
+.office-jumping { animation: office-jump 0.5s ease-in-out infinite; }
+.office-rope { animation: office-rope 1s linear infinite; }
+
+/* A body roll is slow and stays on the floor; a tumble leaves it. `--turn` is
+   a full turn the way they are going. */
+@keyframes office-roll {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(var(--turn, 360deg)); }
+}
+
+@keyframes office-tumble {
+  0% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-22px) rotate(calc(var(--turn, 360deg) / 2)); }
+  100% { transform: translateY(0) rotate(var(--turn, 360deg)); }
+}
+
+.office-rolling { animation: office-roll 1.3s linear infinite; }
+.office-tumbling { animation: office-tumble 0.75s ease-in-out infinite; }
+
+/* A nap: breathing under the blanket, and Zs drifting off. */
+@keyframes office-breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.08); }
+}
+
+@keyframes office-snore {
+  0% { opacity: 0; transform: translate(0, 6px) scale(0.6); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(12px, -16px) scale(1.1); }
+}
+
+.office-blanket {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: office-breathe 2.8s ease-in-out infinite;
+}
+
+.office-snore { animation: office-snore 2.8s ease-out infinite; }
+.office-snore.second { animation-delay: 0.9s; }
+.office-snore.third { animation-delay: 1.8s; }
+
+/* A song: swaying, and notes going up. */
+@keyframes office-sway {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+@keyframes office-note {
+  0% { opacity: 0; transform: translate(0, 8px) rotate(-10deg); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(10px, -26px) rotate(14deg); }
+}
+
+.office-singing {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: office-sway 1.2s ease-in-out infinite;
+}
+
+.office-note { animation: office-note 2s ease-out infinite; }
+.office-note.second { animation-delay: 0.7s; }
+.office-note.third { animation-delay: 1.3s; }

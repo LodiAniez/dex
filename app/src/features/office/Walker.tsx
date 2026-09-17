@@ -12,7 +12,7 @@ export interface StaffWalk extends Walk {
 /** How long a leaver takes to fade at HR's door. */
 const FADE_SECONDS = 0.4;
 
-function prefersStill(): boolean {
+export function prefersStill(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
