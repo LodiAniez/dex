@@ -6,14 +6,17 @@ import type { Employee, Office } from "./officeStore";
 interface Props {
   office: Office;
   seats: Headcount;
-  /** The last lines on each agent's screen, by agent id. */
+  /** What HR has to say under its button. */
+  hrNote: string;
+  /** The last lines on each agent's screen, by agent id; a card shows the last `cardLines`. */
   screens: ReadonlyMap<string, string[]>;
+  cardLines: number;
   onPick: (employee: Employee) => void;
+  onHire: () => void;
 }
 
 /** The office as a grid of cards, one per pod, with HR's column beside it. */
-export function CardsFloor({ office, seats, screens, onPick }: Props) {
-  const firstVacant = office.pods.findIndex((pod) => pod === null);
+export function CardsFloor({ office, seats, hrNote, screens, cardLines, onPick, onHire }: Props) {
   return (
     <div className="office-cards">
       <aside className="office-hr">
@@ -26,15 +29,16 @@ export function CardsFloor({ office, seats, screens, onPick }: Props) {
           HR office
         </div>
         <div className={`office-seats${seats.full ? " full" : ""}`}>{seats.text}</div>
-        <div className="office-hr-note">
-          {seats.full || firstVacant < 0 ? "No seat until someone leaves." : `Office ${firstVacant + 1} is free.`}
-        </div>
+        <button type="button" className="office-hire-open" disabled={seats.full} onClick={onHire}>
+          {seats.full ? "Office full" : "Hire an agent"}
+        </button>
+        <div className="office-hr-note">{hrNote}</div>
         <div className="office-hr-hint">Click a card to see their work.</div>
       </aside>
       <div className="office-grid">
         {office.pods.map((employee, pod) =>
           employee ? (
-            <Card key={employee.agent.id} employee={employee} screen={screens.get(employee.agent.id) ?? []} onPick={onPick} />
+            <Card key={employee.agent.id} employee={employee} screen={(screens.get(employee.agent.id) ?? []).slice(-cardLines)} onPick={onPick} />
           ) : (
             // Keyed by pod: a vacancy is a place, not a person.
             <div key={`vacant-${pod}`} className="office-vacant">
