@@ -95,7 +95,10 @@ async fn agents_all(state: &crate::app::AppState) -> Vec<dex_protocol::agent::Ag
 #[test]
 fn an_idle_agent_is_simply_told_to_exit() {
     use crate::features::agent::logic::{ExitStep, exit_plan};
-    assert_eq!(exit_plan(AgentStatus::Idle), [ExitStep::Type("/exit")]);
+    assert_eq!(
+        exit_plan(AgentStatus::Idle, true),
+        [ExitStep::Type("/exit")]
+    );
 }
 
 #[test]
@@ -110,11 +113,20 @@ fn a_busy_agent_is_interrupted_first_or_the_command_would_queue_as_a_message() {
         AgentStatus::Unknown,
     ] {
         assert_eq!(
-            exit_plan(status),
+            exit_plan(status, true),
             [ExitStep::Escape, ExitStep::Type("/exit")],
             "{status:?}"
         );
     }
+}
+
+#[test]
+fn a_hire_that_has_not_started_is_not_asked_to_leave() {
+    use crate::features::agent::logic::exit_plan;
+    // Its pane is a bare shell: `/exit` there is a command for the shell.
+    // There is nobody to ask, so stopping goes straight to ending it.
+    assert!(exit_plan(AgentStatus::Idle, false).is_empty());
+    assert!(exit_plan(AgentStatus::Running, false).is_empty());
 }
 
 #[tokio::test]

@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
 import { announcePlan, announceSummary, promptArgs, whyNoPrompt } from "./prompt";
 
-const member = (name: string, status: AgentStatus, pane: string | null = `pane-${name}`) => ({
-  agent: { id: `id-${name}`, status, pane_id: pane },
+const member = (name: string, status: AgentStatus, pane: string | null = `pane-${name}`, started = true) => ({
+  agent: { id: `id-${name}`, status, pane_id: pane, started },
   persona: { name },
 });
 
 describe("promptArgs", () => {
-  it("types the prompt into the agent's terminal and presses Enter", () => {
-    expect(promptArgs("p1", "  run the tests again  ")).toEqual({ pane: "p1", text: "run the tests again", enter: true });
+  it("asks the daemon to prompt the agent, which is where it is decided whether that is safe", () => {
+    expect(promptArgs("agent-1", "  run the tests again  ")).toEqual({ agent: "agent-1", text: "run the tests again" });
   });
 
   it("keeps a prompt on one line, because a newline in a terminal is Enter", () => {
@@ -30,6 +30,15 @@ describe("whyNoPrompt", () => {
 
   it("refuses one waiting on a dialog, where typed text would answer the dialog", () => {
     expect(whyNoPrompt(member("a", "waiting").agent)).toMatch(/waiting for you/i);
+  });
+
+  it("refuses a hire whose Claude Code has not started: its pane is a bare shell that would run the text", () => {
+    expect(whyNoPrompt(member("a", "idle", "p", false).agent)).toMatch(/not started/i);
+  });
+
+  it("refuses one that has stopped or gone quiet, where Claude Code may not be there", () => {
+    expect(whyNoPrompt(member("a", "error").agent)).toMatch(/may not be running/i);
+    expect(whyNoPrompt(member("a", "unknown").agent)).toMatch(/may not be running/i);
   });
 
   it("refuses one with no pane to type into", () => {

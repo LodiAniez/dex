@@ -57,7 +57,7 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
   const send = async () => {
     const call =
       writing === "prompt"
-        ? agent.pane_id && { cmd: "pane.send", args: promptArgs(agent.pane_id, text) }
+        ? { cmd: "agent.prompt", args: promptArgs(agent.id, text) }
         : { cmd: "context.message_send", args: memoArgs(workspaceId, agent.id, text) };
     if (!call || !call.args) return;
     setSending(true);

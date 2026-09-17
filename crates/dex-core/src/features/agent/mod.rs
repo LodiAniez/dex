@@ -1,6 +1,6 @@
 //! Agent registry and lifecycle: the Claude Code sessions running in panes.
 //! Tables: `agent`.
-//! Commands: `agent.event` (hooks), `agent.list`, `agent.stop`, `agent.pane_exited`,
+//! Commands: `agent.event` (hooks), `agent.list`, `agent.stop`, `agent.prompt`, `agent.pane_exited`,
 //! `agent.sweep` (watchdog).
 //! Which hook means what, and how a status moves, is pure and lives in `logic.rs`.
 
@@ -8,6 +8,7 @@ mod commands;
 mod identity;
 mod logic;
 mod model;
+mod prompt;
 mod spawn;
 mod stop;
 mod store;
@@ -19,5 +20,6 @@ pub use identity::{
     Whereabouts, brief_of, ended_in_workspace, label_of, resolve_agent, siblings, whereabouts,
 };
 pub use model::AgentError;
+pub use prompt::prompt;
 pub use spawn::spawn;
 pub use stop::stop;

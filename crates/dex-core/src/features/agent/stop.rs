@@ -87,7 +87,16 @@ async fn ask_to_leave(
     pane: &str,
     status: AgentStatus,
 ) -> Result<bool, AgentError> {
-    for step in logic::exit_plan(status) {
+    let id = agent_id.to_owned();
+    let started = state
+        .db
+        .call(move |conn| store::has_session(conn, &id))
+        .await?;
+    let plan = logic::exit_plan(status, started);
+    if plan.is_empty() {
+        return Ok(false);
+    }
+    for step in plan {
         let sent = match step {
             ExitStep::Escape => {
                 let key = SendKeyArgs {

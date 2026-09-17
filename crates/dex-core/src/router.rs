@@ -102,6 +102,7 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "agent.event" => encode(agent::event(state, args(req)?).await?),
         "agent.list" => encode(agent::list(state, args(req)?).await?),
         "agent.stop" => encode(agent::stop(state, args(req)?).await?),
+        "agent.prompt" => encode(agent::prompt(state, args(req)?).await?),
         "agent.spawn" => encode(agent::spawn(state, args(req)?).await?),
         "agent.pane_exited" => encode(agent::pane_exited(state, args(req)?).await?),
         "agent.sweep" => encode(agent::sweep(state).await?),

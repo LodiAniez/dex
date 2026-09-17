@@ -192,7 +192,13 @@ pub enum ExitStep {
 /// command. Anywhere else it is not: typed during a turn it is queued for the
 /// model as a message, and typed at a permission dialog it answers the dialog.
 /// Escape clears both, and leaves the prompt the command needs.
-pub fn exit_plan(status: AgentStatus) -> Vec<ExitStep> {
+///
+/// A hire whose Claude Code has not started is not asked at all: its pane is a
+/// bare shell, and `/exit` there would be the shell's to run.
+pub fn exit_plan(status: AgentStatus, started: bool) -> Vec<ExitStep> {
+    if !started {
+        return Vec::new();
+    }
     match status {
         AgentStatus::Idle => vec![ExitStep::Type("/exit")],
         _ => vec![ExitStep::Escape, ExitStep::Type("/exit")],

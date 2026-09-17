@@ -46,6 +46,12 @@ permission_mode: string | null,
  */
 task_brief: string | null, 
 /**
+ * Whether Claude Code has started in its pane. A hire exists from the
+ * moment it is made and starts a few seconds later; until then its pane
+ * is a bare shell, and nothing should be typed into it.
+ */
+started: boolean, 
+/**
  * The agent that spawned it; `None` for one a human started.
  */
 parent_id: string | null, 
