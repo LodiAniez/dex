@@ -313,3 +313,50 @@ async fn a_notification_still_gives_the_reason_when_nothing_better_is_known() {
         Some("Claude is waiting for your input")
     );
 }
+
+#[tokio::test]
+async fn a_later_notification_replaces_an_earlier_one_for_a_wait_no_dialog_ever_described() {
+    // Some waits only ever send notifications. With nothing more exact on
+    // record, the reason follows the newest of them.
+    let (_dir, state, pane) = pane().await;
+    fire(&state, "session-start", &pane, 1, session("s1")).await;
+    fire(&state, "prompt", &pane, 2, session("s1")).await;
+    fire(
+        &state,
+        "waiting",
+        &pane,
+        3,
+        json!({ "session_id": "s1", "message": "Claude is waiting for your input" }),
+    )
+    .await;
+    fire(
+        &state,
+        "waiting",
+        &pane,
+        4,
+        json!({ "session_id": "s1", "message": "Claude needs you to choose a login method" }),
+    )
+    .await;
+    assert_eq!(
+        agents(&state).await[0].status_detail.as_deref(),
+        Some("Claude needs you to choose a login method")
+    );
+}
+
+#[test]
+fn only_what_a_dialog_said_is_kept_against_a_notification() {
+    use crate::features::agent::reason::keeps_its_reason;
+    assert!(keeps_its_reason(
+        true,
+        Some("permission to Edit …/legacy/client.rs")
+    ));
+    assert!(keeps_its_reason(true, Some("asked you: Red or blue?")));
+    assert!(keeps_its_reason(true, Some("asked you something")));
+    assert!(!keeps_its_reason(
+        true,
+        Some("Claude is waiting for your input")
+    ));
+    assert!(!keeps_its_reason(true, None));
+    // A dialog always says what it is for, whatever was there.
+    assert!(!keeps_its_reason(false, Some("asked you: Red or blue?")));
+}

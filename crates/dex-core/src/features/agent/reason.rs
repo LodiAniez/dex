@@ -23,7 +23,12 @@ const QUESTION_TOOL: &str = "AskUserQuestion";
 /// says what it is for; the notification Claude Code sends a few seconds later
 /// says only "Claude needs your permission", and must not replace that.
 pub fn keeps_its_reason(is_notification: bool, current: Option<&str>) -> bool {
-    is_notification && current.is_some()
+    // Only what a dialog said: some waits only ever send notifications, and
+    // for those the reason follows the newest.
+    let from_a_dialog = current.is_some_and(|reason| {
+        reason.starts_with("permission to ") || reason.starts_with("asked you")
+    });
+    is_notification && from_a_dialog
 }
 
 /// Why the agent is waiting, as one short line, or `None` when the hook does
