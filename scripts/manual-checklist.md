@@ -90,3 +90,4 @@ The rules are unit-tested and the pane has been run live against fake agents; wh
 4. Message it from another agent while it is out: it heads back to its desk to be found there. An idle agent that has a message to carry walks home first, then sets off from its desk.
 5. With Windows' *Animation effects: off*, idle agents stay in their chairs.
 6. Minimize the **Activity** box (bottom left): it becomes a button in the same corner. Have an agent write a note: the button counts it. Restart Dex: it is still minimized. Open it again.
+7. Ask the lead to spawn three agents. At its desk it cups its hands and shouts *I need 1 engineer on the floor ASAP!*; as it sends for the second and third the number grows and it is shouted afresh. Each hire comes out of HR a moment after the shout, and one already walking is not sent back by the next shout. Hiring from HR yourself: nobody shouts.

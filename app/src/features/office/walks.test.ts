@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { AISLE_X, EXIT_DOOR, HR_DOOR, TALK_SECONDS, WAVE_SECONDS, afterWalk, awayFromDesk, deliveries, expectingVisitor, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
+import { AISLE_X, EXIT_DOOR, HR_DOOR, TALK_SECONDS, WAVE_SECONDS, afterWalk, awayFromDesk, deliveries, expectingVisitor, heldBack, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
 
 const agent = (id: string, extra: Partial<{ status: AgentStatus; parent_id: string | null; depth: number; workspace_id: string }> = {}) => ({
   id,
@@ -339,6 +339,35 @@ describe("expectingVisitor", () => {
     expect(expectingVisitor([{ kind: "arrive", id: "new", pod: 3 }])).toEqual([]);
     expect(expectingVisitor([{ kind: "leave", id: "old", pod: 3 }])).toEqual([]);
     expect(expectingVisitor([])).toEqual([]);
+  });
+});
+
+describe("heldBack", () => {
+  const hire: Walk = { kind: "arrive", id: "new", pod: 3 };
+  const round: Walk = { kind: "deliver", id: "lead", pod: 0, stops: [1], key: "m1" };
+  const free = { outLoafing: false, shoutInTheAir: false, alreadyOff: false };
+
+  it("lets whoever is next set off when nothing is in the way", () => {
+    expect(heldBack(hire, free)).toBe(false);
+    expect(heldBack(round, free)).toBe(false);
+  });
+
+  it("keeps a hire inside HR while the shout for them is still new", () => {
+    expect(heldBack(hire, { ...free, shoutInTheAir: true })).toBe(true);
+  });
+
+  it("holds nobody else for a shout: it was not for them", () => {
+    expect(heldBack(round, { ...free, shoutInTheAir: true })).toBe(false);
+    expect(heldBack({ kind: "leave" }, { ...free, shoutInTheAir: true })).toBe(false);
+  });
+
+  it("keeps someone who is out fooling around until they are back at their desk", () => {
+    expect(heldBack(round, { ...free, outLoafing: true })).toBe(true);
+  });
+
+  it("never calls back someone already on their way: a second shout does not send a hire back to the door", () => {
+    expect(heldBack(hire, { outLoafing: false, shoutInTheAir: true, alreadyOff: true })).toBe(false);
+    expect(heldBack(round, { outLoafing: true, shoutInTheAir: false, alreadyOff: true })).toBe(false);
   });
 });
 
