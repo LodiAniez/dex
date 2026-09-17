@@ -8,6 +8,7 @@ import { Avatar } from "./Avatar";
 import { clockOutArgs, clockOutQuestion, memoArgs } from "./hire";
 import type { Employee } from "./officeStore";
 import { eventsOf, reportsTo } from "./panel";
+import { promptArgs, whyNoPrompt } from "./prompt";
 
 /** How much of each the panel has room for. */
 export const PANEL_SCREEN_LINES = 12;
@@ -28,26 +29,37 @@ interface Props {
 export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, onClose }: Props) {
   const { agent, persona, role } = employee;
   const events = eventsOf(useActivity(workspaceId)?.events, agent.id, PANEL_EVENTS);
-  const [memo, setMemo] = useState<string | null>(null);
+  // What is being written, if anything: a memo for their inbox, or a prompt
+  // typed into their terminal as the owner's turn.
+  const [writing, setWriting] = useState<"memo" | "prompt" | null>(null);
+  const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const noPrompt = whyNoPrompt(agent);
+  const open = (kind: "memo" | "prompt") => {
+    setText("");
+    setWriting(kind);
+  };
 
   // Takes focus when it opens: a terminal that kept it would eat Escape.
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => panel.current?.focus(), [agent.id]);
-  // And takes it back when the memo box goes: the button that was focused went
+  // And takes it back when the box goes: the button that was focused went
   // with it, and focus left on the page body would make Escape do nothing.
-  const writing = memo !== null;
+  const composing = writing !== null;
   useEffect(() => {
-    if (!writing) panel.current?.focus();
-  }, [writing]);
+    if (!composing) panel.current?.focus();
+  }, [composing]);
 
   const send = async () => {
-    const args = memoArgs(workspaceId, agent.id, memo ?? "");
-    if (!args) return;
+    const call =
+      writing === "prompt"
+        ? agent.pane_id && { cmd: "pane.send", args: promptArgs(agent.pane_id, text) }
+        : { cmd: "context.message_send", args: memoArgs(workspaceId, agent.id, text) };
+    if (!call || !call.args) return;
     setSending(true);
     try {
-      await request("context.message_send", args);
-      setMemo(null);
+      await request(call.cmd, call.args);
+      setWriting(null);
     } catch (err) {
       showError(err);
     } finally {
@@ -117,26 +129,30 @@ export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, on
         </>
       )}
 
-      {memo !== null && (
+      {writing !== null && (
         <textarea
           className="office-panel-memo"
           autoFocus
           rows={3}
-          placeholder={`A memo for ${persona.name}. It wakes them if they are idle.`}
-          value={memo}
-          onChange={(event) => setMemo(event.target.value)}
+          placeholder={
+            writing === "prompt"
+              ? `A prompt for ${persona.name}, typed into their terminal as your turn.`
+              : `A memo for ${persona.name}'s inbox. It wakes them if they are idle.`
+          }
+          value={text}
+          onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) void send();
-            // Escape backs out of the memo first, then the panel.
+            // Escape backs out of the box first, then the panel.
             if (event.key === "Escape") {
               event.stopPropagation();
-              setMemo(null);
+              setWriting(null);
             }
           }}
         />
       )}
       <div className="office-panel-actions">
-        {memo === null ? (
+        {writing === null ? (
           <>
             <button
               type="button"
@@ -146,8 +162,16 @@ export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, on
             >
               Go to pane
             </button>
-            <button type="button" onClick={() => setMemo("")}>
-              Send a memo
+            <button
+              type="button"
+              disabled={noPrompt !== null}
+              title={noPrompt ? `Cannot prompt them: ${noPrompt}. Go to their pane instead.` : "Type into their terminal, as your turn"}
+              onClick={() => open("prompt")}
+            >
+              Prompt
+            </button>
+            <button type="button" title="Leave a message in their inbox" onClick={() => open("memo")}>
+              Memo
             </button>
             <button type="button" className="danger" disabled={leaving} onClick={() => void clockOut()}>
               {leaving ? "Leaving…" : "Clock out"}
@@ -155,10 +179,10 @@ export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, on
           </>
         ) : (
           <>
-            <button type="button" className="primary" disabled={sending || !memo.trim()} onClick={() => void send()}>
-              {sending ? "Sending…" : "Send"}
+            <button type="button" className="primary" disabled={sending || !text.trim()} onClick={() => void send()}>
+              {sending ? "Sending…" : writing === "prompt" ? "Send prompt" : "Send memo"}
             </button>
-            <button type="button" onClick={() => setMemo(null)}>
+            <button type="button" onClick={() => setWriting(null)}>
               Cancel
             </button>
           </>

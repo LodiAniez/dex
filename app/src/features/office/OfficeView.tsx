@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useUiSettings } from "../../platform/config";
 import { useActivity, watchActivity } from "../activity";
 import { useWorkspaces } from "../workspaces";
+import { AnnounceDialog, Horn } from "./Announce";
 import { CardsFloor } from "./CardsFloor";
 import { headcount, hrNote } from "./floor";
 import { HireDialog } from "./HireDialog";
@@ -48,6 +49,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
   const screens = useScreens(office.employees, PANEL_SCREEN_LINES);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [hiring, setHiring] = useState(false);
+  const [announcing, setAnnouncing] = useState(false);
   const [refused, setRefused] = useState(false);
 
   // The same events the activity pane shows, retold by name for the map.
@@ -78,22 +80,39 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
   // back rather than leave it on the page body.
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!hiring) root.current?.focus();
-  }, [hiring]);
+    if (!hiring && !announcing) root.current?.focus();
+  }, [hiring, announcing]);
 
   return (
     <div className={`office ${view}`} ref={root} tabIndex={-1}>
-      {workspace && (
-        <div className="office-title">
-          <span className="office-title-dot" style={{ background: workspace.color ?? "#d85a30" }} />
-          {workspace.name} — the office
-          <span className="office-title-dex">dex</span>
-        </div>
-      )}
+      <div className="office-top">
+        {workspace && (
+          <div className="office-title">
+            <span className="office-title-dot" style={{ background: workspace.color ?? "#d85a30" }} />
+            {workspace.name} — the office
+            <span className="office-title-dex">dex</span>
+          </div>
+        )}
+        {/* In the cards view the speaker sits beside the name; on the map it is on the wall. */}
+        {view === "cards" && (
+          <button type="button" className="office-announce" disabled={office.employees.length === 0} onClick={() => setAnnouncing(true)}>
+            <Horn size={18} /> Announce
+          </button>
+        )}
+      </div>
       {view === "cards" ? (
         <CardsFloor office={office} seats={seats} hrNote={note} cardLines={CARD_LINES} screens={screens} onPick={pick} onHire={hire} />
       ) : (
-        <MapFloor workspaceId={workspaceId} office={office} seats={seats} hrNote={note} chat={chat} onPick={pick} onHire={hire} />
+        <MapFloor
+          workspaceId={workspaceId}
+          office={office}
+          seats={seats}
+          hrNote={note}
+          chat={chat}
+          onPick={pick}
+          onHire={hire}
+          onAnnounce={() => setAnnouncing(true)}
+        />
       )}
       {picked && (
         <WorkPanel
@@ -105,6 +124,7 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
           onClose={() => setPickedId(null)}
         />
       )}
+      {announcing && <AnnounceDialog staff={office.employees} onClose={() => setAnnouncing(false)} />}
       {hiring && workspace && (
         <HireDialog workspace={workspace} onClose={() => setHiring(false)} onFreeze={() => setRefused(true)} />
       )}
