@@ -12,13 +12,25 @@ export function reportsTo(employee: Member, staff: readonly Member[]): string {
   return staff.find((other) => other.agent.id === parent)?.persona.name ?? "someone who has left";
 }
 
+/** The daemon writes a hire as "<hirer's label> started an agent for: <brief>". */
+const HIRED_BY = / started an agent for: /;
+
 /**
  * What an agent has done, newest first: the notes it wrote, what it stored,
  * who it messaged, who it hired. Not its status flips - those say what state
  * it was in, not what it did, and there are twenty of them to every note.
+ *
+ * A hire is filed by the daemon under the agent that was hired, with the
+ * hirer named in the body by label; `labels` are the labels this agent goes
+ * by, so that its hires count as its own doing as well.
  */
-export function doneBy<T extends { agent_id: string | null; kind: string }>(events: readonly T[] | undefined, agentId: string): T[] {
-  return (events ?? []).filter((event) => event.agent_id === agentId && event.kind !== "status").reverse();
+export function doneBy<T extends { agent_id: string | null; kind: string; body: string }>(
+  events: readonly T[] | undefined,
+  agentId: string,
+  labels: readonly string[] = [],
+): T[] {
+  const hiredByThem = (event: T) => event.kind === "spawn" && labels.includes(event.body.split(HIRED_BY)[0]);
+  return (events ?? []).filter((event) => event.kind !== "status" && (event.agent_id === agentId || hiredByThem(event))).reverse();
 }
 
 /** How long ago, in the largest unit that fits. */

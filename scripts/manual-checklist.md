@@ -62,3 +62,13 @@ The rules are unit-tested and the pane has been run live against fake agents; wh
 6. End an agent (`/exit`): it walks back to HR and fades; its pod is vacant and the others have not moved.
 7. Resize the window narrow, then short, and open and shut the sidebar: cards reflow to two columns then one, the map scales. Switch Terminal → Office → Terminal: the terminals are exactly as they were, and typing goes to the focused pane.
 8. Turn on Windows' *Animation effects: off* (Settings → Accessibility → Visual effects): nobody walks, hands do not tap.
+
+## Office follow-ups - by eye, with real agents
+
+1. **Clock out** an idle spawned agent from its panel: a confirmation, then it walks out and its pane is gone in Terminal view. Clock out one that is mid-turn: it is interrupted first and still leaves. The activity shows "is dead" - its own SessionEnd ran.
+2. Tell the lead to dismiss its agents: each ends and its pane closes. Tell a *child* to stop its siblings: Dex refuses, and nobody ends.
+3. **Prompt** an idle agent from its panel: the text appears in its terminal as your turn. For an agent at a permission dialog, and for a hire in its first seconds, Prompt is disabled and says why.
+4. **Announce** from Cards (beside the workspace name) and from Office (middle right): the dialog names who will hear it and who will not; everyone named gets the prompt, nobody else does.
+5. Have the lead message three agents: on the map he goes desk to desk - never home in between - talks at each (bubbles taking turns), and goes home at the end. His own chair is empty meanwhile. A memo from you walks nobody.
+6. Open an agent's panel: **What they have done** lists its notes, stores, memos and - for a lead - who it hired, newest first, with no idle/working flips.
+7. With ten agents the map grows to four rows and scrolls; with five it is two rows and fits.

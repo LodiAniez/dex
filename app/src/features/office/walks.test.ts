@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { HR_DOOR, TALK_SECONDS, awayFromDesk, deliveries, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
+import { HR_DOOR, TALK_SECONDS, afterWalk, awayFromDesk, deliveries, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
 
 const agent = (id: string, extra: Partial<{ status: AgentStatus; parent_id: string | null; depth: number; workspace_id: string }> = {}) => ({
   id,
@@ -276,5 +276,26 @@ describe("awayFromDesk", () => {
     expect(awayFromDesk(queue)).toBe("lead");
     expect(awayFromDesk([{ kind: "arrive", id: "new", pod: 3 }])).toBeNull();
     expect(awayFromDesk([])).toBeNull();
+  });
+});
+
+describe("afterWalk", () => {
+  const round = (stops: number[], keys: string[]): Walk => ({ kind: "deliver", id: "lead", pod: 0, stops, keys, key: keys[0] });
+  const next: Walk = { kind: "arrive", id: "new", pod: 3 };
+
+  it("takes whoever has finished off the head of the queue", () => {
+    expect(afterWalk([round([1, 2], ["m1", "m2"]), next], 2)).toEqual([next]);
+    expect(afterWalk([next], undefined)).toEqual([]);
+  });
+
+  it("sends them out again for a message that arrived as they sat down", () => {
+    // The walker decided it was done a moment before the message was added
+    // to its round. Dropping the round now would lose the message from view.
+    const queue = afterWalk([round([1, 2, 4], ["m1", "m2", "m3"]), next], 2);
+    expect(queue).toEqual([{ kind: "deliver", id: "lead", pod: 0, stops: [4], keys: ["m3"], key: "m3" }, next]);
+  });
+
+  it("copes with an empty queue", () => {
+    expect(afterWalk([], 0)).toEqual([]);
   });
 });
