@@ -131,6 +131,8 @@ struct Pane {
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     flow: Arc<Flow>,
+    /// The shell's process id, where the platform reports one.
+    pid: Option<u32>,
 }
 
 /// The live panes, shared by every clone of the supervisor.
@@ -184,6 +186,7 @@ impl PtySupervisor {
         let reader = pair.master.try_clone_reader().map_err(pty_err)?;
         let writer = pair.master.take_writer().map_err(pty_err)?;
         let killer = child.clone_killer();
+        let pid = child.process_id();
         let flow = Arc::new(Flow::default());
         let exit_code = Arc::new(Mutex::new(None));
         let (chunks_tx, chunks_rx) = sync_channel(CHUNK_QUEUE);
@@ -206,6 +209,7 @@ impl PtySupervisor {
                 master: pair.master,
                 writer,
                 killer,
+                pid,
                 flow,
             },
         );
@@ -262,6 +266,12 @@ impl PtySupervisor {
     /// `None` if the pane has no live process.
     pub fn last_output_at(&self, pane_id: &str) -> Option<i64> {
         self.lock().get(pane_id).map(|pane| pane.flow.last_output())
+    }
+
+    /// The process id of a pane's shell: the root of whatever runs in the pane.
+    /// `None` if the pane has no live process.
+    pub fn shell_pid(&self, pane_id: &str) -> Option<u32> {
+        self.lock().get(pane_id).and_then(|pane| pane.pid)
     }
 
     /// Records that the display has processed `bytes` of a pane's output.

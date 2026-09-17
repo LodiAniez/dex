@@ -15,6 +15,8 @@ use super::model::AgentError;
 use super::store;
 use crate::app::AppState;
 use crate::features::workspace;
+use crate::platform::clock;
+use crate::platform::proctree::{self, Presence};
 
 /// Why an agent cannot be typed at right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +29,9 @@ pub enum PromptRefusal {
     WaitingForOwner,
     /// Stopped with an error, or gone quiet: Claude Code may not be there.
     OutOfReach,
+    /// Its hooks say it is fine, but no Claude Code process runs in its pane:
+    /// it was quit with Ctrl+C or crashed, and never got to say so.
+    ClaudeGone,
 }
 
 impl PromptRefusal {
@@ -37,6 +42,7 @@ impl PromptRefusal {
             Self::NotStarted => "Claude Code has not started in its pane yet",
             Self::WaitingForOwner => "it is waiting on a dialog, which typed text would answer",
             Self::OutOfReach => "Claude Code may not be running in its pane",
+            Self::ClaudeGone => "Claude Code is no longer running in its pane",
         }
     }
 }
@@ -90,6 +96,18 @@ pub async fn prompt(state: &AppState, args: PromptAgentArgs) -> Result<Prompted,
         return Err(AgentError::NotPromptable(refusal));
     }
     let pane = agent.pane_id.unwrap_or_default();
+    if claude_has_gone(state, &pane).await {
+        // What its hooks last said is no longer true. Say so for everyone:
+        // the office stops showing someone who is not there.
+        let now = clock::now_millis();
+        let id = agent.id.clone();
+        state
+            .db
+            .call(move |conn| store::end_agent(conn, &id, now))
+            .await?;
+        state.bus.publish("agents");
+        return Err(AgentError::NotPromptable(PromptRefusal::ClaudeGone));
+    }
     let line = SendArgs {
         pane: pane.clone(),
         text,
@@ -100,4 +118,25 @@ pub async fn prompt(state: &AppState, args: PromptAgentArgs) -> Result<Prompted,
         agent: agent.id,
         pane,
     })
+}
+
+/// Whether the process table shows that no Claude Code runs in the pane.
+///
+/// An agent's status is what its hooks last said, and Claude Code quit with
+/// Ctrl+C, or crashed, fires none: the agent goes on reading "idle" over a bare
+/// shell. Only evidence refuses a prompt - a pane with no process of its own, a
+/// table that could not be read, or a WSL pane the table cannot see into all
+/// let it through to the rule above.
+async fn claude_has_gone(state: &AppState, pane: &str) -> bool {
+    let Some(shell) = state.pty.shell_pid(pane) else {
+        return false;
+    };
+    match tokio::task::spawn_blocking(proctree::snapshot).await {
+        Ok(Ok(procs)) => proctree::claude_under(&procs, shell) == Presence::Gone,
+        Ok(Err(err)) => {
+            tracing::warn!(%err, "could not read the process table; prompting on the agent's status alone");
+            false
+        }
+        Err(_) => false,
+    }
 }
