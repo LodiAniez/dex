@@ -5,8 +5,10 @@
 .office-strolling .office-leg-a { animation: office-swing-a 0.4s linear infinite; }
 .office-strolling .office-leg-b { animation: office-swing-b 0.4s linear infinite; }
 
+/* Nobody fooling around gets between the owner and a button. */
+.office-loafer { pointer-events: none; }
+
 /* Everything that turns, turns about its own middle. */
-.office-kart,
 .office-rolling,
 .office-tumbling,
 .office-rope,

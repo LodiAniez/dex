@@ -48,21 +48,23 @@ function hash(text: string): number {
 
 /**
  * What they do on the `round`-th go of this idle spell. Random to look at, but
- * worked out from who they are and when they went idle, so every window shows
- * the same thing; and never the same thing twice running.
+ * worked out from who they are and when they went idle rather than rolled, so
+ * a redraw does not change anyone's mind. Never the same thing twice running:
+ * within a spell by construction, and `not` - what they have just done - covers
+ * the joins, where the spell or the count starts again.
  */
-export function pickAntic(agentId: string, idleSince: number, round: number): AnticKind {
+export function pickAntic(agentId: string, idleSince: number, round: number, not?: AnticKind): AnticKind {
   let index = hash(`${agentId}:${idleSince}`) % KINDS.length;
   for (let r = 1; r <= round; r += 1) {
     // A step of 1..6 around a ring of 7 can never land where it started.
     index = (index + 1 + (hash(`${agentId}:${idleSince}:${r}`) % (KINDS.length - 1))) % KINDS.length;
   }
-  return KINDS[index];
+  return KINDS[index] === not ? KINDS[(index + 1 + (hash(`${agentId}:${idleSince}:${round}:again`) % (KINDS.length - 1))) % KINDS.length] : KINDS[index];
 }
 
 /**
  * What they do with the go: which mark in the break room, which way the kart
- * sets off. Worked out like the antic itself, so every window agrees.
+ * sets off. Worked out like the antic itself, so a redraw does not change it.
  */
 export function seedOf(agentId: string, idleSince: number, round: number): number {
   return hash(`${agentId}:${idleSince}:${round}:how`);
@@ -175,6 +177,14 @@ export function planAntic(kind: AnticKind, pod: number, seed: number, floor: Flo
   }
   const seconds = act.length > 0 ? Math.round(act.reduce((sum, leg) => sum + leg.seconds, 0) * 1000) / 1000 : ANTICS[kind].seconds;
   return { kind, to, act, seconds };
+}
+
+/**
+ * Whether someone called back to work may stop the antic here. Only on a
+ * corridor: the way home starts from one, and the bottom of the block is not.
+ */
+export function canBreakOffAt(plan: AnticPlan, at: { y: number }): boolean {
+  return plan.to === null || at.y === plan.to.corridor;
 }
 
 /** Back to their own desk from wherever they are, at a walk, by the corridor. */

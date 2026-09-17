@@ -312,6 +312,20 @@ describe("awayFromDesk", () => {
   });
 });
 
+describe("routeOf a leaver who was not at their desk", () => {
+  it("starts from where they were - the break room, say - and still ends at the exit", () => {
+    const from = { x: 110, y: 578, corridor: 400 };
+    const route = routeOf({ kind: "leave", pod: 4, from });
+    expect(route.from).toEqual({ x: 110, y: 578 });
+    expect(route.legs.at(-1)).toMatchObject({ x: EXIT_DOOR.x, y: EXIT_DOOR.y });
+    expect(route.legs.every((leg) => leg.seconds > 0)).toBe(true);
+  });
+
+  it("ignores it for a hire: they come from HR", () => {
+    expect(routeOf({ kind: "arrive", pod: 4, from: { x: 110, y: 578, corridor: 400 } }).from).toEqual({ ...HR_DOOR });
+  });
+});
+
 describe("expectingVisitor", () => {
   it("is every desk the walker at the head of the queue is on their way to", () => {
     const queue: Walk[] = [
