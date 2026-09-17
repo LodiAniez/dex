@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgents } from "../agents";
 import type { Employee } from "./officeStore";
 import type { Persona } from "./persona";
+import { takeWhereabouts } from "./whereabouts";
 import { DOOR_PAUSE, TALK_SECONDS, WAVE_SECONDS, afterWalk, deliveries, deskOf, enqueue, movements, nextLegs, routeOf, type Walk } from "./walks";
 
 /** A walk, and who is doing it — kept with the walk because a leaver is no longer on the staff. */
@@ -12,7 +13,7 @@ export interface StaffWalk extends Walk {
 /** How long a leaver takes to fade at HR's door. */
 const FADE_SECONDS = 0.4;
 
-function prefersStill(): boolean {
+export function prefersStill(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
@@ -48,8 +49,11 @@ export function useWalks(
     for (const { agent, pod, persona } of employees) seen.current.set(agent.id, { pod, persona });
     const walks = moves.flatMap((move): StaffWalk[] => {
       const known = seen.current.get(move.id);
-      if (move.kind === "leave") seen.current.delete(move.id);
-      return known ? [{ ...move, ...known }] : [];
+      if (move.kind !== "leave") return known ? [{ ...move, ...known }] : [];
+      seen.current.delete(move.id);
+      // Out fooling around when they ended: they leave from there, not from a desk they were not at.
+      const from = takeWhereabouts(move.id) ?? undefined;
+      return known ? [{ ...move, ...known, from }] : [];
     });
     if (walks.length > 0) setQueue((current) => enqueue(current, walks, { still: prefersStill() }));
   }, [list, employees, workspaceId]);
@@ -232,7 +236,7 @@ function RouteWalker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }) 
     }
     timers.push(setTimeout(() => done.current(), at * 1000));
     return () => timers.forEach(clearTimeout);
-  }, [walk.id, walk.kind, walk.pod]);
+  }, [walk.id, walk.kind, walk.pod, walk.from]);
 
   const at = step < 0 ? from : legs[step];
   const leg = step < 0 ? null : legs[step];

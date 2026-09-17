@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { AISLE_X, EXIT_DOOR, HR_DOOR, TALK_SECONDS, WAVE_SECONDS, afterWalk, awayFromDesk, deliveries, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
+import { AISLE_X, EXIT_DOOR, HR_DOOR, TALK_SECONDS, WAVE_SECONDS, afterWalk, awayFromDesk, deliveries, expectingVisitor, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
 
 const agent = (id: string, extra: Partial<{ status: AgentStatus; parent_id: string | null; depth: number; workspace_id: string }> = {}) => ({
   id,
@@ -309,6 +309,36 @@ describe("awayFromDesk", () => {
     expect(awayFromDesk(queue)).toBe("lead");
     expect(awayFromDesk([{ kind: "arrive", id: "new", pod: 3 }])).toBeNull();
     expect(awayFromDesk([])).toBeNull();
+  });
+});
+
+describe("routeOf a leaver who was not at their desk", () => {
+  it("starts from where they were - the break room, say - and still ends at the exit", () => {
+    const from = { x: 110, y: 578, corridor: 400 };
+    const route = routeOf({ kind: "leave", pod: 4, from });
+    expect(route.from).toEqual({ x: 110, y: 578 });
+    expect(route.legs.at(-1)).toMatchObject({ x: EXIT_DOOR.x, y: EXIT_DOOR.y });
+    expect(route.legs.every((leg) => leg.seconds > 0)).toBe(true);
+  });
+
+  it("ignores it for a hire: they come from HR", () => {
+    expect(routeOf({ kind: "arrive", pod: 4, from: { x: 110, y: 578, corridor: 400 } }).from).toEqual({ ...HR_DOOR });
+  });
+});
+
+describe("expectingVisitor", () => {
+  it("is every desk the walker at the head of the queue is on their way to", () => {
+    const queue: Walk[] = [
+      { kind: "deliver", id: "lead", pod: 0, stops: [1, 2], keys: ["m1", "m2"], key: "m1" },
+      { kind: "deliver", id: "a", pod: 1, stops: [4], key: "m8" },
+    ];
+    expect(expectingVisitor(queue)).toEqual([1, 2]);
+  });
+
+  it("is nobody for a hire walking in, a leaver walking out, or an empty floor", () => {
+    expect(expectingVisitor([{ kind: "arrive", id: "new", pod: 3 }])).toEqual([]);
+    expect(expectingVisitor([{ kind: "leave", id: "old", pod: 3 }])).toEqual([]);
+    expect(expectingVisitor([])).toEqual([]);
   });
 });
 

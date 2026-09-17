@@ -107,6 +107,8 @@ export interface Walk extends Movement {
   /** The walker's own pod: where a hire is going, and where everyone else starts. */
   pod: number;
   /** For a delivery, the pods to visit, in order. It can grow while the walk is under way. */
+  /** A leaver who was not at their desk: where they were, and so where they walk out from. */
+  from?: Spot;
   stops?: number[];
   /** The messages behind those stops, so that none is delivered twice. */
   keys?: string[];
@@ -121,11 +123,12 @@ export const TALK_SECONDS = 2.6;
 
 const timed = (distance: number, pace: number) => Math.round(Math.abs(distance) * pace * 1000) / 1000;
 
-function corridorOf(pod: number): number {
+/** The corridor a pod is reached from: there is one per pair of rows. */
+export function corridorOf(pod: number): number {
   return FIRST_CORRIDOR + Math.floor(Math.floor(pod / PODS_PER_ROW) / 2) * CORRIDOR_STEP;
 }
 
-interface Spot {
+export interface Spot {
   x: number;
   y: number;
   /** The corridor this spot is reached from. */
@@ -145,7 +148,7 @@ function besideDeskOf(pod: number): Spot {
  * From one spot in a pod to another: out to the corridor, along it, and in.
  * Between corridors, by the side aisle, and never through a row of desks or the break room.
  */
-function between(from: Spot, to: Spot): Leg[] {
+export function between(from: Spot, to: Spot): Leg[] {
   const stops = [{ x: from.x, y: from.y }, { x: from.x, y: from.corridor }];
   if (from.corridor !== to.corridor) stops.push({ x: AISLE_X, y: from.corridor }, { x: AISLE_X, y: to.corridor });
   stops.push({ x: to.x, y: to.corridor }, { x: to.x, y: to.y });
@@ -174,13 +177,13 @@ export function nextLegs(
 }
 
 /** Where a walk starts and the legs it takes: a hire's way in from HR, or a leaver's way out of the door. */
-export function routeOf(walk: Pick<Walk, "kind" | "pod">): { from: { x: number; y: number }; legs: Leg[] } {
+export function routeOf(walk: Pick<Walk, "kind" | "pod" | "from">): { from: { x: number; y: number }; legs: Leg[] } {
   if (walk.kind === "arrive") return { from: { ...HR_DOOR }, legs: legsTo(walk.pod) };
   // Out: from their desk to their corridor, up the side aisle if theirs is not
   // the main one, and along the main corridor to the door at its end.
-  const desk = deskOf(walk.pod);
+  const start = walk.from ?? deskOf(walk.pod);
   const door = { ...EXIT_DOOR, corridor: EXIT_DOOR.y };
-  return { from: { x: desk.x, y: desk.y }, legs: between(desk, door) };
+  return { from: { x: start.x, y: start.y }, legs: between(start, door) };
 }
 
 /** A whole walk, door pause included. */
@@ -262,6 +265,14 @@ export function deliveries(events: readonly MessageEvent[], sinceSeq: number, se
 /** Whoever is out delivering right now, whose desk should therefore be shown empty. */
 export function awayFromDesk(queue: readonly Walk[]): string | null {
   return queue[0]?.kind === "deliver" ? queue[0].id : null;
+}
+
+/**
+ * The desks someone is on their way to with a message. Whoever sits there
+ * should be found at it: they stop fooling around and head back.
+ */
+export function expectingVisitor(queue: readonly Walk[]): number[] {
+  return queue[0]?.kind === "deliver" ? [...(queue[0].stops ?? [])] : [];
 }
 
 /**
