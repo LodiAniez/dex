@@ -1,5 +1,5 @@
 /**
- * Prompting an agent from the office: typing into its terminal as the owner's
+ * Prompting an agent from the office: typed into its terminal as the owner's
  * turn, which is not the same thing as a memo. A memo goes to the agent's inbox
  * and is read when the agent looks; a prompt is what the owner would have typed
  * had they gone to the pane. Announcing is a prompt to everyone at once.
@@ -10,19 +10,28 @@ import type { AgentStatus } from "../../platform/generated/AgentStatus";
 interface Promptable {
   status: AgentStatus;
   pane_id: string | null;
+  /** Whether Claude Code has started in the pane. Until it has, the pane is a bare shell. */
+  started: boolean;
 }
 
-/** Arguments for `pane.send`, or null when nothing was written. */
-export function promptArgs(paneId: string, text: string): { pane: string; text: string; enter: true } | null {
+/**
+ * Arguments for `agent.prompt`, or null when nothing was written. The daemon
+ * does the typing, because only the daemon can know it is safe: a pane is
+ * Claude Code only while Claude Code is running in it, and a shell runs what
+ * is typed into it.
+ */
+export function promptArgs(agentId: string, text: string): { agent: string; text: string } | null {
   // One line: in a terminal a newline is Enter, and half a prompt submitted
   // early is worse than a prompt with its line breaks flattened.
   const line = text.split(/\s*[\r\n]+\s*/).join(" ").trim();
-  return line ? { pane: paneId, text: line, enter: true } : null;
+  return line ? { agent: agentId, text: line } : null;
 }
 
 /** Why this agent cannot be prompted right now, in a few words, or null if it can. */
 export function whyNoPrompt(agent: Promptable): string | null {
   if (!agent.pane_id) return "no pane";
+  if (!agent.started) return "Claude Code has not started yet";
+  if (agent.status === "error" || agent.status === "unknown") return "Claude Code may not be running";
   // At a permission dialog typed text answers the dialog, not the agent.
   if (agent.status === "waiting") return "waiting for you";
   return null;

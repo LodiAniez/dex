@@ -47,6 +47,10 @@ pub struct AgentView {
     pub permission_mode: Option<String>,
     /// What it was spawned to do.
     pub task_brief: Option<String>,
+    /// Whether Claude Code has started in its pane. A hire exists from the
+    /// moment it is made and starts a few seconds later; until then its pane
+    /// is a bare shell, and nothing should be typed into it.
+    pub started: bool,
     /// The agent that spawned it; `None` for one a human started.
     pub parent_id: Option<String>,
     /// How many spawns separate it from a human: 0 for one a human started.
@@ -166,6 +170,24 @@ pub struct StopAgentArgs {
     /// made for a spawned agent is closed.
     #[serde(default)]
     pub close_pane: bool,
+}
+
+/// Args for `agent.prompt`: type the owner's turn into an agent's terminal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptAgentArgs {
+    /// Agent id or label, or the label or id of the pane it runs in.
+    pub agent: String,
+    /// The prompt. Flattened to one line: in a terminal a newline is Enter.
+    pub text: String,
+}
+
+/// Result of `agent.prompt`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Prompted {
+    /// The agent prompted.
+    pub agent: String,
+    /// The pane it was typed into.
+    pub pane: String,
 }
 
 /// Result of `agent.stop`.

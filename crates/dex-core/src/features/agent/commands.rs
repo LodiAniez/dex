@@ -250,8 +250,11 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                 let agents = store::list_agents(conn, args.include_dead)?
                     .into_iter()
                     .filter(|agent| scope.as_ref().is_none_or(|id| id == &agent.workspace_id))
-                    .map(view)
-                    .collect();
+                    .map(|agent| {
+                        let started = store::has_session(conn, &agent.id)?;
+                        Ok(view(agent, started))
+                    })
+                    .collect::<rusqlite::Result<_>>()?;
                 Ok(Ok(AgentList {
                     agents,
                     revision: store::revision(conn)?,
@@ -323,7 +326,7 @@ pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
     Ok(APPLIED)
 }
 
-fn view(agent: Agent) -> AgentView {
+fn view(agent: Agent, started: bool) -> AgentView {
     AgentView {
         id: agent.id,
         pane_id: agent.pane_id,
@@ -335,6 +338,7 @@ fn view(agent: Agent) -> AgentView {
         status_at: agent.status_at,
         permission_mode: agent.permission_mode,
         task_brief: agent.task_brief,
+        started,
         parent_id: agent.parent_id,
         depth: agent.depth,
         started_at: agent.started_at,

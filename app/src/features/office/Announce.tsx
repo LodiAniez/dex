@@ -35,10 +35,12 @@ export function AnnounceDialog({ staff, onClose }: { staff: readonly Employee[];
     setBusy(true);
     const failed: string[] = [];
     for (const member of plan.to) {
-      const args = member.agent.pane_id && promptArgs(member.agent.pane_id, text);
+      const args = promptArgs(member.agent.id, text);
       if (!args) continue;
       try {
-        await request("pane.send", args);
+        // The daemon checks again at the moment of typing: someone may have
+        // reached a dialog, or gone, since this list was drawn.
+        await request("agent.prompt", args);
       } catch {
         failed.push(member.persona.name);
       }

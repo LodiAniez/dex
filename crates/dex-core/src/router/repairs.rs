@@ -47,6 +47,14 @@ pub(super) fn error_body(err: &CoreError) -> ErrorBody {
             ErrorCode::NoSuchAgent,
             "That agent has already ended; `dex agent list` shows the running ones.".to_owned(),
         ),
+        CoreError::Agent(AgentError::EmptyPrompt) => (
+            ErrorCode::InvalidArgs,
+            "Say what to tell the agent.".to_owned(),
+        ),
+        CoreError::Agent(AgentError::NotPromptable(_)) => (
+            ErrorCode::InvalidArgs,
+            "Go to the agent's pane and look: typing there is only safe while Claude Code is at its prompt or working. A memo (`dex context send`) waits in its inbox instead.".to_owned(),
+        ),
         CoreError::Agent(AgentError::EmptyBrief) => (
             ErrorCode::InvalidArgs,
             "Say what the new agent should do: `--task \"port the auth module\"`.".to_owned(),

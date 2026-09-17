@@ -54,6 +54,12 @@ pub enum AgentError {
     /// The agent has already ended.
     #[error("agent {0} has already ended")]
     NotRunning(String),
+    /// `agent.prompt` with nothing to say.
+    #[error("a prompt needs some text")]
+    EmptyPrompt,
+    /// `agent.prompt` to an agent that cannot safely be typed at.
+    #[error("that agent cannot be prompted: {}", .0.reason())]
+    NotPromptable(super::prompt::PromptRefusal),
     /// `agent.spawn` with nothing for the new agent to do.
     #[error("a spawned agent needs a task brief")]
     EmptyBrief,
