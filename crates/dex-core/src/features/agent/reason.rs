@@ -35,7 +35,10 @@ pub fn waiting_reason(input: &Value) -> Option<String> {
             });
             match target {
                 // A command reads better after a colon than as an object of the verb.
-                Some(("command", command)) => format!("permission to {tool}: {command}"),
+                Some(("command", command)) => format!("permission to {tool}: {}", gist(&command)),
+                Some(("file_path" | "path", path)) => {
+                    format!("permission to {tool} {}", tail_of(&path))
+                }
                 Some((_, target)) => format!("permission to {tool} {target}"),
                 None => format!("permission to {tool}"),
             }
@@ -43,6 +46,52 @@ pub fn waiting_reason(input: &Value) -> Option<String> {
         None => text(input, "message")?,
     };
     Some(one_short_line(&reason))
+}
+
+/// The end of a path: the folder and the file. Claude Code sends absolute paths
+/// (captured from 2.1.274), and cut to length from the front they lose the one
+/// part that says which file.
+fn tail_of(path: &str) -> String {
+    let parts: Vec<&str> = path
+        .split(['/', '\\'])
+        .filter(|part| !part.is_empty())
+        .collect();
+    if parts.len() <= 3 {
+        return path.replace('\\', "/");
+    }
+    format!("…/{}", parts[parts.len() - 2..].join("/"))
+}
+
+/// The most words of a command worth showing: the program and what it is asked to do.
+const GIST_WORDS: usize = 3;
+
+/// What a command runs, without what it carries. The reason is stored, shown in
+/// the office, and written to the activity log; a command line is where tokens,
+/// passwords and signed URLs live. So: the first few words, stopping before
+/// anything that could hold a value - an assignment, a quoted string, a
+/// credential-bearing URL, a flag with its value run into it (`-psecret`), or
+/// anything long and opaque. Said plainly when something was left out.
+fn gist(command: &str) -> String {
+    let carries_a_value = |word: &str| {
+        word.contains('=')
+            || word.contains('@')
+            || word.contains("://")
+            || word.contains(['\'', '"', '`', '$'])
+            || (word.starts_with('-') && !word.starts_with("--") && word.chars().count() > 2)
+            || word.chars().count() > 32
+    };
+    let words: Vec<&str> = command.split_whitespace().collect();
+    let kept: Vec<&str> = words
+        .iter()
+        .take(GIST_WORDS)
+        .take_while(|word| !carries_a_value(word))
+        .copied()
+        .collect();
+    match (kept.is_empty(), kept.len() < words.len()) {
+        (true, _) => "…".to_owned(),
+        (false, true) => format!("{} …", kept.join(" ")),
+        (false, false) => kept.join(" "),
+    }
 }
 
 fn one_short_line(text: &str) -> String {

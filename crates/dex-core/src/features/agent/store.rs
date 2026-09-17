@@ -277,6 +277,17 @@ pub fn descends_from(
     Ok(false)
 }
 
+/// The ids of every agent whose Claude Code has started, in one query: what
+/// `has_session` answers for one agent, for a whole list.
+pub fn started_ids(conn: &Connection) -> rusqlite::Result<std::collections::HashSet<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM agent WHERE session_id IS NOT NULL")?;
+    let mut ids = std::collections::HashSet::new();
+    for id in stmt.query_map([], |row| row.get(0))? {
+        ids.insert(id?);
+    }
+    Ok(ids)
+}
+
 pub fn has_session(conn: &Connection, agent_id: &str) -> rusqlite::Result<bool> {
     let started: Option<bool> = conn
         .query_row(

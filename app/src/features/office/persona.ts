@@ -118,6 +118,20 @@ export function labelFor(
   return agent.label ?? panes?.find((pane) => pane.id === agent.pane_id)?.label ?? null;
 }
 
+/**
+ * Every name the daemon may use for an agent when it writes an event: the label
+ * it was spawned with, its pane's label, and - for an agent with neither - the
+ * first segment of its id, which is what the daemon falls back to.
+ */
+export function knownAs(
+  agent: { id: string; label: string | null; pane_id: string | null },
+  panes: readonly { id: string; label: string | null }[] | undefined,
+): string[] {
+  const pane = panes?.find((candidate) => candidate.id === agent.pane_id)?.label ?? null;
+  const names = [agent.label, pane, agent.id.split("-")[0]];
+  return names.filter((name): name is string => !!name);
+}
+
 /** The longest role a name tag has room for. */
 const ROLE_CHARS = 24;
 const ROLE_WORDS = 3;
