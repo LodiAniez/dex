@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgents } from "../agents";
 import type { Employee } from "./officeStore";
 import type { Persona } from "./persona";
-import { DOOR_PAUSE, TALK_SECONDS, afterWalk, deliveries, deskOf, enqueue, movements, nextLegs, routeOf, type Walk } from "./walks";
+import { DOOR_PAUSE, TALK_SECONDS, WAVE_SECONDS, afterWalk, deliveries, deskOf, enqueue, movements, nextLegs, routeOf, type Walk } from "./walks";
 
 /** A walk, and who is doing it — kept with the walk because a leaver is no longer on the staff. */
 export interface StaffWalk extends Walk {
@@ -91,7 +91,7 @@ export function Walker(props: WalkerProps) {
 }
 
 /** The figure itself, wherever it is and whatever it is doing. */
-function Figure({ walk, talking }: { walk: StaffWalk; talking: boolean }) {
+function Figure({ walk, talking, waving = false }: { walk: StaffWalk; talking: boolean; waving?: boolean }) {
   const { persona } = walk;
   return (
     <>
@@ -104,9 +104,11 @@ function Figure({ walk, talking }: { walk: StaffWalk; talking: boolean }) {
       <g className={`office-walker-body${talking ? " talking" : ""}`}>
         <path className="office-leg-a" d="M19 42 L19 56" stroke="#3f4554" strokeWidth="8" strokeLinecap="round" />
         <path className="office-leg-b" d="M29 42 L29 56" stroke="#3f4554" strokeWidth="8" strokeLinecap="round" />
+        {/* Goodbye: an arm up over the shoulder, waving from the elbow. */}
+        {waving && <path className="office-wave" d="M35 32 L43 17" stroke={persona.skin} strokeWidth="6" strokeLinecap="round" fill="none" />}
         <path d="M12 46 v-12 a12 12 0 0 1 24 0 v12 z" fill={persona.shirt} />
         {/* Under one arm: a laptop, or the message being carried. */}
-        <rect x="34" y="30" width="11" height="12" rx="3" fill={walk.kind === "deliver" ? "#f8f5ec" : "#262b36"} />
+        {!waving && <rect x="34" y="30" width="11" height="12" rx="3" fill={walk.kind === "deliver" ? "#f8f5ec" : "#262b36"} />}
         <circle cx="24" cy="16" r="11" fill={persona.skin} />
         <ellipse cx="24" cy="7" rx="12" ry="6" fill={persona.hair} />
       </g>
@@ -206,12 +208,15 @@ function RouteWalker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }) 
   // -1 is standing at the start; n is on the way to (or at) the end of leg n.
   const [step, setStep] = useState(-1);
   const [fading, setFading] = useState(false);
+  // At the door, before going: they turn and wave.
+  const [waving, setWaving] = useState(false);
   const done = useRef(onDone);
   done.current = onDone;
 
   useEffect(() => {
     setStep(-1);
     setFading(false);
+    setWaving(false);
     const timers: ReturnType<typeof setTimeout>[] = [];
     // A new hire pauses at HR's door; anyone leaving a desk needs only a frame to be drawn where they sat.
     let at = walk.kind === "arrive" ? DOOR_PAUSE : 0.05;
@@ -220,6 +225,8 @@ function RouteWalker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }) 
       at += leg.seconds;
     });
     if (walk.kind === "leave") {
+      timers.push(setTimeout(() => setWaving(true), at * 1000));
+      at += WAVE_SECONDS;
       timers.push(setTimeout(() => setFading(true), at * 1000));
       at += FADE_SECONDS;
     }
@@ -236,7 +243,7 @@ function RouteWalker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }) 
   const moving = leg !== null && (leg.x !== before.x || leg.y !== before.y);
   return (
     <g
-      className={`office-walker${moving && !fading ? " walking" : ""}`}
+      className={`office-walker${moving && !waving && !fading ? " walking" : ""}`}
       style={{
         transform: `translate(${at.x}px, ${at.y}px)`,
         transition: leg ? `transform ${leg.seconds}s ${easing}, opacity ${FADE_SECONDS}s` : `opacity ${FADE_SECONDS}s`,
@@ -244,7 +251,7 @@ function RouteWalker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }) 
       }}
       aria-hidden="true"
     >
-      <Figure walk={walk} talking={false} />
+      <Figure walk={walk} talking={false} waving={waving} />
     </g>
   );
 }
