@@ -134,6 +134,7 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 | Version | Behavior verified |
 |---|---|
 | 2.1.272 | See `docs/prd.md` §17: exec-form/async hooks, `${VAR}` / `${VAR:-}` expansion, stdio env inheritance, tool-list cache, `Stop` on interrupt, `Notification` matchers, user-scope MCP. |
+| 2.1.274 | `--no-chrome` is accepted and stops a spawned session connecting to Claude in Chrome: confirmed by the owner, who saw a claude.ai tab open on every hire without it and none with it. `--permission-mode auto` and the folder-trust dialog behave as in 2.1.272. |
 
 ### Hook input fields (Claude Code 2.1.272, captured 2026-09-16)
 
