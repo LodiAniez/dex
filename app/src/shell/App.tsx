@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { agentCounts, loadAgents, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
+import { ActivityPopup } from "../features/activity";
 import { OfficeView, officeNameOf } from "../features/office";
 import { CommandPalette, type PaletteItem } from "../features/palette";
 import {
@@ -10,7 +11,6 @@ import {
   focusPane,
   getWorkspaces,
   loadWorkspaces,
-  showActivity,
   splitPane,
   swapPanes,
   switchWorkspace,
@@ -100,6 +100,7 @@ export function App() {
   const [creating, setCreating] = useState(false);
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [setupReport, setSetupReport] = useState<DoctorReport | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
 
@@ -232,6 +233,9 @@ export function App() {
         setZoomed(null);
         if (pane) run(splitPane(pane, "right", "diff"));
         return;
+      case "open-activity":
+        setActivityOpen((open) => !open);
+        return;
       case "cycle-view":
         chooseView(nextMode(mode));
         return;
@@ -301,15 +305,7 @@ export function App() {
         title={active?.name}
         color={active?.color}
         counts={agentCounts(agents)}
-        onShowActivity={
-          active
-            ? () => {
-                // The stream opens as a pane, so the panes have to be what is on screen.
-                chooseView("terminal");
-                run(showActivity(active));
-              }
-            : undefined
-        }
+        onShowActivity={active ? () => setActivityOpen((open) => !open) : undefined}
         view={active ? { mode, onChoose: chooseView } : undefined}
       />
       <div className="app-body">
@@ -334,6 +330,22 @@ export function App() {
           )}
         </main>
       </div>
+      {activityOpen && active && (
+        <ActivityPopup
+          workspaceId={active.id}
+          workspaceName={active.name}
+          onClose={() => {
+            setActivityOpen(false);
+            // The keyboard goes back to whatever view is up.
+            if (showsPanes(mode)) {
+              const pane = activePane();
+              if (pane) focusTerminal(pane);
+            } else {
+              overlay.current?.focus();
+            }
+          }}
+        />
+      )}
       {paletteOpen && <CommandPalette onRun={runItem} onClose={closePalette} />}
       {setupOpen && setupReport && (
         <Setup
