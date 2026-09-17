@@ -105,6 +105,19 @@ export function nameStaff(
   return names;
 }
 
+/**
+ * What an agent is called by whoever set it up: the label it was spawned with,
+ * else the label of the pane it runs in. The second is the common one — an
+ * agent the owner started themselves has no label of its own, but they named
+ * the pane.
+ */
+export function labelFor(
+  agent: { label: string | null; pane_id: string | null },
+  panes: readonly { id: string; label: string | null }[] | undefined,
+): string | null {
+  return agent.label ?? panes?.find((pane) => pane.id === agent.pane_id)?.label ?? null;
+}
+
 /** The longest role a name tag has room for. */
 const ROLE_CHARS = 24;
 const ROLE_WORDS = 3;
