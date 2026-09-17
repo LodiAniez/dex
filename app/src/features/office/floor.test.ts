@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { headcount, occupants, podCount, poseOf, seat, type Seating } from "./floor";
+import { headcount, hrNote, occupants, podCount, poseOf, seat, type Seating } from "./floor";
 
 const agent = (id: string, extra: Partial<{ workspace_id: string; status: AgentStatus; started_at: number }> = {}) => ({
   id,
@@ -121,5 +121,22 @@ describe("poseOf", () => {
     for (const [status, pose] of Object.entries(poses)) {
       expect(poseOf(status as AgentStatus), status).toBe(pose);
     }
+  });
+});
+
+describe("hrNote", () => {
+  const vacancy = [{}, null, {}, null];
+
+  it("points at the first free office", () => {
+    expect(hrNote(headcount(2, 6), vacancy, false)).toBe("Office 2 is free.");
+  });
+
+  it("says why nobody can be hired when the office is full", () => {
+    expect(hrNote(headcount(6, 6), [{}, {}], false)).toBe("No seat until someone leaves.");
+  });
+
+  it("calls a refused hire what it is, until a seat frees up", () => {
+    expect(hrNote(headcount(6, 6), [{}, {}], true)).toBe("Hiring freeze — every seat is taken.");
+    expect(hrNote(headcount(5, 6), vacancy, true)).toBe("Office 2 is free.");
   });
 });

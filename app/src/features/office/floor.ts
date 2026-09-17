@@ -85,3 +85,14 @@ export function poseOf(status: AgentStatus): Pose {
       return "still";
   }
 }
+
+/**
+ * What HR says under its button: where the next hire would sit, or why there
+ * cannot be one. `refused` is a hire the daemon turned down for want of a seat;
+ * it stops mattering the moment a seat frees up.
+ */
+export function hrNote(seats: Headcount, pods: readonly unknown[], refused: boolean): string {
+  const vacant = pods.findIndex((pod) => pod === null);
+  if (!seats.full && vacant >= 0) return `Office ${vacant + 1} is free.`;
+  return refused ? "Hiring freeze — every seat is taken." : "No seat until someone leaves.";
+}

@@ -1,0 +1,406 @@
+/* The floor map, the work panel and HR's form. Shares .office's variables. */
+
+/* ---- map ---- */
+
+.office-map {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: #20242e;
+}
+
+.office-map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Two rows fit any pane whole; more than that keeps its width and scrolls. */
+.office-map.fits {
+  overflow: hidden;
+}
+
+.office-map.fits svg {
+  height: 100%;
+}
+
+.office-pod {
+  cursor: pointer;
+  outline: none;
+}
+
+.office-pod:hover .office-tag {
+  background: #3a4152;
+}
+
+.office-pod:focus-visible .office-tag {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.office-tag-row {
+  display: flex;
+  justify-content: center;
+}
+
+.office-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 12px;
+  overflow: hidden;
+  color: #f2ead8;
+  background: #23293a;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.office-tag.vacant {
+  color: var(--office-dim);
+  font-weight: 400;
+}
+
+.office-tag-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.office-tag-role {
+  overflow: hidden;
+  color: var(--office-dim);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+}
+
+.office-room-label {
+  display: inline-block;
+  padding: 3px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.office-room-label.hr {
+  color: #14342c;
+  background: #cdeae2;
+}
+
+.office-room-label.break {
+  padding: 2px 12px;
+  color: #4b2a44;
+  background: #ead4e5;
+  font-size: 12px;
+}
+
+.office-map-hr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.office-map-hr button {
+  width: 200px;
+  height: 38px;
+  color: #10331f;
+  background: #4caf6d;
+  border: none;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.office-map-hr button:disabled {
+  color: #4b5a52;
+  background: #b9cfc4;
+  cursor: default;
+}
+
+.office-map-hr span {
+  padding: 2px 10px;
+  color: #2c5148;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 8px;
+  font-size: 11.5px;
+}
+
+/* Hands and screen lines tap out of step; a bubble floats. */
+@keyframes office-tap {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+
+@keyframes office-bub {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.office-tap1 { animation: office-tap 0.5s ease-in-out infinite; }
+.office-tap2 { animation: office-tap 0.5s ease-in-out 0.25s infinite; }
+.office-bubble { animation: office-bub 1.4s ease-in-out infinite; }
+
+/* ---- HR's button in the cards view ---- */
+
+.office-hire-open {
+  height: 38px;
+  color: #9fe1cb;
+  background: rgba(29, 158, 117, 0.16);
+  border: 1px solid rgba(29, 158, 117, 0.5);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.office-hire-open:disabled {
+  color: var(--office-faint);
+  background: transparent;
+  border-color: var(--office-line);
+  cursor: default;
+}
+
+/* ---- work panel ---- */
+
+.office-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 64px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, calc(100% - 32px));
+  padding: 18px;
+  overflow-y: auto;
+  background: #171b24;
+  border: 1px solid var(--office-line);
+  border-radius: 16px;
+  outline: none;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+.office-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.office-panel-head svg {
+  flex: none;
+}
+
+.office-panel-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.office-panel-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.office-panel-role {
+  color: var(--office-dim);
+  font-size: 11.5px;
+}
+
+.office-panel-close {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  margin-left: auto;
+  color: var(--office-dim);
+  background: transparent;
+  border: 1px solid #2a3040;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.office-panel-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #aab3c5;
+  font-size: 12px;
+}
+
+.office-panel-task {
+  padding: 10px 12px;
+  color: var(--office-soft);
+  background: #11141c;
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.office-panel-label {
+  color: var(--office-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.office-panel-screen,
+.office-panel-events {
+  padding: 12px;
+  overflow: hidden;
+  background: #0f141c;
+  border-radius: 12px;
+  font-family: var(--office-mono);
+  font-size: 11.5px;
+  line-height: 1.8;
+}
+
+.office-panel-screen {
+  flex: 1 0 auto;
+  min-height: 80px;
+  color: #aab3c5;
+}
+
+.office-panel-screen div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.office-panel-screen .quiet {
+  color: #4a5164;
+}
+
+.office-panel-events {
+  flex: none;
+  color: var(--office-soft);
+  line-height: 1.6;
+}
+
+.office-panel-events div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.office-panel-events span {
+  color: var(--office-faint);
+}
+
+.office-panel-memo,
+.office-hire textarea,
+.office-hire input {
+  width: 100%;
+  padding: 9px 11px;
+  color: var(--office-text);
+  background: #0f141c;
+  border: 1px solid #2a3040;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.office-panel-memo:focus,
+.office-hire textarea:focus,
+.office-hire input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.office-panel-actions,
+.office-hire-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.office-panel-actions button,
+.office-hire-actions button {
+  flex: 1;
+  height: 38px;
+  color: var(--office-soft);
+  background: transparent;
+  border: 1px solid #2a3040;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.office-panel-actions button.primary,
+.office-hire-actions button.primary {
+  color: #eaf3fc;
+  background: #378add;
+  border: none;
+  font-weight: 500;
+}
+
+.office-panel-actions button:disabled,
+.office-hire-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ---- HR's form ---- */
+
+.office-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 10, 14, 0.6);
+}
+
+.office-hire {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  padding: 18px;
+  background: #171b24;
+  border: 1px solid var(--office-line);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.office-hire-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.office-hire label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #aab3c5;
+  font-size: 12px;
+}
+
+.office-hire .optional {
+  color: var(--office-faint);
+}
+
+.office-hire-problem {
+  padding: 8px 10px;
+  color: #f4b8b6;
+  background: rgba(242, 95, 92, 0.12);
+  border: 1px solid rgba(242, 95, 92, 0.35);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.office-hire-actions {
+  justify-content: flex-end;
+}
+
+.office-hire-actions button {
+  flex: 0 0 auto;
+  padding: 0 20px;
+}
