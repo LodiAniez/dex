@@ -94,3 +94,33 @@ describe("labelClash", () => {
     expect(labelClash(panes, "porter", withAgents)?.free).toBe("porter-2");
   });
 });
+
+describe("labelClash and the daemon's other rules for a label", () => {
+  const panes = [{ id: "p1", label: "lead" }, { id: "p2", label: "a-label-of-exactly-thirty-two-ch" }];
+  const nobody = new Set<string>();
+
+  it("never offers a label the daemon would refuse for length: 32 characters is the limit", () => {
+    const clash = labelClash(panes, "a-label-of-exactly-thirty-two-ch", nobody);
+    expect(clash?.free.length).toBeLessThanOrEqual(32);
+    expect(clash?.free.endsWith("-2")).toBe(true);
+    expect(panes.some((pane) => pane.label === clash?.free)).toBe(false);
+  });
+
+  it("says a label is one word, and offers it joined up", () => {
+    const problem = labelClash(panes, "auth porter", nobody);
+    expect(problem?.why).toBe("A label is one word: other agents type it to reach this one.");
+    expect(problem?.free).toBe("auth-porter");
+  });
+
+  it("says a label is at most 32 characters, and offers it cut to fit", () => {
+    const problem = labelClash(panes, "x".repeat(40), nobody);
+    expect(problem?.why).toBe("A label is at most 32 characters.");
+    expect(problem?.free).toBe("x".repeat(32));
+  });
+
+  it("does not offer a joined-up or cut label that is itself taken", () => {
+    const taken = [{ id: "p1", label: "auth-porter" }];
+    expect(labelClash(taken, "auth porter", nobody)?.free).toBe("auth-porter-2");
+  });
+});
+
