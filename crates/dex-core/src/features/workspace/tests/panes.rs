@@ -211,6 +211,26 @@ async fn set_layout_clamps_ratios_and_rejects_trees_with_other_panes() {
 }
 
 #[tokio::test]
+async fn the_office_is_a_view_of_the_workspace_and_not_a_pane() {
+    // It is chosen for the whole workspace, from the title bar; a pane of it
+    // would be a second way to do the same thing.
+    let (_dir, state) = AppState::for_tests();
+    let (_, first) = one_workspace(&state).await;
+    let refused = split_pane(
+        &state,
+        SplitPaneArgs {
+            kind: Some("office".into()),
+            ..split_args(&first, SplitDirection::Right)
+        },
+    )
+    .await;
+    assert!(
+        matches!(refused, Err(WorkspaceError::InvalidKind(_))),
+        "{refused:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_pane_can_be_created_as_an_activity_stream_and_nothing_else() {
     let (_dir, state) = AppState::for_tests();
     let (_, first) = one_workspace(&state).await;

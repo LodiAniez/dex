@@ -46,6 +46,14 @@ permission_mode: string | null,
  */
 task_brief: string | null, 
 /**
+ * The agent that spawned it; `None` for one a human started.
+ */
+parent_id: string | null, 
+/**
+ * How many spawns separate it from a human: 0 for one a human started.
+ */
+depth: number, 
+/**
  * When it started, unix millis.
  */
 started_at: number, 

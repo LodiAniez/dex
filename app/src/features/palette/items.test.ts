@@ -92,6 +92,17 @@ describe("what the palette offers", () => {
     }
   });
 
+  it("offers the activity popup", () => {
+    expect(COMMAND_LABELS["open-activity"]).toBe("Show activity");
+  });
+
+  it("offers each view by the name people will type", () => {
+    expect(COMMAND_LABELS["view-terminal"]).toBe("Terminal view");
+    expect(COMMAND_LABELS["view-cards"]).toBe("Cards view");
+    expect(COMMAND_LABELS["view-office"]).toBe("Office view");
+    expect(COMMAND_LABELS["cycle-view"]).toBe("Next view");
+  });
+
   it("offers commands even before the workspaces have loaded", () => {
     const early = buildItems(null, SHIPPED_KEYMAP);
     expect(early.length).toBeGreaterThan(0);

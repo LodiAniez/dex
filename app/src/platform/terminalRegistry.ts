@@ -124,9 +124,21 @@ export function attachTerminal(paneId: string, host: HTMLElement): void {
   }
 }
 
+let focusSuspended = false;
+
+/**
+ * While the panes are hidden behind another view, no terminal may take the
+ * keyboard: a pane that becomes active then (an agent spawned one) would
+ * otherwise pull keystrokes out of whatever the owner is typing into.
+ */
+export function suspendTerminalFocus(suspended: boolean): void {
+  focusSuspended = suspended;
+  if (suspended) for (const entry of entries.values()) entry.term.blur();
+}
+
 /** Gives the pane's terminal keyboard focus. */
 export function focusTerminal(paneId: string): void {
-  entries.get(paneId)?.term.focus();
+  if (!focusSuspended) entries.get(paneId)?.term.focus();
 }
 
 /** Hides the pane's terminal without disposing it. Its PTY keeps running. */
@@ -156,6 +168,24 @@ export function disposeTerminal(paneId: string): void {
 /** The pane's visible buffer as text-with-escapes (backs `dex pane capture`). */
 export function captureTerminal(paneId: string): string | undefined {
   return entries.get(paneId)?.serialize.serialize();
+}
+
+/**
+ * What is on the pane's screen right now, as plain text, one row per line.
+ * Reads the buffer rather than serializing it: this is polled, and a serialize
+ * walks the whole scrollback to produce escapes nobody here wants.
+ */
+export function readScreen(paneId: string): string | undefined {
+  const term = entries.get(paneId)?.term;
+  if (!term) return undefined;
+  const buffer = term.buffer.active;
+  const rows: string[] = [];
+  // From `baseY`, not `viewportY`: what the program last drew, wherever the
+  // owner has scrolled to.
+  for (let row = buffer.baseY; row < buffer.baseY + term.rows; row += 1) {
+    rows.push(buffer.getLine(row)?.translateToString(true) ?? "");
+  }
+  return rows.join("\n");
 }
 
 function loadWebgl(entry: Entry): void {

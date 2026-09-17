@@ -80,11 +80,24 @@ dex doctor            # the table above
 
 - a **terminal** (the default) — a shell in the pane's folder;
 - an **agent** — just a terminal where you ran `claude`; Dex notices;
-- **activity** — the workspace's live event stream (the `activity` button, top right). Hover an event for **×** to remove it; **clear ended** removes everything agents that have since ended did, **clear all** empties the log. From a terminal: `dex context delete <seq>`, `dex context clear [--all]`;
+- **activity** — the workspace's live event stream. The `activity` button, top right (or *Show activity* in the palette), opens it as a popup over whatever view you are in, and Escape closes it; `dex pane create --kind activity` docks it as a pane instead. Hover an event for **×** to remove it; **clear ended** removes everything agents that have since ended did, **clear all** empties the log. From a terminal: `dex context delete <seq>`, `dex context clear [--all]`;
 - **diff** — a repository's uncommitted changes, unstaged or staged, following the working tree as it changes (**Show git diff** in the palette);
 - **markdown** — a rendered file that updates as it's written, for agents' notes and plans (`dex pane create --kind markdown --path notes.md`).
 
 **Agents.** Run `claude` in any pane. Within a few seconds its header shows a status dot — running, waiting on you, idle, error, or dead — and the title bar counts them across all workspaces. When an agent in a pane you are not looking at stops or needs input, you get a Windows toast; clicking it brings you to that pane.
+
+### Three views
+
+A workspace can be looked at three ways, switched from **Terminal · Cards · Office** in the title bar (or *Terminal view*, *Cards view*, *Office view*, *Next view* in the palette — none has a default key, but `"cycle-view" = "Ctrl+Shift+V"` under `[keys]` gives you one). Cards and Office take over the whole workspace area; your panes keep running underneath, and **Terminal** brings them back exactly as they were. Pane shortcuts never act on panes you cannot see: from Cards or Office, the first press just brings the panes back.
+
+The two office views show every agent in the workspace as a person: a name and a look worked out from the agent's id (so they are the same after a restart), and as their role the label you gave their pane — or, for a spawned agent, the start of its brief. An agent that has spawned others is the **lead**.
+
+- **Cards** — one card each: who they are, their status, what they were asked to do, and the last two lines actually on their terminal.
+- **Office** — a floor plan. Someone typing is working; a raised hand and a **?** needs you; a red **!** has stopped; a still figure with a dim screen is idle. A spawned agent walks in from HR to its pod, and one that ends walks back out. If you have asked Windows for reduced motion, nobody walks — they are simply there, or gone.
+
+Click anyone to see their work: who they report to, their brief, their screen live, their recent activity, **Go to pane** (back to Terminal view, on their pane), and **Send a memo** — an ordinary Dex message, so it wakes them if they are idle. **Hire an agent** in HR spawns one exactly as `dex agent spawn` does, with the same limits; HR counts seats against `agents.max_concurrent` and says so when the office is full.
+
+Names are for reading. Agents still message each other by **label**, which is why the office always shows the label beside the name. The office changes nothing about how agents run; it is another way of looking at what Dex already tracks. Dex remembers the view you last chose; `[ui] view` in the config sets what it opens as before you have chosen.
 
 **Repositories and worktrees.** Register a repo once (`dex repo add <path>`, or `dex repo scan <folder>` to find several). Then any agent — or you — can get a fresh worktree on a new branch under `%USERPROFILE%\dex\worktrees\<repo>\<branch>`, so parallel agents never share a working tree.
 
@@ -106,7 +119,7 @@ App shortcuts stay off plain `Ctrl+<letter>`, which your shell owns (`Ctrl+C`, `
 | Cycle layout preset           | `Ctrl+Shift+Space`                  |
 | Toggle sidebar                | `Ctrl+Shift+B`                      |
 
-The **command palette** fuzzy-searches workspaces, panes and commands. Type `w:` to search only workspaces, `p:` for only panes. Commands with no default key — *Show git diff*, *Setup checks* — live there.
+The **command palette** fuzzy-searches workspaces, panes and commands. Type `w:` to search only workspaces, `p:` for only panes. Commands with no default key — *Show git diff*, *Show activity*, the three views, *Setup checks* — live there.
 
 Every shortcut can be rebound in the config file (below).
 
@@ -126,6 +139,9 @@ spawn_permission_mode = "auto"   # what spawned agents run with
 [digest]
 full_chars = 2000            # budget for an agent's opening briefing
 delta_chars = 800            # budget for "what changed since your last turn"
+
+[ui]
+view = "terminal"            # what a workspace opens as: "terminal", "cards" or "office"
 
 [keys]                       # overrides only; anything not listed keeps its default
 "command-palette" = "Ctrl+Alt+P"
@@ -171,7 +187,7 @@ Everything above lands in one store per workspace, kept by Dex in SQLite and mir
 - **Entries** — durable facts under lowercase, `/`-namespaced keys, with versions. Two agents writing one key with `--expected-version` get a conflict instead of a silent overwrite.
 - **Messages** — directed at one agent, read once. A message to an agent that has finished its task and is sitting idle wakes it: Dex types a one-line prompt into its pane telling it to read its inbox. That is how a parent changes a child's task after the fact without stopping it and starting another.
 
-Agents never see their own events echoed back, and status changes are logged for you (the activity pane) but kept out of other agents' digests — a sibling flipping between idle and running twenty times a turn is not news. Digests are written as plain facts, never as instructions, so they cannot be mistaken for prompt injection.
+Agents never see their own events echoed back, and status changes are logged for you (the activity stream) but kept out of other agents' digests — a sibling flipping between idle and running twenty times a turn is not news. Digests are written as plain facts, never as instructions, so they cannot be mistaken for prompt injection.
 
 You can read and write the same store from a terminal:
 

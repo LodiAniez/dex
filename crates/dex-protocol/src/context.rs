@@ -76,6 +76,9 @@ pub struct EventView {
     pub kind: String,
     /// Label of the agent responsible, or `null` for the human.
     pub author: Option<String>,
+    /// Id of that agent, or `null` for the human. Labels can repeat; this is
+    /// what to filter on.
+    pub agent_id: Option<String>,
     /// The entry key, for `write` and `delete`.
     pub key: Option<String>,
     /// What happened.

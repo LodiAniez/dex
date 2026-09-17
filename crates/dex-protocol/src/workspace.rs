@@ -175,7 +175,8 @@ pub struct SplitPaneArgs {
     /// Label for the new pane.
     #[serde(default)]
     pub label: Option<String>,
-    /// `terminal` (the default) or `activity`. A non-terminal pane runs no shell.
+    /// `terminal` (the default), `activity`, `diff`, or `markdown`. A
+    /// non-terminal pane runs no shell.
     #[serde(default)]
     pub kind: Option<String>,
 }

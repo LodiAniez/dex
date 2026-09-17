@@ -82,6 +82,26 @@ async fn a_spawned_agent_gets_its_own_pane_with_its_parent_and_brief() {
 }
 
 #[tokio::test]
+async fn an_agents_view_says_who_spawned_it_and_how_deep_it_is() {
+    // The office draws a family tree from this; without it a client can see
+    // that an agent exists but not whose it is.
+    let (_dir, state, first) = pane().await;
+    parent_agent(&state, &first, "parent").await;
+    let child = spawn(&state, brief("port the auth module", &first))
+        .await
+        .unwrap();
+
+    let all = agents(&state).await;
+    let parent = all.iter().find(|agent| agent.id != child.agent).unwrap();
+    let row = all.iter().find(|agent| agent.id == child.agent).unwrap();
+
+    assert_eq!(parent.parent_id, None, "nobody spawned the first agent");
+    assert_eq!(parent.depth, 0);
+    assert_eq!(row.parent_id.as_deref(), Some(parent.id.as_str()));
+    assert_eq!(row.depth, 1);
+}
+
+#[tokio::test]
 async fn the_childs_opening_digest_names_its_parent_and_its_brief() {
     // The M7 acceptance criterion, and the reason the brief never goes through
     // a shell: the child learns what it is for by reading its own context.

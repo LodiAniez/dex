@@ -1,0 +1,237 @@
+/* The floor map. Shares .office's variables. */
+
+/* ---- map ---- */
+
+.office-map {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: #20242e;
+}
+
+.office-map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Two rows fit any pane whole; more than that keeps its width and scrolls. */
+.office-map.fits {
+  overflow: hidden;
+}
+
+.office-map.fits svg {
+  height: 100%;
+}
+
+.office-pod {
+  cursor: pointer;
+  outline: none;
+}
+
+.office-pod:hover .office-tag {
+  background: #3a4152;
+}
+
+.office-pod:focus-visible .office-tag {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.office-tag-row {
+  display: flex;
+  justify-content: center;
+}
+
+.office-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 12px;
+  overflow: hidden;
+  color: #f2ead8;
+  background: #23293a;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.office-tag.vacant {
+  color: var(--office-dim);
+  font-weight: 400;
+}
+
+.office-tag-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.office-tag-role {
+  overflow: hidden;
+  color: var(--office-dim);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+}
+
+.office-room-label {
+  display: inline-block;
+  padding: 3px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.office-room-label.hr {
+  color: #14342c;
+  background: #cdeae2;
+}
+
+.office-room-label.break {
+  padding: 2px 12px;
+  color: #4b2a44;
+  background: #ead4e5;
+  font-size: 12px;
+}
+
+.office-map-hr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.office-map-hr button {
+  width: 200px;
+  height: 38px;
+  color: #10331f;
+  background: #4caf6d;
+  border: none;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.office-map-hr button:disabled {
+  color: #4b5a52;
+  background: #b9cfc4;
+  cursor: default;
+}
+
+.office-map-hr span {
+  padding: 2px 10px;
+  color: #2c5148;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 8px;
+  font-size: 11.5px;
+}
+
+/* Hands and screen lines tap out of step; a bubble floats. */
+@keyframes office-tap {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+
+@keyframes office-bub {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.office-tap1 { animation: office-tap 0.5s ease-in-out infinite; }
+.office-tap2 { animation: office-tap 0.5s ease-in-out 0.25s infinite; }
+.office-bubble { animation: office-bub 1.4s ease-in-out infinite; }
+
+/* ---- someone crossing the floor ---- */
+
+.office-tag.walker {
+  padding: 1px 10px;
+  color: #fac775;
+  font-size: 12px;
+}
+
+@keyframes office-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes office-swing-a {
+  0%, 100% { transform: rotate(16deg); }
+  50% { transform: rotate(-16deg); }
+}
+
+@keyframes office-swing-b {
+  0%, 100% { transform: rotate(-16deg); }
+  50% { transform: rotate(16deg); }
+}
+
+/* Legs swing from the hip, wherever on the map the walker happens to be. */
+.office-leg-a,
+.office-leg-b {
+  transform-box: fill-box;
+  transform-origin: top center;
+}
+
+/* The bob is on the body, not the walker: the walker's own transform is its place on the floor. */
+.office-walker.walking .office-walker-body { animation: office-bob 0.4s ease-in-out infinite; }
+.office-walker.walking .office-leg-a { animation: office-swing-a 0.4s linear infinite; }
+.office-walker.walking .office-leg-b { animation: office-swing-b 0.4s linear infinite; }
+
+/* ---- what has been happening, bottom left of the map ---- */
+
+.office-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  background: rgba(17, 20, 28, 0.92);
+  border-radius: 14px;
+}
+
+.office-chat-title {
+  color: var(--office-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.office-chat-line {
+  overflow: hidden;
+  color: var(--office-soft);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.office-chat-line .who {
+  color: var(--office-dim);
+  font-weight: 500;
+}
+
+.office-chat-line.good { color: #9fe1cb; }
+.office-chat-line.asks { color: #9db9f2; }
+.office-chat-line.bad { color: #f4b8b6; }
+
+/* ---- HR's button in the cards view ---- */
+
+.office-hire-open {
+  height: 38px;
+  color: #9fe1cb;
+  background: rgba(29, 158, 117, 0.16);
+  border: 1px solid rgba(29, 158, 117, 0.5);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.office-hire-open:disabled {
+  color: var(--office-faint);
+  background: transparent;
+  border-color: var(--office-line);
+  cursor: default;
+}

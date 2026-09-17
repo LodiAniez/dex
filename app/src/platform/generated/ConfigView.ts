@@ -18,6 +18,15 @@ present: boolean,
  */
 keys: { [key in string]: string }, 
 /**
+ * How many agents may be alive in one workspace: the office's seats.
+ */
+max_concurrent: number, 
+/**
+ * How a workspace is shown until the owner chooses: `terminal`, `cards` or
+ * `office`.
+ */
+view: string, 
+/**
  * What Dex could not use, and what it used instead. Empty when the file is
  * good, or absent.
  */

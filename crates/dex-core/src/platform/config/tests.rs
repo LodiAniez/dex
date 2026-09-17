@@ -183,12 +183,17 @@ fn the_watcher_reloads_a_saved_edit() {
     drop(file);
     std::fs::rename(&temp, &path).unwrap();
 
+    // Wait for the announcement, not the value: the watcher stores the new
+    // settings and only then publishes, so a test that saw the value and asked
+    // for the message at once would sometimes ask too soon.
     let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline && handle.get().agents.max_concurrent != 9 {
+    let mut announced = changes.try_recv();
+    while announced.is_err() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
+        announced = changes.try_recv();
     }
+    assert_eq!(announced.map(|c| c.topic), Ok("config"));
     assert_eq!(handle.get().agents.max_concurrent, 9);
-    assert_eq!(changes.try_recv().map(|c| c.topic), Ok("config"));
 }
 
 #[test]
@@ -197,4 +202,23 @@ fn the_update_check_is_on_by_default_and_can_be_turned_off() {
     let (config, problems) = parse("[updates]\ncheck = false\n");
     assert!(!config.updates.check);
     assert!(problems.is_empty(), "{problems:?}");
+}
+
+#[test]
+fn a_workspace_opens_as_terminals_unless_the_owner_prefers_another_view() {
+    assert_eq!(Config::default().ui.view, "terminal");
+    for view in ["terminal", "cards", "office"] {
+        let (config, problems) = parse(&format!("[ui]\nview = \"{view}\"\n"));
+        assert_eq!(config.ui.view, view);
+        assert!(problems.is_empty(), "{problems:?}");
+    }
+}
+
+#[test]
+fn a_view_that_does_not_exist_falls_back_and_says_so() {
+    let (config, problems) = parse("[ui]\nview = \"penthouse\"\n");
+    assert_eq!(config.ui.view, "terminal");
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert!(problems[0].contains("ui.view"), "{problems:?}");
+    assert!(problems[0].contains("penthouse"), "{problems:?}");
 }

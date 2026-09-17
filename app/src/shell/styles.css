@@ -88,10 +88,54 @@ body,
 }
 
 .workspace-area {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
+}
+
+/* The cards and office views: over the whole workspace area. The panes stay
+   mounted underneath at their real size, so their shells keep running and a
+   pane created while a view is up still starts. */
+.view-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  outline: none;
+  background: var(--bg);
+}
+
+/* Terminal · Cards · Office, sized for the 32px title bar. */
+.view-switch {
+  display: inline-flex;
+  padding: 1px;
+  background: #0f131b;
+  border: 1px solid #262c3a;
+  border-radius: 999px;
+}
+
+.view-switch button {
+  height: 20px;
+  padding: 0 9px;
+  color: #8a93a6;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.view-switch button:hover {
+  color: #e6e9ef;
+}
+
+.view-switch button[aria-pressed="true"] {
+  color: #f2ead8;
+  background: #3a4152;
 }
 
 .split,
@@ -165,6 +209,17 @@ body,
 
 .pane.active .pane-header {
   color: var(--text);
+}
+
+/* A pane this build has no renderer for: say so, rather than show nothing. */
+.pane-unknown {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: center;
 }
 
 .pane-cwd {
@@ -296,6 +351,60 @@ body,
 .activity-open:hover {
   border-color: #4a515e;
   color: #e6e9ef;
+}
+
+/* ---- Activity popup: the same stream, over whatever view is up ---- */
+
+.activity-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 8vh;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.activity-popup {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 94vw);
+  height: min(70vh, 640px);
+  overflow: hidden;
+  background: #0f1116;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.activity-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  padding: 8px 8px 8px 14px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.activity-popup-head button {
+  width: 26px;
+  height: 24px;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.activity-popup-head button:hover {
+  color: var(--text);
+  background: var(--hover);
 }
 
 /* ---- Activity pane (PRD §10.4) ---- */

@@ -22,3 +22,20 @@ fn a_workspace_with_no_config_file_reports_it_as_absent() {
     assert!(view.problems.is_empty());
     assert!(view.keys.is_empty(), "no overrides by default");
 }
+
+#[test]
+fn the_view_carries_what_the_office_pane_needs_as_values() {
+    // The effective settings are text for a human; a client must not parse
+    // them to learn how many seats there are.
+    use crate::platform::config::{Config, ConfigHandle};
+
+    let (_dir, mut state) = AppState::for_tests();
+    let mut config = Config::default();
+    config.agents.max_concurrent = 9;
+    config.ui.view = "office".into();
+    state.config = ConfigHandle::fixed(config);
+
+    let view = get_config(&state).expect("printable");
+    assert_eq!(view.max_concurrent, 9);
+    assert_eq!(view.view, "office");
+}

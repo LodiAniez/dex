@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { agentCounts, loadAgents, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
+import { ActivityPopup } from "../features/activity";
+import { OfficeView, officeNameOf } from "../features/office";
 import { CommandPalette, type PaletteItem } from "../features/palette";
 import {
   closePane,
@@ -9,16 +11,15 @@ import {
   focusPane,
   getWorkspaces,
   loadWorkspaces,
-  showActivity,
   splitPane,
   swapPanes,
   switchWorkspace,
   useWorkspaces,
 } from "../features/workspaces";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
-import { currentKeymap, watchConfig } from "../platform/config";
+import { currentKeymap, useUiSettings, watchConfig } from "../platform/config";
 import { showError } from "../platform/notices";
-import { focusTerminal, setShortcutFilter } from "../platform/terminalRegistry";
+import { focusTerminal, setShortcutFilter, suspendTerminalFocus } from "../platform/terminalRegistry";
 import { watchUpdates } from "../platform/update";
 import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
 import { WorkspaceLayout } from "./LayoutView";
@@ -27,6 +28,7 @@ import { neighborPane } from "./paneGeometry";
 import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
 import { Setup } from "./SetupPanel";
 import { Sidebar } from "./Sidebar";
+import { chooseMode, modeOfAction, nextMode, rememberMode, showsPanes, storedMode, whenPanesHidden, type ViewMode } from "./viewMode";
 import { TitleBar } from "./TitleBar";
 
 const SIDEBAR_PREF = "dex.sidebarOpen";
@@ -98,10 +100,41 @@ export function App() {
   const [creating, setCreating] = useState(false);
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [setupReport, setSetupReport] = useState<DoctorReport | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
 
   const agents = useAgents();
+
+  // What the owner clicks wins over their config from then on; until they
+  // click, the config decides, even if it changes while Dex is open.
+  const settings = useUiSettings();
+  const [chosen, setChosen] = useState<string | null>(storedMode);
+  const mode = chooseMode(chosen, settings?.view);
+  const overlay = useRef<HTMLDivElement>(null);
+  const chooseView = (next: ViewMode) => {
+    rememberMode(next);
+    setChosen(next);
+  };
+  /** To the terminals, on this pane: what every "take me to that pane" means, from any view. */
+  const goToPane = (paneId: string) => {
+    chooseView("terminal");
+    run(focusPane(paneId));
+  };
+  // The toast listener is installed once; it reaches this through a ref.
+  const goToPaneRef = useRef(goToPane);
+  goToPaneRef.current = goToPane;
+  // The keyboard follows the view: a terminal hidden under the office must not
+  // keep taking keystrokes, and coming back should land in the focused pane.
+  useEffect(() => {
+    suspendTerminalFocus(!showsPanes(mode));
+    if (showsPanes(mode)) {
+      const pane = activePane();
+      if (pane) focusTerminal(pane);
+    } else {
+      overlay.current?.focus();
+    }
+  }, [mode]);
 
   /** Runs `dex doctor`; opens the panel only when it should offer itself. */
   const checkSetup = async (offer: boolean) => {
@@ -122,13 +155,13 @@ export function App() {
   }, []);
 
   // Toasts for agents that need attention in panes the user is not looking at.
-  useEffect(() => watchAgentChanges((before, after) => notifyTransitions(before, after, locatePane)), []);
+  useEffect(() => watchAgentChanges((before, after) => notifyTransitions(before, after, locatePane, officeNameOf)), []);
 
   // A clicked toast brings the app forward; show the pane it was about.
   useEffect(() => {
     const unlisten = listen<{ workspace: string; pane: string }>("dex://focus-pane", (event) => {
       run(switchWorkspace(event.payload.workspace));
-      run(focusPane(event.payload.pane));
+      goToPaneRef.current(event.payload.pane);
     });
     return () => void unlisten.then((stop) => stop());
   }, []);
@@ -143,6 +176,11 @@ export function App() {
 
   const perform = (action: AppAction) => {
     const pane = activePane();
+    if (!showsPanes(mode)) {
+      const hidden = whenPanesHidden(action.kind);
+      if (hidden !== "run") chooseView("terminal");
+      if (hidden === "reveal") return;
+    }
     switch (action.kind) {
       case "command-palette":
         setPaletteOpen((open) => !open);
@@ -195,6 +233,19 @@ export function App() {
         setZoomed(null);
         if (pane) run(splitPane(pane, "right", "diff"));
         return;
+      case "open-activity":
+        setActivityOpen((open) => !open);
+        return;
+      case "cycle-view":
+        chooseView(nextMode(mode));
+        return;
+      case "view-terminal":
+      case "view-cards":
+      case "view-office": {
+        const next = modeOfAction(action.kind);
+        if (next) chooseView(next);
+        return;
+      }
       case "open-setup":
         setSetupOpen(true);
         run(checkSetup(false));
@@ -235,7 +286,7 @@ export function App() {
         return run(switchWorkspace(item.id));
       case "pane":
         run(switchWorkspace(item.workspaceId));
-        return run(focusPane(item.id));
+        return goToPane(item.id);
       case "command": {
         const action = ACTIONS[item.action];
         if (action) perform(action);
@@ -254,7 +305,8 @@ export function App() {
         title={active?.name}
         color={active?.color}
         counts={agentCounts(agents)}
-        onShowActivity={active ? () => run(showActivity(active)) : undefined}
+        onShowActivity={active ? () => setActivityOpen((open) => !open) : undefined}
+        view={active ? { mode, onChoose: chooseView } : undefined}
       />
       <div className="app-body">
         <Sidebar
@@ -263,8 +315,37 @@ export function App() {
           onToggle={() => setSidebarOpen((open) => !open)}
           onCreatingChange={setCreating}
         />
-        <main className="workspace-area">{active && <WorkspaceLayout workspace={active} zoomed={zoomedHere} />}</main>
+        <main className="workspace-area">
+          {/* Always mounted: a pane's shell starts when its terminal first attaches,
+              so an agent hired from the office needs its pane to exist underneath. */}
+          {active && <WorkspaceLayout workspace={active} zoomed={zoomedHere} />}
+          {active && !showsPanes(mode) && (
+            <div className="view-overlay" ref={overlay} tabIndex={-1}>
+              <OfficeView
+                workspaceId={active.id}
+                view={mode === "office" ? "office" : "cards"}
+                onGoToPane={goToPane}
+              />
+            </div>
+          )}
+        </main>
       </div>
+      {activityOpen && active && (
+        <ActivityPopup
+          workspaceId={active.id}
+          workspaceName={active.name}
+          onClose={() => {
+            setActivityOpen(false);
+            // The keyboard goes back to whatever view is up.
+            if (showsPanes(mode)) {
+              const pane = activePane();
+              if (pane) focusTerminal(pane);
+            } else {
+              overlay.current?.focus();
+            }
+          }}
+        />
+      )}
       {paletteOpen && <CommandPalette onRun={runItem} onClose={closePalette} />}
       {setupOpen && setupReport && (
         <Setup

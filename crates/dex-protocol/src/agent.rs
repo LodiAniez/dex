@@ -47,6 +47,11 @@ pub struct AgentView {
     pub permission_mode: Option<String>,
     /// What it was spawned to do.
     pub task_brief: Option<String>,
+    /// The agent that spawned it; `None` for one a human started.
+    pub parent_id: Option<String>,
+    /// How many spawns separate it from a human: 0 for one a human started.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub depth: i64,
     /// When it started, unix millis.
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub started_at: i64,

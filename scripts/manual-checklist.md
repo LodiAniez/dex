@@ -49,3 +49,16 @@ cleanly after the drag stops.
 Start `claude` in a pane. Expect the dot to move: idle → running on the first
 prompt, waiting when it asks for permission, idle when it stops. Ctrl+C the
 agent: the dot goes dead at once, not after the watchdog's ninety seconds.
+
+## Office — by eye, with real agents
+
+The rules are unit-tested and the pane has been run live against fake agents; what needs a person is the part that needs real ones.
+
+1. In a workspace with `claude` running in a labelled pane, choose **Cards** in the title bar. It fills the workspace area. One card: a name, your pane's label as the role, the last two lines of its terminal.
+2. Ask that agent to spawn two others. In **Office** view each walks from HR to a pod marked "reserved for <name>", one at a time, and sits. The first agent's role becomes **lead**.
+3. Make one of them ask permission: its card border turns blue, and on the map it raises a hand with a **?**.
+4. Click it. The panel shows who it reports to, its brief, its live screen and recent activity. **Go to pane** focuses its terminal. **Send a memo** to an idle agent wakes it.
+5. **Hire an agent** from HR with a task: the agent walks in; back in **Terminal** view its new pane is there, running. At `max_concurrent`, the button reads "Office full".
+6. End an agent (`/exit`): it walks back to HR and fades; its pod is vacant and the others have not moved.
+7. Resize the window narrow, then short, and open and shut the sidebar: cards reflow to two columns then one, the map scales. Switch Terminal → Office → Terminal: the terminals are exactly as they were, and typing goes to the focused pane.
+8. Turn on Windows' *Animation effects: off* (Settings → Accessibility → Visual effects): nobody walks, hands do not tap.

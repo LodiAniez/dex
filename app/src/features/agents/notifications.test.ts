@@ -23,6 +23,8 @@ function agent(id: string, status: AgentStatus, extra: Partial<AgentView> = {}):
     status_at: 0,
     permission_mode: "auto",
     task_brief: null,
+    parent_id: null,
+    depth: 0,
     started_at: 0,
     ended_at: null,
     ...extra,
@@ -104,6 +106,15 @@ describe("toasts for agents needing attention", () => {
     const orphan = agent("a", "waiting", { pane_id: null });
     notifyTransitions(list(agent("a", "running")), list(orphan), elsewhere);
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("calls the agent by the name the office knows it by, when it is given one", () => {
+    const names = (id: string) => (id === "a" ? "Pip" : undefined);
+    const before = list(agent("a", "running"), agent("b", "running"));
+    notifyTransitions(before, list(agent("a", "waiting"), agent("b", "idle")), elsewhere, names);
+    // The title still says which pane; someone who has never opened the office
+    // is told "Claude", as before.
+    expect(bodies()).toEqual(["Pip needs your input", "Claude finished"]);
   });
 
   it("toasts each agent that changed, and only those", () => {

@@ -22,11 +22,15 @@ export interface PaneContext {
  * into waiting, idle, or error, in a pane the user is not looking at. A pane
  * the user is looking at never notifies — that is pure noise. Clicking a
  * toast brings Dex forward on that pane (see `dex://focus-pane`).
+ *
+ * `nameOf` is what the office calls an agent. The title always says which
+ * pane, so an agent nobody has named is still "Claude".
  */
 export function notifyTransitions(
   before: AgentList | null,
   after: AgentList,
   locate: (paneId: string) => PaneContext | null,
+  nameOf: (agentId: string) => string | undefined = () => undefined,
 ): void {
   // The first load reports current states, not things that just happened.
   if (!before) return;
@@ -41,7 +45,7 @@ export function notifyTransitions(
     const detail = agent.status === "error" && agent.status_detail ? `: ${agent.status_detail}` : "";
     void invoke("notify_agent", {
       title: `${pane.workspaceName} · ${pane.paneName}`,
-      body: `Claude ${verb}${detail}`,
+      body: `${nameOf(agent.id) ?? "Claude"} ${verb}${detail}`,
       workspace: pane.workspaceId,
       pane: agent.pane_id,
     }).catch((err) => console.warn("could not show a notification", err));

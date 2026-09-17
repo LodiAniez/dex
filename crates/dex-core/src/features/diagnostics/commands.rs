@@ -33,6 +33,8 @@ fn view(state: &AppState, problems: Vec<String>) -> Result<ConfigView, Diagnosti
         present: path.is_file(),
         path: crate::platform::paths::normalize(&path),
         keys: settings.keys.clone(),
+        max_concurrent: settings.agents.max_concurrent,
+        view: settings.ui.view.clone(),
         problems,
         effective,
     })
