@@ -205,6 +205,50 @@
 .office-walker.walking .office-leg-a { animation: office-swing-a 0.4s linear infinite; }
 .office-walker.walking .office-leg-b { animation: office-swing-b 0.4s linear infinite; }
 
+/* ---- a conversation at a desk ---- */
+
+/* Two bubbles take turns: the visitor speaks for the first half, the other answers. */
+@keyframes office-turn-a {
+  0%, 46% { opacity: 1; }
+  50%, 96% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes office-turn-b {
+  0%, 46% { opacity: 0; }
+  50%, 96% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes office-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+
+/* Whoever is speaking leans into it a little. */
+@keyframes office-gesture {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-4deg); }
+  75% { transform: rotate(4deg); }
+}
+
+.office-talk.turn-a { animation: office-turn-a 2.6s linear infinite; }
+.office-talk.turn-b { animation: office-turn-b 2.6s linear infinite; }
+
+.office-talk-dot {
+  transform-box: fill-box;
+  animation: office-dot 0.9s ease-in-out infinite;
+}
+
+.office-talk-dot.d1 { animation-delay: 0.15s; }
+.office-talk-dot.d2 { animation-delay: 0.3s; }
+
+.office-walker-body.talking {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: office-gesture 0.9s ease-in-out infinite;
+}
+
 /* ---- what has been happening, bottom left of the map ---- */
 
 .office-chat {

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Headcount } from "./floor";
 import { Horn } from "./Announce";
 import { MapBackdrop } from "./MapBackdrop";
@@ -35,6 +36,8 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
   // One person crosses the floor at a time; the rest wait their turn at HR.
   const { queue, finish } = useWalks(workspaceId, office.employees, events);
   const away = awayFromDesk(queue);
+  // Whose desk a message is being delivered at right now: they are shown answering.
+  const [talkingAt, setTalkingAt] = useState<number | null>(null);
   const onTheirWay = new Set(queue.filter((walk) => walk.kind === "arrive").map((walk) => walk.id));
   const height = mapHeight(office.pods.length);
   const fits = office.pods.length <= FITTING_PODS;
@@ -61,7 +64,7 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
             // Theirs already, but they have not reached it yet.
             <VacantPod key={`reserved-${pod}`} pod={pod} sign={`reserved for ${employee.persona.name}`} />
           ) : employee ? (
-            <Pod key={employee.agent.id} employee={employee} away={away === employee.agent.id} onPick={onPick} />
+            <Pod key={employee.agent.id} employee={employee} away={away === employee.agent.id} listening={talkingAt === pod} onPick={onPick} />
           ) : (
             <VacantPod key={`vacant-${pod}`} pod={pod} />
           ),
@@ -86,7 +89,7 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
             </div>
           </foreignObject>
         )}
-        {queue[0] && <Walker key={queue[0].key ?? `${queue[0].kind}-${queue[0].id}`} walk={queue[0]} onDone={finish} />}
+        {queue[0] && <Walker key={queue[0].key ?? `${queue[0].kind}-${queue[0].id}`} walk={queue[0]} onTalk={setTalkingAt} onDone={finish} />}
       </svg>
     </div>
   );

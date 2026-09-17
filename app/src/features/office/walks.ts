@@ -81,16 +81,18 @@ export function legsTo(pod: number): Leg[] {
 export interface Walk extends Movement {
   /** The walker's own pod: where a hire is going, and where everyone else starts. */
   pod: number;
-  /** For a delivery, the pod being visited. */
-  to?: number;
+  /** For a delivery, the pods to visit, in order. It can grow while the walk is under way. */
+  stops?: number[];
+  /** The messages behind those stops, so that none is delivered twice. */
+  keys?: string[];
   /** What makes this walk itself and no other; without one, its kind and who walks it. */
   key?: string;
 }
 
 /** A visitor stands this far inside the pod they are visiting: beside the chair of whoever sits there, not on them or their desk. */
 const VISIT_INTO_POD = { x: 30, y: 110 } as const;
-/** How long a message takes to hand over. */
-export const VISIT_SECONDS = 1;
+/** How long a conversation at a colleague's desk lasts. */
+export const TALK_SECONDS = 2.6;
 
 const timed = (distance: number, pace: number) => Math.round(Math.abs(distance) * pace * 1000) / 1000;
 
@@ -98,31 +100,56 @@ function corridorOf(pod: number): number {
   return FIRST_CORRIDOR + Math.floor(Math.floor(pod / PODS_PER_ROW) / 2) * CORRIDOR_STEP;
 }
 
+interface Spot {
+  x: number;
+  y: number;
+  /** The corridor this spot is reached from. */
+  corridor: number;
+}
+
+/** Where someone sits: a walker standing here is at their own desk. */
+export function deskOf(pod: number): Spot {
+  return { x: podOrigin(pod).x + INTO_POD, y: podOrigin(pod).y + INTO_POD, corridor: corridorOf(pod) };
+}
+
+function besideDeskOf(pod: number): Spot {
+  return { x: podOrigin(pod).x + VISIT_INTO_POD.x, y: podOrigin(pod).y + VISIT_INTO_POD.y, corridor: corridorOf(pod) };
+}
+
 /**
- * From a desk to a colleague's and back. Out to the corridor, along it, and in
- * beside them; if they sit off another corridor, by the aisle outside HR and
- * never through a row of desks. Then the same way home.
+ * From one spot in a pod to another: out to the corridor, along it, and in.
+ * Between corridors, by the aisle outside HR and never through a row of desks.
  */
-function visit(fromPod: number, toPod: number): { from: { x: number; y: number }; legs: Leg[] } {
-  const home = { x: podOrigin(fromPod).x + INTO_POD, y: podOrigin(fromPod).y + INTO_POD };
-  const there = { x: podOrigin(toPod).x + VISIT_INTO_POD.x, y: podOrigin(toPod).y + VISIT_INTO_POD.y };
-  const [near, far] = [corridorOf(fromPod), corridorOf(toPod)];
-  const stops = [home, { x: home.x, y: near }];
-  if (near !== far) stops.push({ x: HR_DOOR.x, y: near }, { x: HR_DOOR.x, y: far });
-  stops.push({ x: there.x, y: far }, there);
-  const leg = (a: { x: number; y: number }, b: { x: number; y: number }): Leg => ({
-    ...b,
-    seconds: a.x !== b.x ? timed(b.x - a.x, PACE.across) : timed(b.y - a.y, PACE.down),
-  });
-  const out = stops.slice(1).map((stop, i) => leg(stops[i], stop));
-  const back = [...stops].reverse();
-  const home_again = back.slice(1).map((stop, i) => leg(back[i], stop));
-  return { from: home, legs: [...out, { ...there, seconds: VISIT_SECONDS }, ...home_again] };
+function between(from: Spot, to: Spot): Leg[] {
+  const stops = [{ x: from.x, y: from.y }, { x: from.x, y: from.corridor }];
+  if (from.corridor !== to.corridor) stops.push({ x: HR_DOOR.x, y: from.corridor }, { x: HR_DOOR.x, y: to.corridor });
+  stops.push({ x: to.x, y: to.corridor }, { x: to.x, y: to.y });
+  return stops
+    .slice(1)
+    .map((stop, i) => ({ ...stop, seconds: stops[i].x !== stop.x ? timed(stop.x - stops[i].x, PACE.across) : timed(stop.y - stops[i].y, PACE.down) }))
+    .filter((leg) => leg.seconds > 0);
+}
+
+/**
+ * What someone on a round does next, decided one step at a time because the
+ * round can grow while they are out: to the next colleague they have not told
+ * yet, straight from wherever they are; home once everyone has been told; and
+ * null when they are home with nobody left. `visited` is how many stops are
+ * done; `where` is the pod they are standing in, or "home".
+ */
+export function nextLegs(
+  walk: Pick<Walk, "pod" | "stops">,
+  visited: number,
+  where: number | "home",
+): { legs: Leg[]; arrives: number | "home" } | null {
+  const here = where === "home" ? deskOf(walk.pod) : besideDeskOf(where);
+  const next = walk.stops?.[visited];
+  if (next !== undefined) return { legs: between(here, besideDeskOf(next)), arrives: next };
+  return where === "home" ? null : { legs: between(here, deskOf(walk.pod)), arrives: "home" };
 }
 
 /** Where a walk starts and the legs it takes: an arrival's route, or the same one backwards. */
-export function routeOf(walk: Pick<Walk, "kind" | "pod" | "to">): { from: { x: number; y: number }; legs: Leg[] } {
-  if (walk.kind === "deliver") return visit(walk.pod, walk.to ?? walk.pod);
+export function routeOf(walk: Pick<Walk, "kind" | "pod">): { from: { x: number; y: number }; legs: Leg[] } {
   const legs = legsTo(walk.pod);
   if (walk.kind === "arrive") return { from: { ...HR_DOOR }, legs };
   const stops = [{ ...HR_DOOR }, ...legs.map(({ x, y }) => ({ x, y }))];
@@ -145,9 +172,25 @@ export function walkDuration(legs: readonly Leg[]): number {
 export function enqueue<T extends Walk>(queue: readonly T[], walks: readonly T[], options: { still?: boolean } = {}): T[] {
   if (options.still) return [];
   let next = [...queue];
-  const same = (a: Walk, b: Walk) => (a.key !== undefined || b.key !== undefined ? a.key === b.key : a.id === b.id && a.kind === b.kind);
   for (const walk of walks) {
-    if (next.some((queued) => same(queued, walk))) continue;
+    if (walk.kind === "deliver") {
+      // Only what has not been delivered or queued already; and onto the round
+      // its sender is already on if there is one, even if they have set off.
+      const known = new Set(next.flatMap((queued) => queued.keys ?? []));
+      const fresh = (walk.keys ?? []).map((key, i) => ({ key, stop: walk.stops?.[i] })).filter(({ key, stop }) => !known.has(key) && stop !== undefined);
+      if (walk.keys && fresh.length === 0) continue;
+      const stops = walk.keys ? fresh.map(({ stop }) => stop as number) : (walk.stops ?? []);
+      const keys = fresh.map(({ key }) => key);
+      const round = next.findIndex((queued) => queued.kind === "deliver" && queued.id === walk.id);
+      if (round >= 0) {
+        const onto = next[round];
+        next[round] = { ...onto, stops: [...(onto.stops ?? []), ...stops], keys: [...(onto.keys ?? []), ...keys] };
+      } else {
+        next.push({ ...walk, stops, keys: walk.keys ? keys : walk.keys });
+      }
+      continue;
+    }
+    if (next.some((queued) => queued.id === walk.id && queued.kind === walk.kind)) continue;
     if (walk.kind === "leave") {
       const arriving = next.some((queued, i) => i > 0 && queued.id === walk.id && queued.kind === "arrive");
       // Whatever they had not yet set off on, they never will.
@@ -167,21 +210,28 @@ interface MessageEvent {
 }
 
 /**
- * The messages newer than `sinceSeq` as trips: the sender walks to the
- * recipient's desk and back, one trip per message. Only between two people at
- * desks here - a memo from the owner has nobody to carry it, and nowhere to
- * carry it from.
+ * The messages newer than `sinceSeq` as rounds: each sender walks to everyone
+ * they wrote to, in the order they wrote, and home at the end. Only between
+ * people at desks here - a memo from the owner has nobody to carry it, and
+ * nowhere to carry it from.
  */
 export function deliveries(events: readonly MessageEvent[], sinceSeq: number, seats: ReadonlyMap<string, number>): Walk[] {
-  const walks: Walk[] = [];
+  const rounds = new Map<string, Walk>();
   for (const event of events) {
     if (event.kind !== "message" || event.seq <= sinceSeq) continue;
     const from = event.agent_id === null ? undefined : seats.get(event.agent_id);
     const to = event.target_agent_id === null ? undefined : seats.get(event.target_agent_id);
     if (event.agent_id === null || from === undefined || to === undefined || from === to) continue;
-    walks.push({ kind: "deliver", id: event.agent_id, pod: from, to, key: `m${event.seq}` });
+    const key = `m${event.seq}`;
+    const round = rounds.get(event.agent_id);
+    if (round) {
+      round.stops?.push(to);
+      round.keys?.push(key);
+    } else {
+      rounds.set(event.agent_id, { kind: "deliver", id: event.agent_id, pod: from, stops: [to], keys: [key], key });
+    }
   }
-  return walks;
+  return [...rounds.values()];
 }
 
 /** Whoever is out delivering right now, whose desk should therefore be shown empty. */

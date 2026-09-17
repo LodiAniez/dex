@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgents } from "../agents";
 import type { Employee } from "./officeStore";
 import type { Persona } from "./persona";
-import { DOOR_PAUSE, deliveries, enqueue, movements, routeOf, type Walk } from "./walks";
+import { DOOR_PAUSE, TALK_SECONDS, deliveries, deskOf, enqueue, movements, nextLegs, routeOf, type Walk } from "./walks";
 
 /** A walk, and who is doing it — kept with the walk because a leaver is no longer on the staff. */
 export interface StaffWalk extends Walk {
@@ -77,11 +77,130 @@ export function useWalks(
   return { queue, finish: () => setQueue((current) => current.slice(1)) };
 }
 
+interface WalkerProps {
+  walk: StaffWalk;
+  /** Whose desk the walker is talking at, or null; the map shows them answering. */
+  onTalk: (pod: number | null) => void;
+  onDone: () => void;
+}
+
+/** Whoever is crossing the floor: a hire or a leaver on a fixed route, or someone on a round of messages. */
+export function Walker(props: WalkerProps) {
+  return props.walk.kind === "deliver" ? <RoundWalker {...props} /> : <RouteWalker walk={props.walk} onDone={props.onDone} />;
+}
+
+/** The figure itself, wherever it is and whatever it is doing. */
+function Figure({ walk, talking }: { walk: StaffWalk; talking: boolean }) {
+  const { persona } = walk;
+  return (
+    <>
+      <foreignObject x="-36" y="-24" width="120" height="22">
+        <div className="office-tag-row">
+          <span className="office-tag walker">{persona.name}</span>
+        </div>
+      </foreignObject>
+      {talking && <TalkBubble x={40} y={-30} turn="a" />}
+      <g className={`office-walker-body${talking ? " talking" : ""}`}>
+        <path className="office-leg-a" d="M19 42 L19 56" stroke="#3f4554" strokeWidth="8" strokeLinecap="round" />
+        <path className="office-leg-b" d="M29 42 L29 56" stroke="#3f4554" strokeWidth="8" strokeLinecap="round" />
+        <path d="M12 46 v-12 a12 12 0 0 1 24 0 v12 z" fill={persona.shirt} />
+        {/* Under one arm: a laptop, or the message being carried. */}
+        <rect x="34" y="30" width="11" height="12" rx="3" fill={walk.kind === "deliver" ? "#f8f5ec" : "#262b36"} />
+        <circle cx="24" cy="16" r="11" fill={persona.skin} />
+        <ellipse cx="24" cy="7" rx="12" ry="6" fill={persona.hair} />
+      </g>
+    </>
+  );
+}
+
 /**
- * One person crossing the floor. Steps through the route on timers and lets
- * CSS move them between stops, then says it is done.
+ * A speech bubble with three dots that take turns. Two people talking get one
+ * each, on opposite turns ("a" speaks first), so it reads as an exchange.
  */
-export function Walker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }) {
+export function TalkBubble({ x, y, turn }: { x: number; y: number; turn: "a" | "b" }) {
+  return (
+    <g className={`office-talk turn-${turn}`} transform={`translate(${x} ${y})`} aria-hidden="true">
+      <path d="M10 0 h20 a10 10 0 0 1 10 10 v6 a10 10 0 0 1 -10 10 h-28 a2 2 0 0 1 -2 -2 v-14 a10 10 0 0 1 10 -10 z" fill="#f8f5ec" />
+      {[11, 20, 29].map((cx, i) => (
+        <circle key={cx} className={`office-talk-dot d${i}`} cx={cx} cy="13" r="2.6" fill="#3f4554" />
+      ))}
+    </g>
+  );
+}
+
+/**
+ * Someone on a round of messages. The round is decided a step at a time
+ * (`nextLegs`), because it can grow while they are out: from one colleague
+ * straight to the next, a conversation at each desk, and home at the end.
+ */
+function RoundWalker({ walk, onTalk, onDone }: WalkerProps) {
+  const latest = useRef(walk);
+  latest.current = walk;
+  const calls = useRef({ onTalk, onDone });
+  calls.current = { onTalk, onDone };
+  const [at, setAt] = useState(() => ({ x: deskOf(walk.pod).x, y: deskOf(walk.pod).y, seconds: 0, steady: false }));
+  const [moving, setMoving] = useState(false);
+  const [talking, setTalking] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const wait = (seconds: number) => new Promise<void>((resolve) => timers.push(setTimeout(resolve, seconds * 1000)));
+    void (async () => {
+      let visited = 0;
+      let where: number | "home" = "home";
+      // A frame to be drawn at their desk before setting off.
+      await wait(0.05);
+      for (;;) {
+        const next = nextLegs(latest.current, visited, where);
+        if (cancelled || !next) break;
+        let lastY = Number.NaN;
+        for (const leg of next.legs) {
+          if (cancelled) return;
+          // The corridor is a steady walk; turning in and out of a pod eases.
+          setAt({ x: leg.x, y: leg.y, seconds: leg.seconds, steady: leg.y === lastY });
+          setMoving(true);
+          lastY = leg.y;
+          await wait(leg.seconds);
+        }
+        if (cancelled) return;
+        setMoving(false);
+        where = next.arrives;
+        if (where !== "home") {
+          setTalking(true);
+          calls.current.onTalk(where);
+          await wait(TALK_SECONDS);
+          if (cancelled) return;
+          setTalking(false);
+          calls.current.onTalk(null);
+          visited += 1;
+        }
+      }
+      if (!cancelled) calls.current.onDone();
+    })();
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+      calls.current.onTalk(null);
+    };
+  }, [walk.key, walk.id]);
+
+  return (
+    <g
+      className={`office-walker${moving ? " walking" : ""}`}
+      style={{ transform: `translate(${at.x}px, ${at.y}px)`, transition: `transform ${at.seconds}s ${at.steady ? "linear" : "ease-in-out"}` }}
+      aria-hidden="true"
+    >
+      <Figure walk={walk} talking={talking} />
+    </g>
+  );
+}
+
+/**
+ * A hire or a leaver crossing the floor on a fixed route. Steps through it on
+ * timers and lets CSS move them between stops, then says it is done.
+ */
+function RouteWalker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }) {
   const { from, legs } = routeOf(walk);
   // -1 is standing at the start; n is on the way to (or at) the end of leg n.
   const [step, setStep] = useState(-1);
@@ -105,7 +224,7 @@ export function Walker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }
     }
     timers.push(setTimeout(() => done.current(), at * 1000));
     return () => timers.forEach(clearTimeout);
-  }, [walk.id, walk.kind, walk.pod, walk.to, walk.key]);
+  }, [walk.id, walk.kind, walk.pod]);
 
   const at = step < 0 ? from : legs[step];
   const leg = step < 0 ? null : legs[step];
@@ -114,7 +233,6 @@ export function Walker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }
   const easing = leg && leg.x !== before.x ? "linear" : "ease-in-out";
   // Standing at a colleague's desk handing something over is not walking.
   const moving = leg !== null && (leg.x !== before.x || leg.y !== before.y);
-  const { persona } = walk;
   return (
     <g
       className={`office-walker${moving && !fading ? " walking" : ""}`}
@@ -125,20 +243,7 @@ export function Walker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }
       }}
       aria-hidden="true"
     >
-      <foreignObject x="-36" y="-24" width="120" height="22">
-        <div className="office-tag-row">
-          <span className="office-tag walker">{persona.name}</span>
-        </div>
-      </foreignObject>
-      <g className="office-walker-body">
-        <path className="office-leg-a" d="M19 42 L19 56" stroke="#3f4554" strokeWidth="8" strokeLinecap="round" />
-        <path className="office-leg-b" d="M29 42 L29 56" stroke="#3f4554" strokeWidth="8" strokeLinecap="round" />
-        <path d="M12 46 v-12 a12 12 0 0 1 24 0 v12 z" fill={persona.shirt} />
-        {/* Under one arm: a laptop, or the message being carried. */}
-        <rect x="34" y="30" width="11" height="12" rx="3" fill={walk.kind === "deliver" ? "#f8f5ec" : "#262b36"} />
-        <circle cx="24" cy="16" r="11" fill={persona.skin} />
-        <ellipse cx="24" cy="7" rx="12" ry="6" fill={persona.hair} />
-      </g>
+      <Figure walk={walk} talking={false} />
     </g>
   );
 }
