@@ -6,6 +6,7 @@ import "./office.css";
 import "./map.css";
 import "./antics.css";
 import "./shouting.css";
+import "./speech.css";
 import "./panel.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUiSettings } from "../../platform/config";

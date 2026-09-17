@@ -371,10 +371,3 @@ button.office-chat-toggle:focus-visible {
   background: rgba(255, 250, 235, 0.72);
   border-radius: 10px;
 }
-
-.office-said.asks {
-  color: #0f3f78;
-  font-style: normal;
-  font-weight: 600;
-  background: #dcebff;
-}
