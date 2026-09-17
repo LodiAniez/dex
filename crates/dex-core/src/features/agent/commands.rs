@@ -400,6 +400,8 @@ fn view(agent: Agent) -> AgentView {
         status_at: agent.status_at,
         permission_mode: agent.permission_mode,
         task_brief: agent.task_brief,
+        parent_id: agent.parent_id,
+        depth: agent.depth,
         started_at: agent.started_at,
         ended_at: agent.ended_at,
     }
