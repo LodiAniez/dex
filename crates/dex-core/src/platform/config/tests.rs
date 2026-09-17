@@ -183,12 +183,17 @@ fn the_watcher_reloads_a_saved_edit() {
     drop(file);
     std::fs::rename(&temp, &path).unwrap();
 
+    // Wait for the announcement, not the value: the watcher stores the new
+    // settings and only then publishes, so a test that saw the value and asked
+    // for the message at once would sometimes ask too soon.
     let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline && handle.get().agents.max_concurrent != 9 {
+    let mut announced = changes.try_recv();
+    while announced.is_err() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
+        announced = changes.try_recv();
     }
+    assert_eq!(announced.map(|c| c.topic), Ok("config"));
     assert_eq!(handle.get().agents.max_concurrent, 9);
-    assert_eq!(changes.try_recv().map(|c| c.topic), Ok("config"));
 }
 
 #[test]
