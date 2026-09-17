@@ -32,10 +32,10 @@ fn the_view_carries_what_the_office_pane_needs_as_values() {
     let (_dir, mut state) = AppState::for_tests();
     let mut config = Config::default();
     config.agents.max_concurrent = 9;
-    config.ui.office_view = "office".into();
+    config.ui.view = "office".into();
     state.config = ConfigHandle::fixed(config);
 
     let view = get_config(&state).expect("printable");
     assert_eq!(view.max_concurrent, 9);
-    assert_eq!(view.office_view, "office");
+    assert_eq!(view.view, "office");
 }

@@ -24,8 +24,9 @@ pub struct ConfigView {
     /// How many agents may be alive in one workspace: the office's seats.
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub max_concurrent: i64,
-    /// What an office pane shows until the owner chooses: `cards` or `office`.
-    pub office_view: String,
+    /// How a workspace is shown until the owner chooses: `terminal`, `cards` or
+    /// `office`.
+    pub view: String,
     /// What Dex could not use, and what it used instead. Empty when the file is
     /// good, or absent.
     pub problems: Vec<String>,

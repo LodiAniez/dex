@@ -205,18 +205,20 @@ fn the_update_check_is_on_by_default_and_can_be_turned_off() {
 }
 
 #[test]
-fn the_office_opens_as_cards_unless_the_owner_prefers_the_map() {
-    assert_eq!(Config::default().ui.office_view, "cards");
-    let (config, problems) = parse("[ui]\noffice_view = \"office\"\n");
-    assert_eq!(config.ui.office_view, "office");
-    assert!(problems.is_empty(), "{problems:?}");
+fn a_workspace_opens_as_terminals_unless_the_owner_prefers_another_view() {
+    assert_eq!(Config::default().ui.view, "terminal");
+    for view in ["terminal", "cards", "office"] {
+        let (config, problems) = parse(&format!("[ui]\nview = \"{view}\"\n"));
+        assert_eq!(config.ui.view, view);
+        assert!(problems.is_empty(), "{problems:?}");
+    }
 }
 
 #[test]
-fn an_office_view_that_does_not_exist_falls_back_and_says_so() {
-    let (config, problems) = parse("[ui]\noffice_view = \"penthouse\"\n");
-    assert_eq!(config.ui.office_view, "cards");
+fn a_view_that_does_not_exist_falls_back_and_says_so() {
+    let (config, problems) = parse("[ui]\nview = \"penthouse\"\n");
+    assert_eq!(config.ui.view, "terminal");
     assert_eq!(problems.len(), 1, "{problems:?}");
-    assert!(problems[0].contains("ui.office_view"), "{problems:?}");
+    assert!(problems[0].contains("ui.view"), "{problems:?}");
     assert!(problems[0].contains("penthouse"), "{problems:?}");
 }
