@@ -17,6 +17,11 @@ kind: string,
  */
 author: string | null, 
 /**
+ * Id of that agent, or `null` for the human. Labels can repeat; this is
+ * what to filter on.
+ */
+agent_id: string | null, 
+/**
  * The entry key, for `write` and `delete`.
  */
 key: string | null, 
