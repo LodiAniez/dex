@@ -115,7 +115,7 @@ export async function splitPane(
   pane: string,
   direction: "right" | "down",
   // `markdown` is missing on purpose: it needs a file, which only the CLI supplies.
-  kind?: "terminal" | "activity" | "diff",
+  kind?: "terminal" | "activity" | "diff" | "office",
 ): Promise<void> {
   publish(await request<WorkspaceList>("pane.split", { pane, direction, kind }));
 }

@@ -17,7 +17,7 @@ pub struct PaneSummary {
     pub label: Option<String>,
     /// Working directory the pane started in, forward slashes.
     pub cwd: String,
-    /// `terminal`, `markdown`, `diff`, or `activity`.
+    /// `terminal`, `markdown`, `diff`, `activity`, or `office`.
     pub kind: String,
     /// Whether this is its workspace's focused pane.
     pub focused: bool,
@@ -61,7 +61,7 @@ pub struct CreatePaneArgs {
     /// Label for the new pane.
     #[serde(default)]
     pub label: Option<String>,
-    /// `terminal` (the default), `activity`, `diff`, or `markdown`. A
+    /// `terminal` (the default), `activity`, `diff`, `markdown`, or `office`. A
     /// non-terminal pane runs no shell.
     #[serde(default)]
     pub kind: Option<String>,

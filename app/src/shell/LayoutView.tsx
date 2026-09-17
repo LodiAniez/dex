@@ -7,6 +7,7 @@ import type { Layout } from "../platform/generated/Layout";
 import type { PaneView } from "../platform/generated/PaneView";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { showError } from "../platform/notices";
+import { paneTitle, runsShell } from "./paneKind";
 
 type Side = "a" | "b";
 
@@ -96,12 +97,6 @@ function withRatio(layout: Layout, path: Side[], ratio: number): Layout {
     : { ...layout, b: withRatio(layout.b, rest, ratio) };
 }
 
-/** The last two segments of a path: enough to tell panes apart. */
-function shortPath(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts.length <= 2 ? path : `…/${parts.slice(-2).join("/")}`;
-}
-
 function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: WorkspaceView; zoomed: boolean }) {
   const active = workspace.active_pane === pane.id;
   const agent = agentInPane(useAgents(), pane.id);
@@ -136,20 +131,6 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
   );
 }
 
-/** What the header says a pane is: its kind for the special ones, else where it is. */
-function paneTitle(pane: PaneView): string {
-  switch (pane.kind) {
-    case "activity":
-      return "activity";
-    case "diff":
-      return `diff · ${shortPath(pane.cwd)}`;
-    case "markdown":
-      return pane.cwd.split("/").pop() ?? pane.cwd;
-    default:
-      return shortPath(pane.cwd);
-  }
-}
-
 function PaneBody({ pane, workspaceId, active }: { pane: PaneView; workspaceId: string; active: boolean }) {
   switch (pane.kind) {
     case "activity":
@@ -158,7 +139,13 @@ function PaneBody({ pane, workspaceId, active }: { pane: PaneView; workspaceId: 
       return <DiffPane cwd={pane.cwd} />;
     case "markdown":
       return <MarkdownPane paneId={pane.id} />;
+    case "office":
+      return <div className="pane-unknown">The office opens here.</div>;
     default:
-      return <TerminalPane paneId={pane.id} workspaceId={workspaceId} cwd={pane.cwd} active={active} />;
+      return runsShell(pane.kind) ? (
+        <TerminalPane paneId={pane.id} workspaceId={workspaceId} cwd={pane.cwd} active={active} />
+      ) : (
+        <div className="pane-unknown">This version of Dex cannot show a “{pane.kind}” pane.</div>
+      );
   }
 }
