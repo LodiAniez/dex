@@ -85,7 +85,7 @@ The rules are unit-tested and the pane has been run live against fake agents; wh
 ## Idle antics - by eye, with real agents
 
 1. In **Office** view, let an agent finish its task. A few seconds later it gets up to something: coffee in the break room, a go kart along the corridor, skipping rope, a body roll or a tumble outside its cubicle, a nap on a camp bed, or a song at its desk. It walks there and walks back; while it is out its chair is empty.
-2. Watch a few rounds: it never does the same thing twice running, and two idle agents do different things.
+2. With several idle at once: coffee drinkers stand in different places in the break room, never on each other; karts set off left or right, turn where they like, and some go round the block below the corridor, either way round. Watch a few rounds: it never does the same thing twice running, and two idle agents do different things.
 3. Prompt it while it is out (the card's box, or *Announce*): it stops, walks back to its desk, and only then types.
 4. Message it from another agent while it is out: it heads back to its desk to be found there. An idle agent that has a message to carry walks home first, then sets off from its desk.
 5. With Windows' *Animation effects: off*, idle agents stay in their chairs.

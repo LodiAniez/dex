@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ANTICS, isLoafing, pickAntic, planAntic, wayHome, type AnticKind } from "./antics";
+import { ANTICS, isLoafing, pickAntic, planAntic, seedOf, wayHome, type AnticKind } from "./antics";
 import { POD, podOrigin } from "./mapGeometry";
 import { deskOf } from "./walks";
 
@@ -87,9 +87,29 @@ describe("planAntic", () => {
     }
   });
 
-  it("spreads the coffee drinkers out, so two are not one figure", () => {
-    const spots = new Set([0, 1, 2, 3, 4, 5].map((seed) => planAntic("coffee", 2, seed).to!.x));
-    expect(spots.size).toBeGreaterThan(1);
+  it("stands them anywhere in the room, not on one mark", () => {
+    const spots = Array.from({ length: 40 }, (_, seed) => planAntic("coffee", 2, seed).to!);
+    expect(new Set(spots.map((spot) => spot.x)).size).toBeGreaterThan(3);
+    expect(new Set(spots.map((spot) => spot.y)).size).toBeGreaterThan(1);
+  });
+
+  it("never stands one drinker on another, however many are in there at once", () => {
+    const taken: { x: number; y: number }[] = [];
+    for (let drinker = 0; drinker < 10; drinker += 1) {
+      const { to } = planAntic("coffee", drinker, 7, { taken });
+      for (const other of taken) expect(Math.hypot(to!.x - other.x, to!.y - other.y), `drinker ${drinker}`).toBeGreaterThan(20);
+      expect(to!.x).toBeGreaterThanOrEqual(36);
+      expect(to!.x + 48).toBeLessThanOrEqual(266);
+      taken.push(to!);
+    }
+  });
+
+  it("gives two drinkers elbow room while the room has it", () => {
+    for (let seed = 0; seed < 24; seed += 1) {
+      const first = planAntic("coffee", 0, seed).to!;
+      const second = planAntic("coffee", 1, seed, { taken: [first] }).to!;
+      expect(Math.hypot(first.x - second.x, first.y - second.y), `seed ${seed}`).toBeGreaterThan(40);
+    }
   });
 
   it("does everything else in the corridor outside their own cubicle, never inside anyone's", () => {
@@ -121,6 +141,42 @@ describe("planAntic", () => {
     expect(plan.act.at(-1)).toMatchObject({ x: plan.to!.x, y: plan.to!.y });
   });
 
+  it("sets off either way along the corridor, and turns round somewhere of its own", () => {
+    const plans = Array.from({ length: 40 }, (_, seed) => planAntic("kart", 1, seed));
+    expect(new Set(plans.map((plan) => Math.sign(plan.act[0].x - plan.to!.x)))).toEqual(new Set([-1, 1]));
+    const turns = new Set(plans.flatMap((plan) => plan.act.map((leg) => leg.x)));
+    expect(turns.size).toBeGreaterThan(6);
+  });
+
+  it("takes some laps round the block, both ways, when the floor has room below", () => {
+    const plans = Array.from({ length: 40 }, (_, seed) => planAntic("kart", 1, seed, { mapHeight: 832 }));
+    const circuits = plans.filter((plan) => new Set(plan.act.map((leg) => leg.y)).size > 1);
+    expect(circuits.length).toBeGreaterThan(0);
+    expect(circuits.length).toBeLessThan(plans.length);
+    // Round the block one way, and the other.
+    expect(new Set(circuits.map((plan) => Math.sign(plan.act[0].x - plan.act.at(-2)!.x))).size).toBe(2);
+    for (const plan of circuits) {
+      expect(plan.act.at(-1)).toMatchObject({ x: plan.to!.x, y: plan.to!.y });
+      for (const [i, leg] of plan.act.entries()) {
+        const from = i === 0 ? plan.to! : plan.act[i - 1];
+        // Along or down, never across a cubicle on the diagonal.
+        expect(leg.x === from.x || leg.y === from.y, `leg ${i}`).toBe(true);
+        expect(insideAPod(leg.x, leg.y)).toBeNull();
+        expect(leg.y + 66).toBeLessThanOrEqual(832 - 14);
+        // Down the gaps between the columns of cubicles, and nowhere else.
+        if (leg.x === from.x) for (let pod = 0; pod < 12; pod += 1) expect(leg.x + 48 <= podOrigin(pod).x || leg.x >= podOrigin(pod).x + POD.width).toBe(true);
+      }
+    }
+  });
+
+  it("stays in its corridor on a floor with nothing below it", () => {
+    // A third row's corridor is the map's last: there is no block to go round.
+    for (let seed = 0; seed < 40; seed += 1) {
+      const plan = planAntic("kart", 7, seed, { mapHeight: 1182 });
+      expect(new Set(plan.act.map((leg) => leg.y)).size, `seed ${seed}`).toBe(1);
+    }
+  });
+
   it("rolls and tumbles away in a direction of their own, and back to where they started", () => {
     for (const kind of ["roll", "tumble"] as const) {
       const directions = new Set<number>();
@@ -137,6 +193,15 @@ describe("planAntic", () => {
     const plan = planAntic("rope", 4, 0);
     expect(plan.act).toEqual([]);
     expect(plan.seconds).toBeGreaterThan(4);
+  });
+});
+
+describe("seedOf", () => {
+  it("is the same in every window, and different from one go to the next", () => {
+    expect(seedOf("agent-1", 1000, 2)).toBe(seedOf("agent-1", 1000, 2));
+    expect(new Set([0, 1, 2, 3, 4, 5].map((round) => seedOf("agent-1", 1000, round))).size).toBeGreaterThan(4);
+    expect(Number.isInteger(seedOf("agent-1", 1000, 2))).toBe(true);
+    expect(seedOf("agent-1", 1000, 2)).toBeGreaterThanOrEqual(0);
   });
 });
 
