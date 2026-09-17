@@ -10,7 +10,7 @@ fn a_permission_request_names_the_tool_and_what_it_is_aimed_at() {
     let edit = json!({ "tool_name": "Edit", "tool_input": { "file_path": "C:/src/legacy/client.rs", "old_string": "a" } });
     assert_eq!(
         waiting_reason(&edit).as_deref(),
-        Some("permission to Edit C:/src/legacy/client.rs")
+        Some("permission to Edit …/legacy/client.rs")
     );
     let bash =
         json!({ "tool_name": "Bash", "tool_input": { "command": "cargo test --workspace" } });
@@ -40,7 +40,7 @@ fn a_notification_says_what_it_says() {
 
 #[test]
 fn it_is_one_short_line_whatever_the_agent_was_about_to_run() {
-    let long = json!({ "tool_name": "Bash", "tool_input": { "command": format!("echo one\necho {}", "x".repeat(400)) } });
+    let long = json!({ "message": format!("Claude needs you\nbecause {}", "x ".repeat(300)) });
     let reason = waiting_reason(&long).unwrap();
     assert!(!reason.contains('\n'));
     assert!(reason.chars().count() <= 120, "{}", reason.chars().count());
@@ -141,5 +141,110 @@ async fn an_older_dialog_delivered_late_does_not_replace_a_newer_ones_reason() {
     assert_eq!(
         agents(&state).await[0].status_detail.as_deref(),
         Some("permission to Bash")
+    );
+}
+
+#[test]
+fn a_command_is_named_by_what_it_runs_not_by_what_it_carries() {
+    // The reason is stored, shown, and until now handed to other agents. What a
+    // command runs is worth saying; its arguments are where the secrets are.
+    let reason = |command: &str| {
+        waiting_reason(&json!({ "tool_name": "Bash", "tool_input": { "command": command } }))
+            .unwrap()
+    };
+    assert_eq!(
+        reason("cargo test --workspace"),
+        "permission to Bash: cargo test --workspace"
+    );
+    assert_eq!(
+        reason("curl -H 'Authorization: Bearer sk-live-abc123' https://api.example.test"),
+        "permission to Bash: curl -H …"
+    );
+    assert_eq!(reason("mysql -psecret app"), "permission to Bash: mysql …");
+    assert_eq!(
+        reason("API_KEY=abc123 node deploy.js"),
+        "permission to Bash: …"
+    );
+    assert_eq!(
+        reason("git push https://user:token@github.com/x/y"),
+        "permission to Bash: git push …"
+    );
+    assert_eq!(reason("rm -r build"), "permission to Bash: rm -r build");
+    assert_eq!(
+        reason("npm run build -- --mode production --verbose"),
+        "permission to Bash: npm run build …"
+    );
+}
+
+#[tokio::test]
+async fn another_agent_is_not_told_what_this_one_is_waiting_for() {
+    use dex_protocol::agent::ListAgentsArgs;
+    let (_dir, state, first) = pane().await;
+    let second = crate::features::workspace::split_pane(
+        &state,
+        dex_protocol::workspace::SplitPaneArgs {
+            pane: first.clone(),
+            direction: dex_protocol::workspace::SplitDirection::Right,
+            cwd: None,
+            label: None,
+            kind: None,
+        },
+    )
+    .await
+    .unwrap()
+    .workspaces[0]
+        .active_pane
+        .clone()
+        .unwrap();
+    fire(&state, "session-start", &first, 1, session("a")).await;
+    fire(&state, "session-start", &second, 1, session("b")).await;
+    fire(&state, "prompt", &first, 2, session("a")).await;
+    fire(
+        &state,
+        "permission",
+        &first,
+        3,
+        json!({ "session_id": "a", "tool_name": "Edit", "tool_input": { "file_path": "secrets/prod.env" } }),
+    )
+    .await;
+
+    let seen_by = |pane: Option<String>| {
+        let state = state.clone();
+        async move {
+            crate::features::agent::list(
+                &state,
+                ListAgentsArgs {
+                    pane,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .agents
+            .into_iter()
+            .find(|agent| agent.status == dex_protocol::agent::AgentStatus::Waiting)
+            .unwrap()
+            .status_detail
+        }
+    };
+    // The owner - the office asks with no pane - sees it; so does the agent itself.
+    assert!(seen_by(None).await.is_some());
+    assert!(seen_by(Some(first.clone())).await.is_some());
+    // The agent in the other pane sees that it is waiting, and not what for.
+    assert_eq!(seen_by(Some(second)).await, None);
+}
+
+#[test]
+fn a_long_path_keeps_its_end_which_is_the_part_that_says_which_file() {
+    // As captured from Claude Code 2.1.274: absolute, Windows, and long.
+    let ask = json!({ "tool_name": "Write", "tool_input": { "file_path": r"C:\Users\Admin\AppData\Local\Temp\claude\scratch\todo-probe\permwork\probe.txt" } });
+    assert_eq!(
+        waiting_reason(&ask).as_deref(),
+        Some("permission to Write …/permwork/probe.txt")
+    );
+    let short = json!({ "tool_name": "Edit", "tool_input": { "file_path": "src/main.rs" } });
+    assert_eq!(
+        waiting_reason(&short).as_deref(),
+        Some("permission to Edit src/main.rs")
     );
 }

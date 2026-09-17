@@ -15,6 +15,7 @@ import { headcount, hrNote } from "./floor";
 import { HireDialog } from "./HireDialog";
 import { MapFloor } from "./MapFloor";
 import { useOffice, useScreens, type Employee } from "./officeStore";
+import { knownAs } from "./persona";
 import { chatLines } from "./phrasing";
 import { PANEL_SCREEN_LINES, WorkPanel } from "./WorkPanel";
 
@@ -58,10 +59,9 @@ export function OfficeView({ workspaceId, view, onGoToPane }: Props) {
   const who = useMemo(() => {
     const names = new Map(office.employees.map(({ agent, persona }) => [agent.id, persona.name]));
     const labels = new Map<string, string>();
+    // Every name the daemon may have used for someone in an event.
     for (const { agent, persona } of office.employees) {
-      // An agent is messaged by its own label or its pane's, whichever it has.
-      const pane = workspace?.panes.find((candidate) => candidate.id === agent.pane_id);
-      for (const label of [agent.label, pane?.label]) if (label) labels.set(label, persona.name);
+      for (const label of knownAs(agent, workspace?.panes)) labels.set(label, persona.name);
     }
     return { names, labels };
   }, [office.employees, workspace]);

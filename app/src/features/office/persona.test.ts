@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HAIRS, NAMES, SHIRTS, SKINS, labelFor, nameStaff, personaOf, roleOf } from "./persona";
+import { HAIRS, NAMES, SHIRTS, SKINS, knownAs, labelFor, nameStaff, personaOf, roleOf } from "./persona";
 
 /** Ids shaped like the daemon's: a prefix and hex. */
 const ids = Array.from({ length: 4000 }, (_, i) => `agent-${(i * 2654435761).toString(16)}`);
@@ -180,5 +180,26 @@ describe("labelFor", () => {
     expect(labelFor({ label: null, pane_id: "gone" }, panes)).toBeNull();
     expect(labelFor({ label: null, pane_id: null }, panes)).toBeNull();
     expect(labelFor({ label: null, pane_id: "p1" }, undefined)).toBeNull();
+  });
+});
+
+describe("knownAs", () => {
+  const panes = [
+    { id: "p1", label: "main" },
+    { id: "p2", label: null },
+  ];
+
+  it("is every name the daemon may use for an agent in an event", () => {
+    expect(knownAs({ id: "3e809821-73de-4b14", label: "porter", pane_id: "p1" }, panes)).toEqual(["porter", "main", "3e809821"]);
+  });
+
+  it("includes the short id the daemon falls back to for an agent with no label at all", () => {
+    // A lead in an unlabelled pane is named "3e809821" in "… started an agent
+    // for:", and its hires must still count as its own.
+    expect(knownAs({ id: "3e809821-73de-4b14", label: null, pane_id: "p2" }, panes)).toEqual(["3e809821"]);
+  });
+
+  it("copes with a workspace not loaded yet", () => {
+    expect(knownAs({ id: "abc-1", label: null, pane_id: "p1" }, undefined)).toEqual(["abc"]);
   });
 });

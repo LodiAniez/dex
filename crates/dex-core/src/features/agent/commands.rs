@@ -265,14 +265,27 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                     },
                     (None, None) => None,
                 };
+                let started = store::started_ids(conn)?;
+                // An agent asking - one runs in the pane the request came from -
+                // is told that a colleague is waiting, not what for: the reason
+                // can name a file or a command, and is the owner's to see.
+                let asker = match args.pane.as_deref() {
+                    Some(pane) => store::find_live_in_pane(conn, pane)?.map(|agent| agent.id),
+                    None => None,
+                };
                 let agents = store::list_agents(conn, args.include_dead)?
                     .into_iter()
                     .filter(|agent| scope.as_ref().is_none_or(|id| id == &agent.workspace_id))
                     .map(|agent| {
-                        let started = store::has_session(conn, &agent.id)?;
-                        Ok(view(agent, started))
+                        let has_started = started.contains(&agent.id);
+                        let mut seen = view(agent, has_started);
+                        let theirs = asker.as_ref().is_none_or(|id| id == &seen.id);
+                        if !theirs && seen.status == AgentStatus::Waiting {
+                            seen.status_detail = None;
+                        }
+                        seen
                     })
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect();
                 Ok(Ok(AgentList {
                     agents,
                     revision: store::revision(conn)?,
