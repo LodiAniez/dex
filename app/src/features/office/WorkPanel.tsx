@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { request } from "../../platform/daemon";
 import { showError } from "../../platform/notices";
 import { useActivity } from "../activity";
-import { AgentStatusDot, STATUS_WORDS, lastSaid, seenAs } from "../agents";
+import { AgentStatusDot, STATUS_WORDS, askedYou, lastSaid, seenAs } from "../agents";
 import { Avatar } from "./Avatar";
 import { useAgentActions } from "./agentActions";
 import { memoArgs } from "./hire";
@@ -105,7 +105,8 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
       <div className="office-panel-status">
         <AgentStatusDot status={seenAs(agent)} />
         {STATUS_WORDS[seenAs(agent)]}
-        {agent.status_detail && said === null && ` · ${agent.status_detail}`}
+        {/* What they asked or said has its own line below; here, only why they wait or stopped. */}
+        {agent.status_detail && said === null && askedYou(agent) === null && ` · ${agent.status_detail}`}
       </div>
       {/* How their turn ended, in their words: spotting a question is a guess, and this is the evidence. */}
       {said !== null && <div className="office-panel-said">“{said}”</div>}

@@ -175,14 +175,56 @@ fn is_inverted(lower: &str) -> bool {
         .any(|(at, word)| QUESTION_WORDS.contains(word) && (at + 1..=at + REACH).any(inverted_at))
 }
 
-/// The message as sentences: split after `.`, `!` or `?` where whitespace
-/// follows (so not inside `essay-1.md`), and at every line end - a closing list
-/// is so many separate things said, not one long sentence to find a cue in.
+/// A line with its list marker taken off, if it has one: `- `, `* `, `1. `, `2) `.
+/// Only a marker: "2 or 3 replicas?" opens with a number that is part of it.
+fn list_item(line: &str) -> Option<&str> {
+    let line = line.trim_start();
+    if let Some(rest) = ["- ", "* ", "\u{2022} "]
+        .iter()
+        .find_map(|mark| line.strip_prefix(mark))
+    {
+        return Some(rest);
+    }
+    let digits = line.chars().take_while(char::is_ascii_digit).count();
+    let rest = &line[digits..];
+    let rest = rest
+        .strip_prefix(". ")
+        .or_else(|| rest.strip_prefix(") "))?;
+    (digits > 0).then_some(rest)
+}
+
+/// The message as the separate things it says. A blank line, a list item, and
+/// the end of a sentence each start a new one; a line end alone does not, or a
+/// question an agent hard-wrapped would be shown as its last three words. Then
+/// each is split after `.`, `!` or `?` where whitespace follows (so not inside
+/// `essay-1.md`). A closing list is so many things said, not one long sentence
+/// to find a cue in.
 fn sentences(text: &str) -> Vec<String> {
+    let mut blocks: Vec<(String, bool)> = Vec::new();
+    for line in text.lines() {
+        let item = list_item(line);
+        let said = item.unwrap_or(line).trim();
+        if said.is_empty() {
+            blocks.push((String::new(), false));
+            continue;
+        }
+        let continues = blocks.last().is_some_and(|(before, was_item)| {
+            let indented = line.starts_with([' ', '\t']);
+            let open = !before.is_empty() && !before.ends_with(['.', '!', '?', ':']);
+            item.is_none() && open && (!was_item || indented)
+        });
+        match blocks.last_mut() {
+            Some((before, _)) if continues => {
+                before.push(' ');
+                before.push_str(said);
+            }
+            _ => blocks.push((said.to_owned(), item.is_some())),
+        }
+    }
     let mut found = Vec::new();
-    for paragraph in text.lines() {
+    for (block, _) in &blocks {
         let mut current = String::new();
-        let mut chars = paragraph.chars().peekable();
+        let mut chars = block.chars().peekable();
         while let Some(c) = chars.next() {
             current.push(c);
             let ends = matches!(c, '.' | '!' | '?')
@@ -195,13 +237,7 @@ fn sentences(text: &str) -> Vec<String> {
     }
     found
         .into_iter()
-        // A list item is what it says, without its bullet or number.
-        .map(|sentence| {
-            let item = sentence.trim().trim_start_matches(|c: char| {
-                matches!(c, '-' | '*' | '•' | '.' | ')') || c.is_ascii_digit()
-            });
-            item.trim().to_owned()
-        })
+        .map(|sentence| sentence.trim().to_owned())
         .filter(|sentence| !sentence.is_empty())
         .collect()
 }

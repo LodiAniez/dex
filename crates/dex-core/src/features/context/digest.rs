@@ -54,7 +54,7 @@ const HEADING: &str = "## Workspace context";
 /// orients, it does not instruct. An agent that ends a reply "Reply yes and I'll
 /// overwrite the file" has, to Claude Code, finished; the dialog tool fires a
 /// hook, so Dex shows it at once and for certain.
-const HOW_THE_OWNER_HEARS: &str = "The owner sees at once when an agent asks them something with the AskUserQuestion tool; a question that only ends a reply is easy for them to miss.";
+const HOW_THE_OWNER_HEARS: &str = "The owner sees at once when an agent asks them something with the AskUserQuestion tool; a question that only ends a reply is easy for them to miss. An agent started by another agent has that agent to ask first.";
 
 /// An agent's orientation when its session starts.
 pub fn full(orientation: &Orientation, cap: usize) -> String {
@@ -311,6 +311,8 @@ mod tests {
         };
         let text = full(&orientation, caps().full_chars);
         assert!(text.contains("AskUserQuestion"), "{text}");
+        // An agent another agent started is not sent to the owner with what its lead can answer.
+        assert!(text.contains("started by another agent"), "{text}");
         // Kept when the keys overflow: it is part of the orientation.
         assert!(text.len() <= caps().full_chars);
         let lower = text.to_lowercase();

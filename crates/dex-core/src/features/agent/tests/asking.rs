@@ -109,6 +109,31 @@ Which would you like?";
 }
 
 #[test]
+fn a_question_wrapped_over_two_lines_is_shown_whole() {
+    // Some agents hard-wrap their prose. A line end is only a boundary after a
+    // sentence has ended, or before a list item.
+    let wrapped = "The migration is written but not run.\nShould I run it against\nstaging first?";
+    assert_eq!(
+        question_for_owner(wrapped).as_deref(),
+        Some("Should I run it against staging first?")
+    );
+}
+
+#[test]
+fn a_number_that_opens_a_question_is_part_of_it() {
+    assert_eq!(
+        question_for_owner("2 or 3 replicas?").as_deref(),
+        Some("2 or 3 replicas?")
+    );
+    // A list marker is not.
+    assert_eq!(
+        question_for_owner("Options:\n1. a lock file\n2) a lease\n- Which would you like?")
+            .as_deref(),
+        Some("Which would you like?")
+    );
+}
+
+#[test]
 fn a_statement_that_only_mentions_a_question_word_is_not_a_question() {
     for message in [
         "I checked what it would be under load, and it holds.",
