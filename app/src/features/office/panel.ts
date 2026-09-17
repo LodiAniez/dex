@@ -42,3 +42,21 @@ export function ago(at: number, now: number): string {
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86_400)}d ago`;
 }
+
+/**
+ * What an agent needs from the owner, in a sentence, or null when it needs
+ * nothing. "Needs you" on its own sends them to the pane to find out what for;
+ * the hook that raised it usually said, and the answer is always in the pane.
+ */
+export function needsYou(status: string, detail: string | null): string | null {
+  switch (status) {
+    case "waiting":
+      return detail ? `Waiting for you: ${detail}. Answer it in their pane.` : "Waiting for you to answer something in their pane.";
+    case "error":
+      return `Stopped: ${detail ?? "no reason given"}. Their pane says more.`;
+    case "unknown":
+      return "Nothing has been heard from them for a while. Look at their pane.";
+    default:
+      return null;
+  }
+}

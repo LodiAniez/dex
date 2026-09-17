@@ -152,6 +152,6 @@ The hooks reference documents only the common fields, so these were captured fro
 | UserPromptSubmit | `prompt` |
 | PostToolBatch | `tool_calls[]` of `{ tool_name, tool_input, tool_use_id, tool_response }` |
 | Stop | `stop_hook_active`, `last_assistant_message`, `background_tasks`, `session_crons` |
-| Not yet captured | PermissionRequest, Notification, StopFailure (the failure type is read from the first of `error` / `error_type` / `reason`), and subagent events (identified by `agent_id`, as documented) |
+| Read tolerantly, not yet captured | PermissionRequest (`tool_name`, and from `tool_input` the first of `file_path` / `path` / `command` / `url` / `pattern`) and Notification (`message`) give a waiting agent its reason (`agent/reason.rs`); an input with none of these gives no reason rather than a wrong one. Still not captured: StopFailure (the failure type is read from the first of `error` / `error_type` / `reason`), and subagent events (identified by `agent_id`, as documented) |
 
 Verified end to end on 2.1.273 (M5), with a real `claude` in a Dex pane: `SessionStart` → idle, `UserPromptSubmit` → running, `PostToolBatch` → running, `Stop` → idle, `/exit` → `SessionEnd` → dead. `permission_mode` reads `auto` from the first status hook onward and is absent on `SessionStart`, as above.
