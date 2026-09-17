@@ -30,6 +30,19 @@ const seatings = new Map<string, Seating>();
 /** And what everyone was called, kept for the same reason. */
 const namings = new Map<string, ReadonlyMap<string, string>>();
 
+/**
+ * What the office calls an agent, if it has met them: a name exists once an
+ * office pane has shown that workspace. Until then there is nobody to have
+ * heard the name from, and callers say "Claude" as they always did.
+ */
+export function officeNameOf(agentId: string): string | undefined {
+  for (const names of namings.values()) {
+    const name = names.get(agentId);
+    if (name) return name;
+  }
+  return undefined;
+}
+
 /** The workspace's office: its living agents, seated. */
 export function useOffice(workspaceId: string, maxConcurrent: number): Office {
   const list = useAgents();

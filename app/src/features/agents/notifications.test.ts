@@ -108,6 +108,15 @@ describe("toasts for agents needing attention", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it("calls the agent by the name the office knows it by, when it is given one", () => {
+    const names = (id: string) => (id === "a" ? "Pip" : undefined);
+    const before = list(agent("a", "running"), agent("b", "running"));
+    notifyTransitions(before, list(agent("a", "waiting"), agent("b", "idle")), elsewhere, names);
+    // The title still says which pane; someone who has never opened the office
+    // is told "Claude", as before.
+    expect(bodies()).toEqual(["Pip needs your input", "Claude finished"]);
+  });
+
   it("toasts each agent that changed, and only those", () => {
     const before = list(agent("a", "running"), agent("b", "running"), agent("c", "waiting"));
     const after = list(agent("a", "waiting"), agent("b", "running"), agent("c", "waiting"));

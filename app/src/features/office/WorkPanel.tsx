@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { request } from "../../platform/daemon";
 import { showError } from "../../platform/notices";
-import { useActivity, watchActivity } from "../activity";
+import { useActivity } from "../activity";
 import { AgentStatusDot, STATUS_WORDS } from "../agents";
 import { focusPane } from "../workspaces";
 import { Avatar } from "./Avatar";
@@ -25,7 +25,6 @@ interface Props {
 /** One employee's work: what they were asked, what is on their screen, what they have done. */
 export function WorkPanel({ workspaceId, employee, staff, screen, onClose }: Props) {
   const { agent, persona, role } = employee;
-  useEffect(() => watchActivity(workspaceId), [workspaceId]);
   const events = eventsOf(useActivity(workspaceId)?.events, agent.id, PANEL_EVENTS);
   const [memo, setMemo] = useState<string | null>(null);
   const [sending, setSending] = useState(false);

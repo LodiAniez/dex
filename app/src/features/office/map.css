@@ -180,6 +180,43 @@
 .office-walker.walking .office-leg-a { animation: office-swing-a 0.4s linear infinite; }
 .office-walker.walking .office-leg-b { animation: office-swing-b 0.4s linear infinite; }
 
+/* ---- what has been happening, bottom left of the map ---- */
+
+.office-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  background: rgba(17, 20, 28, 0.92);
+  border-radius: 14px;
+}
+
+.office-chat-title {
+  color: var(--office-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.office-chat-line {
+  overflow: hidden;
+  color: var(--office-soft);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.office-chat-line .who {
+  color: var(--office-dim);
+  font-weight: 500;
+}
+
+.office-chat-line.good { color: #9fe1cb; }
+.office-chat-line.asks { color: #9db9f2; }
+.office-chat-line.bad { color: #f4b8b6; }
+
 /* ---- HR's button in the cards view ---- */
 
 .office-hire-open {
