@@ -49,3 +49,18 @@ export function memoArgs(
   const text = body.trim();
   return text ? { target_agent: agentId, body: text, workspace: workspaceId } : null;
 }
+
+/**
+ * Arguments for `agent.stop` as the office asks it: Claude Code is told to
+ * leave (`/exit`) so its session ends properly, and the pane goes with it -
+ * which is the owner's own, confirmed, choice, so it holds for a pane they
+ * opened themselves as well.
+ */
+export function clockOutArgs(agentId: string): { agent: string; graceful: true; close_pane: true } {
+  return { agent: agentId, graceful: true, close_pane: true };
+}
+
+/** What is asked before clocking anyone out. It cannot be undone, so it says what will happen. */
+export function clockOutQuestion(name: string, role: string): string {
+  return `Clock out ${name} (${role})? Dex sends /exit to end their Claude Code session and closes their pane. Their notes and any branch they worked on stay.`;
+}

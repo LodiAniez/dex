@@ -175,6 +175,17 @@
   font-weight: 500;
 }
 
+.office-panel-actions button.danger {
+  flex: 0 0 auto;
+  padding: 0 14px;
+  color: #f4b8b6;
+  border-color: rgba(242, 95, 92, 0.4);
+}
+
+.office-panel-actions button.danger:hover:not(:disabled) {
+  background: rgba(242, 95, 92, 0.12);
+}
+
 .office-panel-actions button:disabled,
 .office-hire-actions button:disabled {
   opacity: 0.45;

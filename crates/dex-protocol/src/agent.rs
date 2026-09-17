@@ -158,6 +158,14 @@ pub struct Spawned {
 pub struct StopAgentArgs {
     /// Agent id or label, or the label or id of the pane it runs in.
     pub agent: String,
+    /// Ask Claude Code to leave (`/exit`) before resorting to Ctrl+C, so its
+    /// `SessionEnd` hook runs. What the office's clock-out asks for.
+    #[serde(default)]
+    pub graceful: bool,
+    /// Close the agent's pane whoever made it. Without this only a pane Dex
+    /// made for a spawned agent is closed.
+    #[serde(default)]
+    pub close_pane: bool,
 }
 
 /// Result of `agent.stop`.
