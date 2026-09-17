@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HAIRS, NAMES, SHIRTS, SKINS, nameStaff, personaOf, roleOf } from "./persona";
+import { HAIRS, NAMES, SHIRTS, SKINS, labelFor, nameStaff, personaOf, roleOf } from "./persona";
 
 /** Ids shaped like the daemon's: a prefix and hex. */
 const ids = Array.from({ length: 4000 }, (_, i) => `agent-${(i * 2654435761).toString(16)}`);
@@ -152,5 +152,27 @@ describe("nameStaff", () => {
     const names = nameStaff(new Map(), crowd);
     expect(names.size).toBe(crowd.length);
     for (const name of names.values()) expect(name).toBeTruthy();
+  });
+});
+
+describe("labelFor", () => {
+  const panes = [
+    { id: "p1", label: "main" },
+    { id: "p2", label: null },
+  ];
+
+  it("is the agent's own label when it was spawned with one", () => {
+    expect(labelFor({ label: "porter", pane_id: "p1" }, panes)).toBe("porter");
+  });
+
+  it("is otherwise the label of the pane it runs in, which is what its owner called it", () => {
+    expect(labelFor({ label: null, pane_id: "p1" }, panes)).toBe("main");
+  });
+
+  it("is nothing for an unlabelled pane, a closed one, or a workspace not loaded yet", () => {
+    expect(labelFor({ label: null, pane_id: "p2" }, panes)).toBeNull();
+    expect(labelFor({ label: null, pane_id: "gone" }, panes)).toBeNull();
+    expect(labelFor({ label: null, pane_id: null }, panes)).toBeNull();
+    expect(labelFor({ label: null, pane_id: "p1" }, undefined)).toBeNull();
   });
 });

@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { AgentView } from "../../platform/generated/AgentView";
 import { readScreen } from "../../platform/terminalRegistry";
 import { useAgents } from "../agents";
+import { useWorkspaces } from "../workspaces";
 import { occupants, podCount, seat, type Seating } from "./floor";
-import { nameStaff, personaOf, roleOf, type Persona } from "./persona";
+import { labelFor, nameStaff, personaOf, roleOf, type Persona } from "./persona";
 import { lastLines } from "./screen";
 
 /** An agent as the office shows it. */
@@ -46,6 +47,7 @@ export function officeNameOf(agentId: string): string | undefined {
 /** The workspace's office: its living agents, seated. */
 export function useOffice(workspaceId: string, maxConcurrent: number): Office {
   const list = useAgents();
+  const panes = useWorkspaces()?.workspaces.find((ws) => ws.id === workspaceId)?.panes;
   return useMemo(() => {
     const present = occupants(list?.agents ?? [], workspaceId);
     const seating = seat(seatings.get(workspaceId) ?? new Map(), present);
@@ -55,13 +57,13 @@ export function useOffice(workspaceId: string, maxConcurrent: number): Office {
     const employees = present.map((agent) => ({
       agent,
       persona: { ...personaOf(agent.id), name: names.get(agent.id) ?? personaOf(agent.id).name },
-      role: roleOf(agent, present),
+      role: roleOf({ ...agent, label: labelFor(agent, panes) }, present),
       pod: seating.get(agent.id) ?? 0,
     }));
     const pods: (Employee | null)[] = Array.from({ length: podCount(seating, maxConcurrent) }, () => null);
     for (const employee of employees) pods[employee.pod] = employee;
     return { employees, pods };
-  }, [list, workspaceId, maxConcurrent]);
+  }, [list, panes, workspaceId, maxConcurrent]);
 }
 
 /** How often a screen is looked at. Slow enough to be free, fast enough to feel live. */
