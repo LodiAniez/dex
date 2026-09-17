@@ -40,6 +40,22 @@ export function modeOfAction(action: string): ViewMode | null {
   return isMode(id) ? id : null;
 }
 
+/** Actions that would change a pane in a way that cannot be seen, or undone, from the office. */
+const REVEAL_ONLY: readonly string[] = ["close-pane", "move-pane", "focus-pane", "toggle-zoom"];
+/** Actions about panes that are harmless to carry out once the panes are on screen. */
+const REVEAL_THEN_RUN: readonly string[] = ["split-pane", "open-diff", "cycle-layout"];
+
+/**
+ * What an app action does while the panes are hidden behind the cards or the
+ * office. Nothing acts on a pane nobody can see: closing one kills an agent's
+ * terminal. The first press brings the panes back; only the harmless ones then
+ * go ahead.
+ */
+export function whenPanesHidden(actionKind: string): "run" | "reveal" | "reveal-then-run" {
+  if (REVEAL_ONLY.includes(actionKind)) return "reveal";
+  return REVEAL_THEN_RUN.includes(actionKind) ? "reveal-then-run" : "run";
+}
+
 /** What the owner last chose, if this window can remember anything. */
 export function storedMode(): string | null {
   try {

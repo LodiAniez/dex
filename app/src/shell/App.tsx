@@ -19,7 +19,7 @@ import {
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { currentKeymap, useUiSettings, watchConfig } from "../platform/config";
 import { showError } from "../platform/notices";
-import { focusTerminal, setShortcutFilter } from "../platform/terminalRegistry";
+import { focusTerminal, setShortcutFilter, suspendTerminalFocus } from "../platform/terminalRegistry";
 import { watchUpdates } from "../platform/update";
 import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
 import { WorkspaceLayout } from "./LayoutView";
@@ -28,7 +28,7 @@ import { neighborPane } from "./paneGeometry";
 import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
 import { Setup } from "./SetupPanel";
 import { Sidebar } from "./Sidebar";
-import { chooseMode, modeOfAction, rememberMode, showsPanes, storedMode, type ViewMode } from "./viewMode";
+import { chooseMode, modeOfAction, rememberMode, showsPanes, storedMode, whenPanesHidden, type ViewMode } from "./viewMode";
 import { TitleBar } from "./TitleBar";
 
 const SIDEBAR_PREF = "dex.sidebarOpen";
@@ -115,14 +115,18 @@ export function App() {
     rememberMode(next);
     setChosen(next);
   };
-  /** Back to the terminals, on this pane. */
+  /** To the terminals, on this pane: what every "take me to that pane" means, from any view. */
   const goToPane = (paneId: string) => {
     chooseView("terminal");
     run(focusPane(paneId));
   };
+  // The toast listener is installed once; it reaches this through a ref.
+  const goToPaneRef = useRef(goToPane);
+  goToPaneRef.current = goToPane;
   // The keyboard follows the view: a terminal hidden under the office must not
   // keep taking keystrokes, and coming back should land in the focused pane.
   useEffect(() => {
+    suspendTerminalFocus(!showsPanes(mode));
     if (showsPanes(mode)) {
       const pane = activePane();
       if (pane) focusTerminal(pane);
@@ -156,7 +160,7 @@ export function App() {
   useEffect(() => {
     const unlisten = listen<{ workspace: string; pane: string }>("dex://focus-pane", (event) => {
       run(switchWorkspace(event.payload.workspace));
-      run(focusPane(event.payload.pane));
+      goToPaneRef.current(event.payload.pane);
     });
     return () => void unlisten.then((stop) => stop());
   }, []);
@@ -171,6 +175,11 @@ export function App() {
 
   const perform = (action: AppAction) => {
     const pane = activePane();
+    if (!showsPanes(mode)) {
+      const hidden = whenPanesHidden(action.kind);
+      if (hidden !== "run") chooseView("terminal");
+      if (hidden === "reveal") return;
+    }
     switch (action.kind) {
       case "command-palette":
         setPaletteOpen((open) => !open);
@@ -270,7 +279,7 @@ export function App() {
         return run(switchWorkspace(item.id));
       case "pane":
         run(switchWorkspace(item.workspaceId));
-        return run(focusPane(item.id));
+        return goToPane(item.id);
       case "command": {
         const action = ACTIONS[item.action];
         if (action) perform(action);
@@ -289,7 +298,15 @@ export function App() {
         title={active?.name}
         color={active?.color}
         counts={agentCounts(agents)}
-        onShowActivity={active ? () => run(showActivity(active)) : undefined}
+        onShowActivity={
+          active
+            ? () => {
+                // The stream opens as a pane, so the panes have to be what is on screen.
+                chooseView("terminal");
+                run(showActivity(active));
+              }
+            : undefined
+        }
         view={active ? { mode, onChoose: chooseView } : undefined}
       />
       <div className="app-body">
