@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgents } from "../agents";
 import type { Employee } from "./officeStore";
 import type { Persona } from "./persona";
-import { DOOR_PAUSE, enqueue, movements, routeOf, type Walk } from "./walks";
+import { DOOR_PAUSE, deliveries, enqueue, movements, routeOf, type Walk } from "./walks";
 
 /** A walk, and who is doing it — kept with the walk because a leaver is no longer on the staff. */
 export interface StaffWalk extends Walk {
@@ -21,7 +21,19 @@ function prefersStill(): boolean {
  * Lives with the map, so nobody is kept waiting by a view that cannot show them:
  * the cards view seats a new hire at once.
  */
-export function useWalks(workspaceId: string, employees: readonly Employee[]): { queue: StaffWalk[]; finish: () => void } {
+/** The part of an activity event a delivery is read from. */
+interface LoggedEvent {
+  seq: number;
+  kind: string;
+  agent_id: string | null;
+  target_agent_id: string | null;
+}
+
+export function useWalks(
+  workspaceId: string,
+  employees: readonly Employee[],
+  events: readonly LoggedEvent[] | undefined,
+): { queue: StaffWalk[]; finish: () => void } {
   const list = useAgents();
   const [queue, setQueue] = useState<StaffWalk[]>([]);
   const before = useRef<NonNullable<typeof list>["agents"] | null>(null);
@@ -42,6 +54,26 @@ export function useWalks(workspaceId: string, employees: readonly Employee[]): {
     if (walks.length > 0) setQueue((current) => enqueue(current, walks, { still: prefersStill() }));
   }, [list, employees, workspaceId]);
 
+  // Messages become trips: the sender walks to the recipient's desk and back.
+  // Whatever was already in the log when the map opened happened before anyone
+  // was watching, so only what comes after it walks.
+  const sinceSeq = useRef<number | null>(null);
+  useEffect(() => {
+    if (!events) return;
+    const newest = events.reduce((max, event) => Math.max(max, event.seq), 0);
+    if (sinceSeq.current === null) {
+      sinceSeq.current = newest;
+      return;
+    }
+    const seats = new Map(employees.map(({ agent, pod }) => [agent.id, pod]));
+    const trips = deliveries(events, sinceSeq.current, seats).flatMap((walk): StaffWalk[] => {
+      const sender = employees.find(({ agent }) => agent.id === walk.id);
+      return sender ? [{ ...walk, persona: sender.persona }] : [];
+    });
+    sinceSeq.current = newest;
+    if (trips.length > 0) setQueue((current) => enqueue(current, trips, { still: prefersStill() }));
+  }, [events, employees]);
+
   return { queue, finish: () => setQueue((current) => current.slice(1)) };
 }
 
@@ -61,7 +93,7 @@ export function Walker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }
     setStep(-1);
     setFading(false);
     const timers: ReturnType<typeof setTimeout>[] = [];
-    // A new hire pauses at HR's door; a leaver needs only a frame to be drawn where they sat.
+    // A new hire pauses at HR's door; anyone leaving a desk needs only a frame to be drawn where they sat.
     let at = walk.kind === "arrive" ? DOOR_PAUSE : 0.05;
     routeOf(walk).legs.forEach((leg, i) => {
       timers.push(setTimeout(() => setStep(i), at * 1000));
@@ -73,16 +105,19 @@ export function Walker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }
     }
     timers.push(setTimeout(() => done.current(), at * 1000));
     return () => timers.forEach(clearTimeout);
-  }, [walk.id, walk.kind, walk.pod]);
+  }, [walk.id, walk.kind, walk.pod, walk.to, walk.key]);
 
   const at = step < 0 ? from : legs[step];
   const leg = step < 0 ? null : legs[step];
+  const before = step <= 0 ? from : legs[step - 1];
   // Down the side and into the pod ease; the long corridor is a steady walk.
-  const easing = leg && leg.x !== (step === 0 ? from.x : legs[step - 1].x) ? "linear" : "ease-in-out";
+  const easing = leg && leg.x !== before.x ? "linear" : "ease-in-out";
+  // Standing at a colleague's desk handing something over is not walking.
+  const moving = leg !== null && (leg.x !== before.x || leg.y !== before.y);
   const { persona } = walk;
   return (
     <g
-      className={`office-walker${step >= 0 && !fading ? " walking" : ""}`}
+      className={`office-walker${moving && !fading ? " walking" : ""}`}
       style={{
         transform: `translate(${at.x}px, ${at.y}px)`,
         transition: leg ? `transform ${leg.seconds}s ${easing}, opacity ${FADE_SECONDS}s` : `opacity ${FADE_SECONDS}s`,
@@ -99,8 +134,8 @@ export function Walker({ walk, onDone }: { walk: StaffWalk; onDone: () => void }
         <path className="office-leg-a" d="M19 42 L19 56" stroke="#3f4554" strokeWidth="8" strokeLinecap="round" />
         <path className="office-leg-b" d="M29 42 L29 56" stroke="#3f4554" strokeWidth="8" strokeLinecap="round" />
         <path d="M12 46 v-12 a12 12 0 0 1 24 0 v12 z" fill={persona.shirt} />
-        {/* A laptop under one arm. */}
-        <rect x="34" y="30" width="11" height="12" rx="3" fill="#262b36" />
+        {/* Under one arm: a laptop, or the message being carried. */}
+        <rect x="34" y="30" width="11" height="12" rx="3" fill={walk.kind === "deliver" ? "#f8f5ec" : "#262b36"} />
         <circle cx="24" cy="16" r="11" fill={persona.skin} />
         <ellipse cx="24" cy="7" rx="12" ry="6" fill={persona.hair} />
       </g>

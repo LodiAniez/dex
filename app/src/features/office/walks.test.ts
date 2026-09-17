@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { HR_DOOR, enqueue, legsTo, movements, routeOf, walkDuration, type Walk } from "./walks";
+import { HR_DOOR, VISIT_SECONDS, awayFromDesk, deliveries, enqueue, legsTo, movements, routeOf, walkDuration, type Walk } from "./walks";
 
 const agent = (id: string, extra: Partial<{ status: AgentStatus; parent_id: string | null; depth: number; workspace_id: string }> = {}) => ({
   id,
@@ -89,6 +89,7 @@ describe("the corridor", () => {
     // The speaker stands in the corridor from x = 1100; a walker is 48 wide.
     for (let pod = 0; pod < 12; pod += 1) {
       for (const leg of legsTo(pod)) expect(leg.x + 48, `pod ${pod}`).toBeLessThan(1100);
+      for (const leg of routeOf({ kind: "deliver", pod: 0, to: pod }).legs) expect(leg.x + 48, `visit to ${pod}`).toBeLessThan(1100);
     }
   });
 });
@@ -140,5 +141,99 @@ describe("enqueue", () => {
 
   it("queues nothing for someone who has asked for less motion", () => {
     expect(enqueue([], [walk("a")], { still: true })).toEqual([]);
+  });
+});
+
+describe("deliveries", () => {
+  const seats = new Map([["lead", 0], ["a", 1], ["b", 4]]);
+  const message = (seq: number, from: string | null, to: string | null) => ({ seq, kind: "message", agent_id: from, target_agent_id: to });
+
+  it("walks the sender to each recipient's desk, a trip per message", () => {
+    const walks = deliveries([message(7, "lead", "a"), message(8, "lead", "b")], 6, seats);
+    expect(walks).toEqual([
+      { kind: "deliver", id: "lead", pod: 0, to: 1, key: "m7" },
+      { kind: "deliver", id: "lead", pod: 0, to: 4, key: "m8" },
+    ]);
+  });
+
+  it("walks nobody for a message that was already there when the office opened", () => {
+    expect(deliveries([message(5, "lead", "a")], 6, seats)).toEqual([]);
+  });
+
+  it("walks nobody for a memo from the owner, who has no desk to walk from", () => {
+    expect(deliveries([message(7, null, "a")], 0, seats)).toEqual([]);
+  });
+
+  it("walks nobody to or from someone who is not at a desk here, or to themselves", () => {
+    expect(deliveries([message(7, "lead", "gone"), message(8, "gone", "a"), message(9, "a", "a")], 0, seats)).toEqual([]);
+  });
+
+  it("ignores everything that is not a message", () => {
+    expect(deliveries([{ seq: 9, kind: "note", agent_id: "lead", target_agent_id: null }], 0, seats)).toEqual([]);
+  });
+});
+
+describe("a delivery's route", () => {
+  it("goes out along the corridor, waits at the desk, and comes back the same way", () => {
+    const route = routeOf({ kind: "deliver", pod: 0, to: 2 });
+    expect(route.from).toEqual({ x: 420, y: 210 });
+    const stops = route.legs.map(({ x, y }) => [x, y]);
+    expect(stops).toEqual([
+      [420, 400], // out of their own pod
+      [990, 400], // along the corridor
+      [990, 240], // in beside the recipient, not on top of them
+      [990, 240], // the message is handed over
+      [990, 400],
+      [420, 400],
+      [420, 210], // and home
+    ]);
+    expect(route.legs[3].seconds).toBe(VISIT_SECONDS);
+  });
+
+  it("uses the side aisle between corridors, never a row of desks", () => {
+    const stops = routeOf({ kind: "deliver", pod: 1, to: 7 }).legs.map(({ x, y }) => [x, y]);
+    expect(stops.slice(0, 5)).toEqual([
+      [730, 400],
+      [HR_DOOR.x, 400],
+      [HR_DOOR.x, 1100],
+      [680, 1100],
+      [680, 940],
+    ]);
+  });
+
+  it("takes time in proportion to the distance", () => {
+    const near = walkDuration(routeOf({ kind: "deliver", pod: 0, to: 1 }).legs);
+    const far = walkDuration(routeOf({ kind: "deliver", pod: 0, to: 2 }).legs);
+    expect(far).toBeGreaterThan(near);
+  });
+});
+
+describe("enqueue, with deliveries", () => {
+  const deliver = (id: string, to: number, key: string): Walk => ({ kind: "deliver", id, pod: 0, to, key });
+
+  it("queues several trips by one sender, which share an id and a kind", () => {
+    const queue = enqueue([], [deliver("lead", 1, "m7"), deliver("lead", 2, "m8")]);
+    expect(queue.map((w) => w.key)).toEqual(["m7", "m8"]);
+  });
+
+  it("does not queue the same message twice", () => {
+    expect(enqueue([deliver("lead", 1, "m7")], [deliver("lead", 1, "m7")])).toHaveLength(1);
+  });
+
+  it("drops the trips of a sender who has left before setting off", () => {
+    const queue = enqueue([deliver("x", 1, "m1"), deliver("lead", 1, "m7"), deliver("lead", 2, "m8")], [{ kind: "leave", id: "lead", pod: 0 }]);
+    expect(queue.map((w) => `${w.kind}:${w.id}`)).toEqual(["deliver:x", "leave:lead"]);
+  });
+});
+
+describe("awayFromDesk", () => {
+  it("is whoever is out delivering right now, and nobody who is only waiting to", () => {
+    const queue: Walk[] = [
+      { kind: "deliver", id: "lead", pod: 0, to: 1, key: "m7" },
+      { kind: "deliver", id: "a", pod: 1, to: 0, key: "m8" },
+    ];
+    expect(awayFromDesk(queue)).toBe("lead");
+    expect(awayFromDesk([{ kind: "arrive", id: "new", pod: 3 }])).toBeNull();
+    expect(awayFromDesk([])).toBeNull();
   });
 });

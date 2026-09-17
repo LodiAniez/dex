@@ -18,7 +18,8 @@ interface Tracked {
 }
 
 export interface Movement {
-  kind: "arrive" | "leave";
+  /** A hire coming in, someone who has ended going out, or a message being carried to a desk. */
+  kind: "arrive" | "leave" | "deliver";
   id: string;
 }
 
@@ -66,11 +67,10 @@ export interface Leg {
 /** From HR's door to pod `pod`: down to its corridor, along it, and in. Never through a desk. */
 export function legsTo(pod: number): Leg[] {
   const origin = podOrigin(pod);
-  const corridor = FIRST_CORRIDOR + Math.floor(Math.floor(pod / PODS_PER_ROW) / 2) * CORRIDOR_STEP;
+  const corridor = corridorOf(pod);
   const x = origin.x + INTO_POD;
   const y = origin.y + INTO_POD;
-  // To the millisecond: these become CSS durations, and 0.9000000000000001 s is nobody's friend.
-  const timed = (distance: number, pace: number) => Math.round(Math.abs(distance) * pace * 1000) / 1000;
+  // `timed` rounds to the millisecond: these become CSS durations, and 0.9000000000000001 s is nobody's friend.
   return [
     { x: HR_DOOR.x, y: corridor, seconds: timed(corridor - HR_DOOR.y, PACE.down) },
     { x, y: corridor, seconds: timed(x - HR_DOOR.x, PACE.across) },
@@ -79,12 +79,50 @@ export function legsTo(pod: number): Leg[] {
 }
 
 export interface Walk extends Movement {
-  /** The pod walked to, or from. */
+  /** The walker's own pod: where a hire is going, and where everyone else starts. */
   pod: number;
+  /** For a delivery, the pod being visited. */
+  to?: number;
+  /** What makes this walk itself and no other; without one, its kind and who walks it. */
+  key?: string;
+}
+
+/** A visitor stands this far inside the pod they are visiting: beside the chair of whoever sits there, not on them or their desk. */
+const VISIT_INTO_POD = { x: 30, y: 110 } as const;
+/** How long a message takes to hand over. */
+export const VISIT_SECONDS = 1;
+
+const timed = (distance: number, pace: number) => Math.round(Math.abs(distance) * pace * 1000) / 1000;
+
+function corridorOf(pod: number): number {
+  return FIRST_CORRIDOR + Math.floor(Math.floor(pod / PODS_PER_ROW) / 2) * CORRIDOR_STEP;
+}
+
+/**
+ * From a desk to a colleague's and back. Out to the corridor, along it, and in
+ * beside them; if they sit off another corridor, by the aisle outside HR and
+ * never through a row of desks. Then the same way home.
+ */
+function visit(fromPod: number, toPod: number): { from: { x: number; y: number }; legs: Leg[] } {
+  const home = { x: podOrigin(fromPod).x + INTO_POD, y: podOrigin(fromPod).y + INTO_POD };
+  const there = { x: podOrigin(toPod).x + VISIT_INTO_POD.x, y: podOrigin(toPod).y + VISIT_INTO_POD.y };
+  const [near, far] = [corridorOf(fromPod), corridorOf(toPod)];
+  const stops = [home, { x: home.x, y: near }];
+  if (near !== far) stops.push({ x: HR_DOOR.x, y: near }, { x: HR_DOOR.x, y: far });
+  stops.push({ x: there.x, y: far }, there);
+  const leg = (a: { x: number; y: number }, b: { x: number; y: number }): Leg => ({
+    ...b,
+    seconds: a.x !== b.x ? timed(b.x - a.x, PACE.across) : timed(b.y - a.y, PACE.down),
+  });
+  const out = stops.slice(1).map((stop, i) => leg(stops[i], stop));
+  const back = [...stops].reverse();
+  const home_again = back.slice(1).map((stop, i) => leg(back[i], stop));
+  return { from: home, legs: [...out, { ...there, seconds: VISIT_SECONDS }, ...home_again] };
 }
 
 /** Where a walk starts and the legs it takes: an arrival's route, or the same one backwards. */
-export function routeOf(walk: Pick<Walk, "kind" | "pod">): { from: { x: number; y: number }; legs: Leg[] } {
+export function routeOf(walk: Pick<Walk, "kind" | "pod" | "to">): { from: { x: number; y: number }; legs: Leg[] } {
+  if (walk.kind === "deliver") return visit(walk.pod, walk.to ?? walk.pod);
   const legs = legsTo(walk.pod);
   if (walk.kind === "arrive") return { from: { ...HR_DOOR }, legs };
   const stops = [{ ...HR_DOOR }, ...legs.map(({ x, y }) => ({ x, y }))];
@@ -107,14 +145,46 @@ export function walkDuration(legs: readonly Leg[]): number {
 export function enqueue<T extends Walk>(queue: readonly T[], walks: readonly T[], options: { still?: boolean } = {}): T[] {
   if (options.still) return [];
   let next = [...queue];
+  const same = (a: Walk, b: Walk) => (a.key !== undefined || b.key !== undefined ? a.key === b.key : a.id === b.id && a.kind === b.kind);
   for (const walk of walks) {
-    if (next.some((queued) => queued.id === walk.id && queued.kind === walk.kind)) continue;
-    const waiting = next.findIndex((queued, i) => i > 0 && queued.id === walk.id && queued.kind === "arrive");
-    if (walk.kind === "leave" && waiting > 0) {
-      next = next.filter((_, i) => i !== waiting);
-      continue;
+    if (next.some((queued) => same(queued, walk))) continue;
+    if (walk.kind === "leave") {
+      const arriving = next.some((queued, i) => i > 0 && queued.id === walk.id && queued.kind === "arrive");
+      // Whatever they had not yet set off on, they never will.
+      next = next.filter((queued, i) => i === 0 || queued.id !== walk.id);
+      if (arriving) continue;
     }
     next.push(walk);
   }
   return next;
+}
+
+interface MessageEvent {
+  seq: number;
+  kind: string;
+  agent_id: string | null;
+  target_agent_id: string | null;
+}
+
+/**
+ * The messages newer than `sinceSeq` as trips: the sender walks to the
+ * recipient's desk and back, one trip per message. Only between two people at
+ * desks here - a memo from the owner has nobody to carry it, and nowhere to
+ * carry it from.
+ */
+export function deliveries(events: readonly MessageEvent[], sinceSeq: number, seats: ReadonlyMap<string, number>): Walk[] {
+  const walks: Walk[] = [];
+  for (const event of events) {
+    if (event.kind !== "message" || event.seq <= sinceSeq) continue;
+    const from = event.agent_id === null ? undefined : seats.get(event.agent_id);
+    const to = event.target_agent_id === null ? undefined : seats.get(event.target_agent_id);
+    if (event.agent_id === null || from === undefined || to === undefined || from === to) continue;
+    walks.push({ kind: "deliver", id: event.agent_id, pod: from, to, key: `m${event.seq}` });
+  }
+  return walks;
+}
+
+/** Whoever is out delivering right now, whose desk should therefore be shown empty. */
+export function awayFromDesk(queue: readonly Walk[]): string | null {
+  return queue[0]?.kind === "deliver" ? queue[0].id : null;
 }

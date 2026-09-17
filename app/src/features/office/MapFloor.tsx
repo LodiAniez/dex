@@ -6,6 +6,7 @@ import type { Employee, Office } from "./officeStore";
 import type { ChatLine } from "./phrasing";
 import { Pod, VacantPod } from "./Pod";
 import { Walker, useWalks } from "./Walker";
+import { awayFromDesk } from "./walks";
 
 /** Pods in the design's two rows; a map that size fits the pane, a taller one scrolls. */
 const FITTING_PODS = 6;
@@ -18,6 +19,8 @@ interface Props {
   hrNote: string;
   /** The last few things that happened, as the office would say them. */
   chat: readonly ChatLine[];
+  /** The workspace's activity: a message in it becomes a walk to the recipient's desk. */
+  events: readonly { seq: number; kind: string; agent_id: string | null; target_agent_id: string | null }[] | undefined;
   onPick: (employee: Employee) => void;
   onHire: () => void;
   onAnnounce: () => void;
@@ -28,9 +31,10 @@ interface Props {
  * pane: everything on it — name tags and HR's button included — is inside, so
  * nothing drifts off its desk when the pane is resized.
  */
-export function MapFloor({ workspaceId, office, seats, hrNote, chat, onPick, onHire, onAnnounce }: Props) {
+export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onPick, onHire, onAnnounce }: Props) {
   // One person crosses the floor at a time; the rest wait their turn at HR.
-  const { queue, finish } = useWalks(workspaceId, office.employees);
+  const { queue, finish } = useWalks(workspaceId, office.employees, events);
+  const away = awayFromDesk(queue);
   const onTheirWay = new Set(queue.filter((walk) => walk.kind === "arrive").map((walk) => walk.id));
   const height = mapHeight(office.pods.length);
   const fits = office.pods.length <= FITTING_PODS;
@@ -57,7 +61,7 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, onPick, onH
             // Theirs already, but they have not reached it yet.
             <VacantPod key={`reserved-${pod}`} pod={pod} sign={`reserved for ${employee.persona.name}`} />
           ) : employee ? (
-            <Pod key={employee.agent.id} employee={employee} onPick={onPick} />
+            <Pod key={employee.agent.id} employee={employee} away={away === employee.agent.id} onPick={onPick} />
           ) : (
             <VacantPod key={`vacant-${pod}`} pod={pod} />
           ),
@@ -82,7 +86,7 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, onPick, onH
             </div>
           </foreignObject>
         )}
-        {queue[0] && <Walker key={`${queue[0].kind}-${queue[0].id}`} walk={queue[0]} onDone={finish} />}
+        {queue[0] && <Walker key={queue[0].key ?? `${queue[0].kind}-${queue[0].id}`} walk={queue[0]} onDone={finish} />}
       </svg>
     </div>
   );
