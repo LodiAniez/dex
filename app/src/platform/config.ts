@@ -7,7 +7,7 @@ import { buildKeymap, SHIPPED_KEYMAP, type Keymap } from "../shell/keybindings";
 
 /**
  * The owner's settings, as far as the UI is concerned: the keymap, and the
- * few values the office draws from.
+ * few values the views draw from.
  *
  * Read once at startup and again whenever the daemon announces `config`, so an
  * edit to `config.toml` rebinds keys without a restart. Until the first answer
@@ -17,17 +17,17 @@ import { buildKeymap, SHIPPED_KEYMAP, type Keymap } from "../shell/keybindings";
 let keymap: Keymap = SHIPPED_KEYMAP;
 const listeners = new Set<() => void>();
 
-/** What the office needs to know; null until the daemon has answered once. */
-export interface OfficeSettings {
+/** What the views need to know; null until the daemon has answered once. */
+export interface UiSettings {
   /** How many agents a workspace may have: the office's seats. */
   maxConcurrent: number;
   /** `[ui] view`: how a workspace is shown until the owner chooses. */
-  officeView: string;
+  view: string;
 }
-let office: OfficeSettings | null = null;
+let ui: UiSettings | null = null;
 
-export function useOfficeSettings(): OfficeSettings | null {
-  return useSyncExternalStore(subscribeKeymap, () => office);
+export function useUiSettings(): UiSettings | null {
+  return useSyncExternalStore(subscribeKeymap, () => ui);
 }
 
 /** The bindings in force. Read on every keystroke, so it must stay a lookup. */
@@ -46,8 +46,8 @@ async function refresh(): Promise<void> {
   const view = await request<ConfigView>("config.get", {});
   const built = buildKeymap(view.keys);
   keymap = built.keymap;
-  if (office?.maxConcurrent !== view.max_concurrent || office.officeView !== view.view) {
-    office = { maxConcurrent: view.max_concurrent, officeView: view.view };
+  if (ui?.maxConcurrent !== view.max_concurrent || ui.view !== view.view) {
+    ui = { maxConcurrent: view.max_concurrent, view: view.view };
   }
   for (const listener of listeners) listener();
   // The daemon reports what it could not use; this reports what the UI could

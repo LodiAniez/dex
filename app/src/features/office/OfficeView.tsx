@@ -5,8 +5,8 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "./office.css";
 import "./map.css";
 import "./panel.css";
-import { useEffect, useMemo, useState } from "react";
-import { useOfficeSettings } from "../../platform/config";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useUiSettings } from "../../platform/config";
 import { useActivity, watchActivity } from "../activity";
 import { useWorkspaces } from "../workspaces";
 import { CardsFloor } from "./CardsFloor";
@@ -14,9 +14,17 @@ import { headcount, hrNote } from "./floor";
 import { HireDialog } from "./HireDialog";
 import { MapFloor } from "./MapFloor";
 import { useOffice, useScreens, type Employee } from "./officeStore";
-import { chooseView, rememberView, storedView, type OfficeViewKind } from "./officeView";
 import { chatLines } from "./phrasing";
 import { PANEL_SCREEN_LINES, WorkPanel } from "./WorkPanel";
+
+interface Props {
+  workspaceId: string;
+  view: "cards" | "office";
+  /** Leaves the view for the terminals, on this pane. */
+  onGoToPane: (paneId: string) => void;
+  /** The control that changes view, shown in the pill at the foot beside the headcount. */
+  switcher: ReactNode;
+}
 
 /** Seats to draw before the daemon has said how many there are: its own default. */
 const DEFAULT_SEATS = 6;
@@ -29,18 +37,17 @@ const CHAT_LINES = 3;
  * The workspace's agents as a team in an office: who is here, what each was
  * asked to do, and what is on their screen. A projection of what the daemon
  * already tracks — nothing here changes an agent except what a human clicks.
+ *
+ * Which of its two faces to show is the caller's business: the views are
+ * chosen for the whole workspace, from the title bar.
  */
-export function OfficePane({ workspaceId }: { workspaceId: string }) {
-  const settings = useOfficeSettings();
+export function OfficeView({ workspaceId, view, onGoToPane, switcher }: Props) {
+  const settings = useUiSettings();
   const maxConcurrent = settings?.maxConcurrent ?? DEFAULT_SEATS;
   const office = useOffice(workspaceId, maxConcurrent);
   const workspace = useWorkspaces()?.workspaces.find((ws) => ws.id === workspaceId);
   // One poll serves both: the panel wants more lines than a card shows.
   const screens = useScreens(office.employees, PANEL_SCREEN_LINES);
-  // What the owner clicks wins over their config from then on, in this pane
-  // and the next; until they click, the config decides, even if it changes.
-  const [clicked, setClicked] = useState<string | null>(storedView);
-  const view = chooseView(clicked, settings?.officeView);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [hiring, setHiring] = useState(false);
   const [refused, setRefused] = useState(false);
@@ -64,10 +71,6 @@ export function OfficePane({ workspaceId }: { workspaceId: string }) {
   // Whoever is picked may leave while their panel is open; it closes with them.
   const picked = office.employees.find((employee) => employee.agent.id === pickedId);
 
-  const choose = (next: OfficeViewKind) => {
-    rememberView(next);
-    setClicked(next);
-  };
   const pick = (employee: Employee) => setPickedId(employee.agent.id);
   const hire = () => {
     setRefused(false);
@@ -75,7 +78,14 @@ export function OfficePane({ workspaceId }: { workspaceId: string }) {
   };
 
   return (
-    <div className="office">
+    <div className={`office ${view}`}>
+      {workspace && (
+        <div className="office-title">
+          <span className="office-title-dot" style={{ background: workspace.color ?? "#d85a30" }} />
+          {workspace.name} — the office
+          <span className="office-title-dex">dex</span>
+        </div>
+      )}
       {view === "cards" ? (
         <CardsFloor office={office} seats={seats} hrNote={note} cardLines={CARD_LINES} screens={screens} onPick={pick} onHire={hire} />
       ) : (
@@ -87,6 +97,7 @@ export function OfficePane({ workspaceId }: { workspaceId: string }) {
           employee={picked}
           staff={office.employees}
           screen={screens.get(picked.agent.id) ?? []}
+          onGoToPane={onGoToPane}
           onClose={() => setPickedId(null)}
         />
       )}
@@ -97,14 +108,7 @@ export function OfficePane({ workspaceId }: { workspaceId: string }) {
         <span className="office-count">
           headcount {seats.used}/{seats.max}
         </span>
-        <span className="office-seg" role="group" aria-label="Office view">
-          <button type="button" aria-pressed={view === "cards"} onClick={() => choose("cards")}>
-            Cards
-          </button>
-          <button type="button" aria-pressed={view === "office"} onClick={() => choose("office")}>
-            Office
-          </button>
-        </span>
+        {switcher}
       </div>
     </div>
   );

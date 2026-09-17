@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ActivityPane } from "../features/activity";
 import { AgentBadge, agentInPane, useAgents } from "../features/agents";
-import { OfficePane } from "../features/office";
 import { DiffPane, MarkdownPane, TerminalPane } from "../features/panes";
 import { closePane, focusPane, setLayout } from "../features/workspaces";
 import type { Layout } from "../platform/generated/Layout";
@@ -140,8 +139,6 @@ function PaneBody({ pane, workspaceId, active }: { pane: PaneView; workspaceId: 
       return <DiffPane cwd={pane.cwd} />;
     case "markdown":
       return <MarkdownPane paneId={pane.id} />;
-    case "office":
-      return <OfficePane workspaceId={workspaceId} />;
     default:
       return runsShell(pane.kind) ? (
         <TerminalPane paneId={pane.id} workspaceId={workspaceId} cwd={pane.cwd} active={active} />

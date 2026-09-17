@@ -15,7 +15,9 @@ export type AppAction =
   | { kind: "cycle-layout" }
   | { kind: "command-palette" }
   | { kind: "open-diff" }
-  | { kind: "open-office" }
+  | { kind: "view-terminal" }
+  | { kind: "view-cards" }
+  | { kind: "view-office" }
   | { kind: "open-setup" };
 
 const DIRECTIONS: Direction[] = ["left", "right", "up", "down"];
@@ -40,7 +42,9 @@ export const ACTIONS: Record<string, AppAction> = {
   "cycle-layout": { kind: "cycle-layout" },
   // Palette-only unless the owner binds them: PRD §13 gives them no key.
   "open-diff": { kind: "open-diff" },
-  "open-office": { kind: "open-office" },
+  "view-terminal": { kind: "view-terminal" },
+  "view-cards": { kind: "view-cards" },
+  "view-office": { kind: "view-office" },
   "open-setup": { kind: "open-setup" },
   ...Object.fromEntries(
     DIRECTIONS.flatMap((direction): [string, AppAction][] => [

@@ -88,10 +88,65 @@ body,
 }
 
 .workspace-area {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
+}
+
+/* The cards and office views: over the whole workspace area. The panes stay
+   mounted underneath at their real size, so their shells keep running and a
+   pane created while a view is up still starts. */
+.view-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  outline: none;
+  background: var(--bg);
+}
+
+/* Terminal · Cards · Office. */
+.view-switch {
+  display: inline-flex;
+  padding: 3px;
+  background: #0f131b;
+  border: 1px solid #262c3a;
+  border-radius: 999px;
+}
+
+.view-switch button {
+  height: 28px;
+  padding: 0 14px;
+  color: #8a93a6;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.view-switch button:hover {
+  color: #e6e9ef;
+}
+
+.view-switch button[aria-pressed="true"] {
+  color: #f2ead8;
+  background: #3a4152;
+}
+
+/* In the title bar it has to fit a 32px strip. */
+.view-switch.compact {
+  padding: 1px;
+}
+
+.view-switch.compact button {
+  height: 20px;
+  padding: 0 9px;
+  font-size: 11.5px;
 }
 
 .split,

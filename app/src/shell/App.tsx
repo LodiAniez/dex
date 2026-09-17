@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { agentCounts, loadAgents, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
-import { officeNameOf } from "../features/office";
+import { OfficeView, officeNameOf } from "../features/office";
 import { CommandPalette, type PaletteItem } from "../features/palette";
 import {
   closePane,
@@ -11,14 +11,13 @@ import {
   getWorkspaces,
   loadWorkspaces,
   showActivity,
-  showOffice,
   splitPane,
   swapPanes,
   switchWorkspace,
   useWorkspaces,
 } from "../features/workspaces";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
-import { currentKeymap, watchConfig } from "../platform/config";
+import { currentKeymap, useUiSettings, watchConfig } from "../platform/config";
 import { showError } from "../platform/notices";
 import { focusTerminal, setShortcutFilter } from "../platform/terminalRegistry";
 import { watchUpdates } from "../platform/update";
@@ -29,6 +28,8 @@ import { neighborPane } from "./paneGeometry";
 import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
 import { Setup } from "./SetupPanel";
 import { Sidebar } from "./Sidebar";
+import { ViewSwitch } from "./ViewSwitch";
+import { chooseMode, modeOfAction, rememberMode, showsPanes, storedMode, type ViewMode } from "./viewMode";
 import { TitleBar } from "./TitleBar";
 
 const SIDEBAR_PREF = "dex.sidebarOpen";
@@ -104,6 +105,32 @@ export function App() {
   const [setupOpen, setSetupOpen] = useState(false);
 
   const agents = useAgents();
+
+  // What the owner clicks wins over their config from then on; until they
+  // click, the config decides, even if it changes while Dex is open.
+  const settings = useUiSettings();
+  const [chosen, setChosen] = useState<string | null>(storedMode);
+  const mode = chooseMode(chosen, settings?.view);
+  const overlay = useRef<HTMLDivElement>(null);
+  const chooseView = (next: ViewMode) => {
+    rememberMode(next);
+    setChosen(next);
+  };
+  /** Back to the terminals, on this pane. */
+  const goToPane = (paneId: string) => {
+    chooseView("terminal");
+    run(focusPane(paneId));
+  };
+  // The keyboard follows the view: a terminal hidden under the office must not
+  // keep taking keystrokes, and coming back should land in the focused pane.
+  useEffect(() => {
+    if (showsPanes(mode)) {
+      const pane = activePane();
+      if (pane) focusTerminal(pane);
+    } else {
+      overlay.current?.focus();
+    }
+  }, [mode]);
 
   /** Runs `dex doctor`; opens the panel only when it should offer itself. */
   const checkSetup = async (offer: boolean) => {
@@ -197,10 +224,11 @@ export function App() {
         setZoomed(null);
         if (pane) run(splitPane(pane, "right", "diff"));
         return;
-      case "open-office": {
-        setZoomed(null);
-        const ws = activeWorkspace();
-        if (ws) run(showOffice(ws));
+      case "view-terminal":
+      case "view-cards":
+      case "view-office": {
+        const next = modeOfAction(action.kind);
+        if (next) chooseView(next);
         return;
       }
       case "open-setup":
@@ -263,7 +291,7 @@ export function App() {
         color={active?.color}
         counts={agentCounts(agents)}
         onShowActivity={active ? () => run(showActivity(active)) : undefined}
-        onShowOffice={active ? () => run(showOffice(active)) : undefined}
+        view={active ? { mode, onChoose: chooseView } : undefined}
       />
       <div className="app-body">
         <Sidebar
@@ -272,7 +300,21 @@ export function App() {
           onToggle={() => setSidebarOpen((open) => !open)}
           onCreatingChange={setCreating}
         />
-        <main className="workspace-area">{active && <WorkspaceLayout workspace={active} zoomed={zoomedHere} />}</main>
+        <main className="workspace-area">
+          {/* Always mounted: a pane's shell starts when its terminal first attaches,
+              so an agent hired from the office needs its pane to exist underneath. */}
+          {active && <WorkspaceLayout workspace={active} zoomed={zoomedHere} />}
+          {active && !showsPanes(mode) && (
+            <div className="view-overlay" ref={overlay} tabIndex={-1}>
+              <OfficeView
+                workspaceId={active.id}
+                view={mode === "office" ? "office" : "cards"}
+                onGoToPane={goToPane}
+                switcher={<ViewSwitch mode={mode} onChoose={chooseView} />}
+              />
+            </div>
+          )}
+        </main>
       </div>
       {paletteOpen && <CommandPalette onRun={runItem} onClose={closePalette} />}
       {setupOpen && setupReport && (

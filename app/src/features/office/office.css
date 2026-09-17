@@ -19,8 +19,8 @@
   background: var(--office-bg);
   color: var(--office-text);
   font-family: "IBM Plex Sans", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-  /* The layout answers to the pane's width, not the window's: a pane is
-     whatever size the owner dragged it to. */
+  /* The layout answers to the width it is given, not the window's: the
+     sidebar takes some of that, and may be open or shut. */
   container-type: inline-size;
 }
 
@@ -44,7 +44,8 @@
   min-height: 0;
   display: flex;
   gap: 16px;
-  padding: 16px;
+  /* Room above for the title tag and below for the pill, as the design has it. */
+  padding: 64px 24px 76px;
   overflow-y: auto;
 }
 
@@ -231,52 +232,55 @@
   font-weight: 500;
 }
 
-/* ---- toolbar ---- */
+/* ---- the tag at the top left, and the pill at the foot ---- */
 
-/* A row of its own under the floor, never floating over it: a pane can be
-   short enough that anything floating would cover what it is there to show. */
+.office-title,
 .office-toolbar {
-  flex: none;
+  position: absolute;
+  z-index: 8;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 6px 12px;
   white-space: nowrap;
-  background: #12151d;
-  border-top: 1px solid var(--office-line);
-}
-
-.office-count {
-  color: #aab3c5;
-  font-size: 12.5px;
-}
-
-.office-seg {
-  display: flex;
-  padding: 3px;
-  background: #0f131b;
+  background: #171b24;
   border: 1px solid var(--office-line);
   border-radius: 999px;
 }
 
-.office-seg button {
-  height: 26px;
-  padding: 0 14px;
-  color: var(--office-dim);
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  font-size: 12.5px;
+.office-title {
+  top: 18px;
+  left: 24px;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 14px;
   font-weight: 500;
 }
 
-.office-seg button[aria-pressed="true"] {
-  color: var(--office-text);
-  background: #2a3142;
+.office-title-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
 }
 
-/* ---- a narrow pane: HR becomes a strip, the grid loses columns ---- */
+.office-title-dex {
+  color: var(--office-dim);
+  font-family: var(--office-mono);
+  font-size: 12px;
+}
+
+.office-toolbar {
+  left: 50%;
+  bottom: 18px;
+  gap: 12px;
+  padding: 6px 8px 6px 18px;
+  transform: translateX(-50%);
+}
+
+.office-count {
+  color: #aab3c5;
+  font-size: 13px;
+}
+
+/* ---- a narrow window: HR becomes a strip, the grid loses columns ---- */
 
 @container (max-width: 760px) {
   .office-cards {

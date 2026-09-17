@@ -1,2 +1,2 @@
-export { OfficePane } from "./OfficePane";
+export { OfficeView } from "./OfficeView";
 export { officeNameOf } from "./officeStore";

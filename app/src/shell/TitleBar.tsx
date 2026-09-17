@@ -1,6 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUpdate, useUpdate } from "../platform/update";
 import { showError } from "../platform/notices";
+import { ViewSwitch } from "./ViewSwitch";
+import type { ViewMode } from "./viewMode";
 
 interface Props {
   /** Active workspace name. */
@@ -11,14 +13,14 @@ interface Props {
   counts: { running: number; waiting: number; error: number };
   /** Opens the workspace's activity stream; absent when no workspace is open. */
   onShowActivity?: () => void;
-  /** Opens the office; absent when no workspace is open. */
-  onShowOffice?: () => void;
+  /** How the workspace is being shown, and how to change it; absent when no workspace is open. */
+  view?: { mode: ViewMode; onChoose: (mode: ViewMode) => void };
 }
 
 // Window decorations are off (PRD §13), so the app draws its own title bar.
 // `data-tauri-drag-region` must be on the exact element under the cursor, so
 // the title text carries it too; the buttons deliberately do not.
-export function TitleBar({ title, color, counts, onShowActivity, onShowOffice }: Props) {
+export function TitleBar({ title, color, counts, onShowActivity, view }: Props) {
   const win = getCurrentWindow();
   const update = useUpdate();
   return (
@@ -38,12 +40,8 @@ export function TitleBar({ title, color, counts, onShowActivity, onShowOffice }:
             activity
           </button>
         )}
-        {/* The same agents, seen as a team rather than as a log. */}
-        {onShowOffice && (
-          <button type="button" className="activity-open" title="Show the office" onClick={onShowOffice}>
-            office
-          </button>
-        )}
+        {/* The same workspace three ways: its panes, its agents as cards, its agents in an office. */}
+        {view && <ViewSwitch compact mode={view.mode} onChoose={view.onChoose} />}
         {/* Only while a newer release exists; clicking opens its page. Nothing
             is downloaded or installed from here — the owner reads the notes
             and runs the installer themselves. */}

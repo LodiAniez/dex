@@ -92,8 +92,10 @@ describe("what the palette offers", () => {
     }
   });
 
-  it("opens the office by the name people will type", () => {
-    expect(COMMAND_LABELS["open-office"]).toBe("Show the office");
+  it("offers each view by the name people will type", () => {
+    expect(COMMAND_LABELS["view-terminal"]).toBe("Terminal view");
+    expect(COMMAND_LABELS["view-cards"]).toBe("Cards view");
+    expect(COMMAND_LABELS["view-office"]).toBe("Office view");
   });
 
   it("offers commands even before the workspaces have loaded", () => {
