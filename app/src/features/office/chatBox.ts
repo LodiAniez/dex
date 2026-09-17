@@ -20,12 +20,22 @@ export function newest(lines: readonly { seq: number }[]): number {
 }
 
 /**
- * How many lines are newer than the last one seen. `seenUpTo` is null for a box
- * that was already minimized when the window opened: nothing is known to be new.
+ * How many lines are newer than the last one seen. `seenUpTo` is null until a
+ * box that was already minimized when the window opened has caught up
+ * (`caughtUp`): nothing is known to be new.
  */
 export function unseen(lines: readonly { seq: number }[], seenUpTo: number | null): number {
   if (seenUpTo === null) return 0;
   return lines.filter((line) => line.seq > seenUpTo).length;
+}
+
+/**
+ * What has been seen, for a box found minimized with nothing on record: what
+ * is there now. Only what comes after it is news.
+ */
+export function caughtUp(seenUpTo: number | null, lines: readonly { seq: number }[]): number | null {
+  if (seenUpTo !== null) return seenUpTo;
+  return lines.length > 0 ? newest(lines) : null;
 }
 
 /** What the badge says. The box only holds so many lines, so a full box of new ones may be more. */

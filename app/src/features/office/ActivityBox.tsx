@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { isMinimized, newest, rememberChoice, storedChoice, unseen, unseenLabel } from "./chatBox";
+import { useEffect, useState } from "react";
+import { caughtUp, isMinimized, newest, rememberChoice, storedChoice, unseen, unseenLabel } from "./chatBox";
 import type { ChatLine } from "./phrasing";
 
 /** Lines of chat the map has room for. */
@@ -24,6 +24,10 @@ export function ActivityBox({ chat, mapHeight }: Props) {
   const [minimized, setMinimized] = useState(() => isMinimized(storedChoice()));
   // The newest line there was when the box was minimized; null if that was before this window opened.
   const [seenUpTo, setSeenUpTo] = useState<number | null>(null);
+  // Found minimized from an earlier session: what is there now is taken as seen, and what comes after is counted.
+  useEffect(() => {
+    if (minimized) setSeenUpTo((seen) => caughtUp(seen, chat));
+  }, [minimized, chat]);
   if (chat.length === 0) return null;
 
   const set = (next: boolean) => {
