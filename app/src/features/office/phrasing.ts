@@ -28,8 +28,12 @@ export interface Who {
   labels: ReadonlyMap<string, string>;
 }
 
-/** The daemon writes a hire as "<parent> started an agent for: <brief>". */
-const HIRED = /started an agent for: (.*)$/s;
+/**
+ * The daemon writes a hire as "<hirer> started an agent for: <brief>", where
+ * the hirer is an agent's label, or "you". The event itself belongs to the
+ * agent that was hired.
+ */
+const HIRED = /^(.*?) started an agent for: (.*)$/s;
 /** And a status change as "<label> is <status>", with the reason in brackets if there is one. */
 const STATUS = / is (\w+)(?: \((.*)\))?$/;
 const MEMO = /^message to (.+)$/;
@@ -49,8 +53,9 @@ export function phrase(event: Event, who: Who): ChatLine {
 
   switch (event.kind) {
     case "spawn": {
-      const brief = HIRED.exec(event.body)?.[1];
-      return brief === undefined ? line(author, event.body) : line("HR", `hired for ${author}: ${brief}`, "good");
+      const [, hirer, brief] = HIRED.exec(event.body) ?? [];
+      if (hirer === undefined) return line(author, event.body);
+      return line("HR", `hired ${author} for ${who.labels.get(hirer) ?? hirer}: ${brief}`, "good");
     }
     case "status": {
       const [, status, why] = STATUS.exec(event.body) ?? [];
