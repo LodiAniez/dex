@@ -205,6 +205,18 @@
 .office-walker.walking .office-leg-a { animation: office-swing-a 0.4s linear infinite; }
 .office-walker.walking .office-leg-b { animation: office-swing-b 0.4s linear infinite; }
 
+/* Goodbye at the door: the raised arm swings from the shoulder. */
+@keyframes office-wave {
+  0%, 100% { transform: rotate(-14deg); }
+  50% { transform: rotate(22deg); }
+}
+
+.office-wave {
+  transform-box: fill-box;
+  transform-origin: bottom left;
+  animation: office-wave 0.45s ease-in-out infinite;
+}
+
 /* ---- a conversation at a desk ---- */
 
 /* Two bubbles take turns: the visitor speaks for the first half, the other answers. */
