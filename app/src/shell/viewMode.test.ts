@@ -71,3 +71,9 @@ describe("nextMode", () => {
     expect(nextMode("office")).toBe("terminal");
   });
 });
+
+describe("the activity popup", () => {
+  it("is not about a pane, so it opens over whatever view is up", () => {
+    expect(whenPanesHidden("open-activity")).toBe("run");
+  });
+});

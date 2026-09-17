@@ -3,10 +3,8 @@ import { request } from "../../platform/daemon";
 import { onDaemonChange } from "../../platform/events";
 import type { Layout } from "../../platform/generated/Layout";
 import type { WorkspaceList } from "../../platform/generated/WorkspaceList";
-import type { WorkspaceView } from "../../platform/generated/WorkspaceView";
 import { showError } from "../../platform/notices";
 import { disposeTerminal } from "../../platform/terminalRegistry";
-import { singletonTarget } from "./singleton";
 
 /**
  * The workspace list as the daemon last reported it. Every workspace command
@@ -119,22 +117,6 @@ export async function splitPane(
   kind?: "terminal" | "activity" | "diff",
 ): Promise<void> {
   publish(await request<WorkspaceList>("pane.split", { pane, direction, kind }));
-}
-
-/**
- * Shows the workspace's activity stream: focuses the pane already showing it,
- * or splits one off the focused pane. One is enough — a second would show the
- * same thing.
- */
-export async function showActivity(workspace: WorkspaceView): Promise<void> {
-  await showSingleton(workspace, "activity");
-}
-
-async function showSingleton(workspace: WorkspaceView, kind: "activity"): Promise<void> {
-  const target = singletonTarget(workspace, kind);
-  if (!target) return;
-  if ("focus" in target) return focusPane(target.focus);
-  await splitPane(target.split, "right", kind);
 }
 
 /** Closes a pane. The daemon refuses to close a workspace's last pane. */

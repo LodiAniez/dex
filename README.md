@@ -80,7 +80,7 @@ dex doctor            # the table above
 
 - a **terminal** (the default) — a shell in the pane's folder;
 - an **agent** — just a terminal where you ran `claude`; Dex notices;
-- **activity** — the workspace's live event stream (the `activity` button, top right). Hover an event for **×** to remove it; **clear ended** removes everything agents that have since ended did, **clear all** empties the log. From a terminal: `dex context delete <seq>`, `dex context clear [--all]`;
+- **activity** — the workspace's live event stream. The `activity` button, top right (or *Show activity* in the palette), opens it as a popup over whatever view you are in, and Escape closes it; `dex pane create --kind activity` docks it as a pane instead. Hover an event for **×** to remove it; **clear ended** removes everything agents that have since ended did, **clear all** empties the log. From a terminal: `dex context delete <seq>`, `dex context clear [--all]`;
 - **diff** — a repository's uncommitted changes, unstaged or staged, following the working tree as it changes (**Show git diff** in the palette);
 - **markdown** — a rendered file that updates as it's written, for agents' notes and plans (`dex pane create --kind markdown --path notes.md`).
 
@@ -119,7 +119,7 @@ App shortcuts stay off plain `Ctrl+<letter>`, which your shell owns (`Ctrl+C`, `
 | Cycle layout preset           | `Ctrl+Shift+Space`                  |
 | Toggle sidebar                | `Ctrl+Shift+B`                      |
 
-The **command palette** fuzzy-searches workspaces, panes and commands. Type `w:` to search only workspaces, `p:` for only panes. Commands with no default key — *Show git diff*, the three views, *Setup checks* — live there.
+The **command palette** fuzzy-searches workspaces, panes and commands. Type `w:` to search only workspaces, `p:` for only panes. Commands with no default key — *Show git diff*, *Show activity*, the three views, *Setup checks* — live there.
 
 Every shortcut can be rebound in the config file (below).
 
@@ -188,7 +188,7 @@ Everything above lands in one store per workspace, kept by Dex in SQLite and mir
 - **Entries** — durable facts under lowercase, `/`-namespaced keys, with versions. Two agents writing one key with `--expected-version` get a conflict instead of a silent overwrite.
 - **Messages** — directed at one agent, read once. A message to an agent that has finished its task and is sitting idle wakes it: Dex types a one-line prompt into its pane telling it to read its inbox. That is how a parent changes a child's task after the fact without stopping it and starting another.
 
-Agents never see their own events echoed back, and status changes are logged for you (the activity pane) but kept out of other agents' digests — a sibling flipping between idle and running twenty times a turn is not news. Digests are written as plain facts, never as instructions, so they cannot be mistaken for prompt injection.
+Agents never see their own events echoed back, and status changes are logged for you (the activity stream) but kept out of other agents' digests — a sibling flipping between idle and running twenty times a turn is not news. Digests are written as plain facts, never as instructions, so they cannot be mistaken for prompt injection.
 
 You can read and write the same store from a terminal:
 
