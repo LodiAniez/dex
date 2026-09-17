@@ -89,3 +89,4 @@ The rules are unit-tested and the pane has been run live against fake agents; wh
 3. Prompt it while it is out (the card's box, or *Announce*): it stops, walks back to its desk, and only then types.
 4. Message it from another agent while it is out: it heads back to its desk to be found there. An idle agent that has a message to carry walks home first, then sets off from its desk.
 5. With Windows' *Animation effects: off*, idle agents stay in their chairs.
+6. Minimize the **Activity** box (bottom left): it becomes a button in the same corner. Have an agent write a note: the button counts it. Restart Dex: it is still minimized. Open it again.
