@@ -49,7 +49,7 @@ pub struct PaneView {
     pub label: Option<String>,
     /// Working directory, forward slashes.
     pub cwd: String,
-    /// `terminal`, `markdown`, `diff`, `activity`, or `office`.
+    /// `terminal`, `markdown`, `diff`, or `activity`.
     pub kind: String,
     /// `windows` or `wsl:<distro>`.
     pub runtime: String,
@@ -175,7 +175,7 @@ pub struct SplitPaneArgs {
     /// Label for the new pane.
     #[serde(default)]
     pub label: Option<String>,
-    /// `terminal` (the default), `activity`, `diff`, `markdown`, or `office`. A
+    /// `terminal` (the default), `activity`, `diff`, or `markdown`. A
     /// non-terminal pane runs no shell.
     #[serde(default)]
     pub kind: Option<String>,

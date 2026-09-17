@@ -8,7 +8,6 @@ export {
   loadWorkspaces,
   setLayout,
   showActivity,
-  showOffice,
   splitPane,
   swapPanes,
   switchWorkspace,

@@ -6,7 +6,6 @@ const pane = (kind: string, cwd = "C:/Users/me/src/api") => ({ kind, cwd });
 describe("paneTitle", () => {
   it("names the special panes by what they show", () => {
     expect(paneTitle(pane("activity"))).toBe("activity");
-    expect(paneTitle(pane("office"))).toBe("office");
     expect(paneTitle(pane("diff"))).toBe("diff · …/src/api");
     expect(paneTitle(pane("markdown", "C:/notes/plan.md"))).toBe("plan.md");
   });

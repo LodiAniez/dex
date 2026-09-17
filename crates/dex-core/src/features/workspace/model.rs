@@ -34,7 +34,7 @@ pub struct Pane {
     pub label: Option<String>,
     /// Working directory, forward slashes.
     pub cwd: String,
-    /// `terminal`, `markdown`, `diff`, `activity`, or `office`.
+    /// `terminal`, `markdown`, `diff`, or `activity`.
     pub kind: String,
     /// `windows` or `wsl:<distro>`.
     pub runtime: String,

@@ -211,27 +211,23 @@ async fn set_layout_clamps_ratios_and_rejects_trees_with_other_panes() {
 }
 
 #[tokio::test]
-async fn a_pane_can_be_created_as_the_office() {
+async fn the_office_is_a_view_of_the_workspace_and_not_a_pane() {
+    // It is chosen for the whole workspace, from the title bar; a pane of it
+    // would be a second way to do the same thing.
     let (_dir, state) = AppState::for_tests();
     let (_, first) = one_workspace(&state).await;
-
-    let list = split_pane(
+    let refused = split_pane(
         &state,
         SplitPaneArgs {
-            // Typed by a human, so case is forgiven and the stored kind is not.
-            kind: Some("Office".into()),
+            kind: Some("office".into()),
             ..split_args(&first, SplitDirection::Right)
         },
     )
-    .await
-    .unwrap();
-
-    let kinds: Vec<&str> = list.workspaces[0]
-        .panes
-        .iter()
-        .map(|pane| pane.kind.as_str())
-        .collect();
-    assert_eq!(kinds, ["terminal", "office"]);
+    .await;
+    assert!(
+        matches!(refused, Err(WorkspaceError::InvalidKind(_))),
+        "{refused:?}"
+    );
 }
 
 #[tokio::test]

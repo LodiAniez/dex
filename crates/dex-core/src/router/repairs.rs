@@ -243,7 +243,7 @@ fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
         ),
         WorkspaceError::InvalidKind(_) => (
             ErrorCode::InvalidArgs,
-            "Use `terminal` for a shell, `activity` for the workspace's live event stream, `diff` for a repository's changes, `markdown` for a file, or `office` for the agents shown as a team.",
+            "Use `terminal` for a shell, `activity` for the workspace's live event stream, `diff` for a repository's changes, or `markdown` for a file.",
         ),
         WorkspaceError::NeedsFile => (
             ErrorCode::InvalidArgs,
