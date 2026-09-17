@@ -50,6 +50,12 @@ pub struct Change {
 /// The heading every digest sits under, so an agent can recognise it.
 const HEADING: &str = "## Workspace context";
 
+/// How a question reaches the owner, stated as the fact it is: the digest
+/// orients, it does not instruct. An agent that ends a reply "Reply yes and I'll
+/// overwrite the file" has, to Claude Code, finished; the dialog tool fires a
+/// hook, so Dex shows it at once and for certain.
+const HOW_THE_OWNER_HEARS: &str = "The owner sees at once when an agent asks them something with the AskUserQuestion tool; a question that only ends a reply is easy for them to miss. An agent started by another agent has that agent to ask first.";
+
 /// An agent's orientation when its session starts.
 pub fn full(orientation: &Orientation, cap: usize) -> String {
     let mut lines = vec![format!("Workspace: {}", orientation.workspace)];
@@ -60,6 +66,7 @@ pub fn full(orientation: &Orientation, cap: usize) -> String {
     if let Some(task) = &orientation.task_brief {
         lines.push(format!("This agent's task: {task}"));
     }
+    lines.push(HOW_THE_OWNER_HEARS.to_owned());
     if !orientation.siblings.is_empty() {
         lines.push("Other agents here:".into());
         for sibling in &orientation.siblings {
@@ -289,6 +296,29 @@ mod tests {
         assert!(text.contains("- auth/jwt"));
         assert!(text.contains("2 unread messages waiting"));
         assert!(text.len() <= caps().full_chars);
+    }
+
+    #[test]
+    fn a_full_digest_says_how_the_owner_hears_a_question_as_a_fact_not_an_order() {
+        // An agent that ended its turn "Reply yes and I'll overwrite the file"
+        // sat unanswered: to Claude Code, and so to Dex, its turn was over. The
+        // dialog tool is the one way of asking that Dex hears about for certain.
+        let orientation = Orientation {
+            workspace: "api".into(),
+            task_brief: Some("port the auth module".into()),
+            entries: (0..500).map(|i| format!("namespace/key-{i}")).collect(),
+            ..Default::default()
+        };
+        let text = full(&orientation, caps().full_chars);
+        assert!(text.contains("AskUserQuestion"), "{text}");
+        // An agent another agent started is not sent to the owner with what its lead can answer.
+        assert!(text.contains("started by another agent"), "{text}");
+        // Kept when the keys overflow: it is part of the orientation.
+        assert!(text.len() <= caps().full_chars);
+        let lower = text.to_lowercase();
+        for order in ["you must", "you should", "always ", "never "] {
+            assert!(!lower.contains(order), "{order:?} in {text}");
+        }
     }
 
     #[test]

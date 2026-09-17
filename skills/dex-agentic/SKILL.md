@@ -109,6 +109,23 @@ retry or work around - it means do the work yourself.
 Do this whether or not you spawned anything. It is what makes the next agent's
 digest worth reading.
 
+## When you need the owner
+
+The owner watches the workspace from views that show who is waiting on them. A
+decision that is theirs to make - overwrite this file, which of two designs,
+whether a requirement relayed by another agent really came from them - is best
+asked with the **AskUserQuestion** tool. Dex hears that as it happens: you are
+shown as needing them, with the question beside you, until they answer.
+
+A question that only ends your reply is a finished turn as far as anyone can
+tell. Dex tries to notice ("Reply yes and I'll...", "Should I...?"), but it is
+reading prose, and a missed one means you sit unanswered while the owner thinks
+you are done. If you do end a turn on a question, make the question its last
+sentence.
+
+Do not ask the owner what another agent can answer - `message_send` them - and
+say in a brief what a child should come back to you about rather than the owner.
+
 ## Collecting results
 
 `agents_list` shows what each agent is doing and whether it is running, idle, or

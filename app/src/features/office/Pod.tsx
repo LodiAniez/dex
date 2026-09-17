@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { STATUS_WORDS } from "../agents";
+import { STATUS_WORDS, askedYou, lastSaid, seenAs } from "../agents";
 import { poseOf, type Pose } from "./floor";
 import { POD, podOrigin } from "./mapGeometry";
 import type { Employee } from "./officeStore";
@@ -73,7 +73,12 @@ interface PodProps {
 export function Pod({ employee, away = false, listening = false, antic = null, shouting = false, onPick }: PodProps) {
   const { agent, persona, role, pod } = employee;
   const { x, y } = podOrigin(pod);
-  const pose = poseOf(agent.status);
+  // As the owner should see them: someone who asked them something has a hand up.
+  const shown = seenAs(agent);
+  const pose = poseOf(shown);
+  // What they asked the owner goes in a speech bubble at their mouth; what they merely said, quietly under the desk.
+  const asked = away || shouting ? null : askedYou(agent);
+  const said = askedYou(agent) === null ? lastSaid(agent) : null;
   const typing = pose === "typing";
   const passing = !away && !listening && !shouting && pose === "still" ? antic : null;
   const [code1, code2] = SCREEN[pose];
@@ -91,7 +96,7 @@ export function Pod({ employee, away = false, listening = false, antic = null, s
       transform={`translate(${x} ${y})`}
       role="button"
       tabIndex={0}
-      aria-label={`${persona.name}, ${role}, ${STATUS_WORDS[agent.status]}`}
+      aria-label={`${persona.name}, ${role}, ${STATUS_WORDS[shown]}${askedYou(agent) === null ? "" : `, asked you: ${askedYou(agent)}`}`}
       onClick={() => onPick(employee)}
       onKeyDown={onKey}
     >
@@ -99,11 +104,19 @@ export function Pod({ employee, away = false, listening = false, antic = null, s
       <rect width={POD.width} height={POD.height} fill="transparent" />
       <Tag>
         <span className="office-tag">
-          <span className="office-tag-dot" style={{ background: DOT[agent.status] ?? DOT.idle }} />
+          <span className="office-tag-dot" style={{ background: DOT[shown] ?? DOT.idle }} />
           {persona.name}
           <span className="office-tag-role">{role}</span>
         </span>
       </Tag>
+      {/* How their turn ended, so nobody has to open a pane to see it. */}
+      {said !== null && (
+        <foreignObject x="6" y={POD.height - 6} width={POD.width - 12} height="24">
+          <div className="office-said" title={said}>
+            “{said}”
+          </div>
+        </foreignObject>
+      )}
       <g transform="translate(4 30)">
         <rect x="6" y="26" width="232" height="166" rx="18" fill={persona.rug} />
         <rect x="6" y="26" width="232" height="166" rx="18" fill="none" stroke={persona.rugLine} strokeWidth="4" />
@@ -125,7 +138,7 @@ export function Pod({ employee, away = false, listening = false, antic = null, s
             <path d="M107 116 a15 15 0 0 1 30 0 v-2 a15 12 0 0 0 -30 0 z" fill={persona.hair} />
             <ellipse cx="122" cy="107" rx="15" ry="8" fill={persona.hair} />
             {listening && <TalkBubble x={150} y={84} turn="b" />}
-            {!listening && (pose === "raised" || pose === "error") && (
+            {!listening && asked === null && (pose === "raised" || pose === "error") && (
               <g className="office-bubble">
                 {/* Rounded on three corners, pointed at the one nearest the speaker. */}
                 <path d="M194 4 h8 a10 10 0 0 1 10 10 v6 a10 10 0 0 1 -10 10 h-16 a2 2 0 0 1 -2 -2 v-14 a10 10 0 0 1 10 -10 z" fill="#f8f5ec" />
@@ -137,6 +150,26 @@ export function Pod({ employee, away = false, listening = false, antic = null, s
           </>
         )}
       </g>
+      {/* Last, so it is over their own desk: they are saying it, and waiting to hear. */}
+      {asked !== null && !listening && <AskBubble question={asked} />}
+    </g>
+  );
+}
+
+/** What an agent asked the owner, in a speech bubble with its tail at their mouth. In the pod's own units. */
+function AskBubble({ question }: { question: string }) {
+  return (
+    <g className="office-ask" aria-hidden="true">
+      <foreignObject x="8" y="24" width={POD.width - 16} height="104">
+        <div className="office-ask-row">
+          <span className="office-ask-text" title={question}>
+            {question}
+          </span>
+        </div>
+      </foreignObject>
+      {/* The tail, from the bubble's foot to just over their head; the second path hides the border it crosses. */}
+      <path d="M116 126 l12 17 l10 -17 z" fill="#f8f5ec" stroke="#185fa5" strokeWidth="2.5" strokeLinejoin="round" />
+      <path d="M115 125.5 h24" stroke="#f8f5ec" strokeWidth="4" />
     </g>
   );
 }

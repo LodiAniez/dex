@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentList } from "../../platform/generated/AgentList";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
+import { askedYou, seenAs } from "./attention";
 
 /** Transitions worth a toast, and how to say them. */
 const WORTH_A_TOAST: Partial<Record<AgentStatus, string>> = {
@@ -34,12 +35,14 @@ export function notifyTransitions(
 ): void {
   // The first load reports current states, not things that just happened.
   if (!before) return;
-  const previous = new Map(before.agents.map((agent) => [agent.id, agent.status]));
+  // As the owner sees them: an agent that ended its turn on a question has not "finished".
+  const previous = new Map(before.agents.map((agent) => [agent.id, seenAs(agent)]));
   for (const agent of after.agents) {
-    const verb = WORTH_A_TOAST[agent.status];
+    const asked = askedYou(agent);
+    const verb = asked === null ? WORTH_A_TOAST[agent.status] : `asked you: ${asked}`;
     const was = previous.get(agent.id);
     // A brand-new agent starts idle; that is not "finished".
-    if (!verb || !agent.pane_id || was === undefined || was === agent.status) continue;
+    if (!verb || !agent.pane_id || was === undefined || was === seenAs(agent)) continue;
     const pane = locate(agent.pane_id);
     if (!pane || pane.looking) continue;
     const detail = agent.status === "error" && agent.status_detail ? `: ${agent.status_detail}` : "";

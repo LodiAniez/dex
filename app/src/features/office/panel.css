@@ -236,6 +236,17 @@
   line-height: 1.5;
 }
 
+/* Someone it would reach is waiting on an answer of their own. */
+.office-announce-asking {
+  padding: 8px 10px;
+  color: #9db9f2;
+  font-size: 12px;
+  line-height: 1.5;
+  background: rgba(79, 140, 255, 0.1);
+  border-left: 2px solid #4f8cff;
+  border-radius: 0 8px 8px 0;
+}
+
 .office-announce-result {
   padding: 10px 12px;
   color: var(--office-soft);
@@ -346,4 +357,16 @@
 .office-hire-actions button {
   flex: 0 0 auto;
   padding: 0 20px;
+}
+
+/* How their turn ended, in their own words. */
+.office-panel-said {
+  padding: 8px 12px;
+  color: var(--office-soft);
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 2px solid var(--office-line);
+  border-radius: 0 8px 8px 0;
 }

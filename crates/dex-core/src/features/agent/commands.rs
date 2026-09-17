@@ -9,14 +9,10 @@ use rusqlite::Connection;
 use super::identity;
 use super::logic::{self, HookInput, HookKind, SessionStart};
 use super::model::{Agent, AgentError};
-use super::presence;
 use super::store;
 use crate::app::AppState;
 use crate::features::{context, workspace};
 use crate::platform::{clock, ids};
-
-/// A running agent with no hook event and no output for this long is `unknown`.
-const WATCHDOG_MS: i64 = 120_000;
 
 const APPLIED: EventOutcome = EventOutcome { applied: true };
 const IGNORED: EventOutcome = EventOutcome { applied: false };
@@ -175,7 +171,11 @@ fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<
     else {
         // Still waiting, but on a new dialog: the reason follows the dialog on
         // screen. Nothing is logged - the agent's state has not changed.
-        if logic::is_new_wait(agent.status, agent.status_at, hook.kind, hook.args.stamp) {
+        let told = super::reason::keeps_its_reason(
+            hook.kind == HookKind::Waiting,
+            agent.status_detail.as_deref(),
+        );
+        if !told && logic::is_new_wait(agent.status, agent.status_at, hook.kind, hook.args.stamp) {
             let reason = super::reason::waiting_reason(&hook.args.input);
             store::update_status(
                 conn,
@@ -197,6 +197,10 @@ fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<
                 .unwrap_or_else(|| "unknown".into()),
         ),
         AgentStatus::Waiting => super::reason::waiting_reason(&hook.args.input),
+        // A turn that ended by asking the owner something: idle, and waiting on them.
+        AgentStatus::Idle if hook.kind == HookKind::Stop => {
+            super::asking::idle_detail(&hook.args.input)
+        }
         _ => None,
     };
     let ended = (next == AgentStatus::Dead).then_some(hook.now);
@@ -208,7 +212,10 @@ fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<
         hook.args.stamp,
         ended,
     )?;
-    record_status(conn, agent, hook, next, detail.as_deref())
+    let logged = detail
+        .as_deref()
+        .filter(|why| !super::asking::stays_out_of_the_log(why));
+    record_status(conn, agent, hook, next, logged)
 }
 
 /// Puts a status change in the workspace log, for the activity pane (PRD §10.1).
@@ -281,7 +288,10 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                         let has_started = started.contains(&agent.id);
                         let mut seen = view(agent, has_started);
                         let theirs = asker.as_ref().is_none_or(|id| id == &seen.id);
-                        if !theirs && seen.status == AgentStatus::Waiting {
+                        // Nor what a colleague asked the owner: it may quote anything.
+                        if !theirs
+                            && matches!(seen.status, AgentStatus::Waiting | AgentStatus::Idle)
+                        {
                             seen.status_detail = None;
                         }
                         seen
@@ -308,68 +318,6 @@ pub async fn pane_exited(
         .call(move |conn| store::end_live_in_pane(conn, &args.pane, None, now))
         .await?;
     Ok(EventOutcome { applied: ended > 0 })
-}
-
-/// `agent.sweep`: the watchdog. Agents whose pane is gone are ended, and so are
-/// those whose pane no longer runs Claude Code (`presence`); running
-/// agents with no hook event and no pane output for two minutes become
-/// `unknown`, which covers every way hook delivery can fail. Announces a
-/// change only when it made one.
-pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
-    let statuses = sweep_statuses(state).await?;
-    // Last, because it may take a couple of seconds and announces what it does
-    // itself; and never fatal - what the rest of the sweep found still stands.
-    let departed = presence::end_the_departed(state)
-        .await
-        .unwrap_or_else(|err| {
-            tracing::warn!(%err, "could not look for agents whose Claude Code has gone");
-            0
-        });
-    Ok(if departed > 0 { APPLIED } else { statuses })
-}
-
-async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
-    let now = clock::now_millis();
-    // Orphans first: a pane closed from the UI, or lost with a crashed
-    // session, nulls `pane_id` but leaves status where it was. Left alone,
-    // those rows counted toward the spawn limit for ever.
-    let orphaned = state
-        .db
-        .call(move |conn| store::end_orphans(conn, now))
-        .await?;
-    let running = state
-        .db
-        .call(|conn| store::list_by_status(conn, AgentStatus::Running))
-        .await?;
-    let silent: Vec<String> = running
-        .into_iter()
-        .filter(|agent| {
-            let output = agent
-                .pane_id
-                .as_deref()
-                .and_then(|pane| state.pty.last_output_at(pane));
-            logic::is_silent(agent.status, agent.last_event_at, output, now, WATCHDOG_MS)
-        })
-        .map(|agent| agent.id)
-        .collect();
-    if silent.is_empty() {
-        if orphaned > 0 {
-            state.bus.publish("agents");
-            return Ok(APPLIED);
-        }
-        return Ok(IGNORED);
-    }
-    state
-        .db
-        .call(move |conn| {
-            for id in &silent {
-                store::update_status(conn, id, AgentStatus::Unknown, None, now, None)?;
-            }
-            Ok(())
-        })
-        .await?;
-    state.bus.publish("agents");
-    Ok(APPLIED)
 }
 
 fn view(agent: Agent, started: bool) -> AgentView {

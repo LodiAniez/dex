@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
 import type { AgentView } from "../../platform/generated/AgentView";
+import { seenAs } from "./attention";
 
 /** What each status means to the person looking at it. */
 export const STATUS_WORDS: Record<AgentStatus, string> = {
@@ -20,13 +21,15 @@ export function AgentStatusDot({ status }: { status: AgentStatus }) {
 /** Dot, state, time in state, and permission mode, for a pane header. */
 export function AgentBadge({ agent }: { agent: AgentView }) {
   const now = useNow(5000);
+  // As the owner should see it: an agent that asked them something is waiting for them.
+  const shown = seenAs(agent);
   const detail = agent.status === "error" && agent.status_detail ? ` (${agent.status_detail})` : "";
   const mode = agent.permission_mode && agent.permission_mode !== "default" ? agent.permission_mode : null;
   return (
-    <span className={`agent-badge ${agent.status}`} title={`${agent.backend}: ${STATUS_WORDS[agent.status]}${detail}`}>
-      <AgentStatusDot status={agent.status} />
+    <span className={`agent-badge ${shown}`} title={`${agent.backend}: ${STATUS_WORDS[shown]}${detail}`}>
+      <AgentStatusDot status={shown} />
       <span className="agent-state">
-        {STATUS_WORDS[agent.status]}
+        {STATUS_WORDS[shown]}
         {detail}
       </span>
       <span className="agent-elapsed">{elapsed(now - agent.status_at)}</span>

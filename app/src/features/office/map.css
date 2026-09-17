@@ -355,3 +355,19 @@ button.office-chat-toggle:focus-visible {
 .office-chat-line.good { color: #9fe1cb; }
 .office-chat-line.asks { color: #9db9f2; }
 .office-chat-line.bad { color: #f4b8b6; }
+
+/* ---- what an idle agent said last, under their desk ---- */
+
+.office-said {
+  overflow: hidden;
+  padding: 2px 10px;
+  color: #4a3b2a;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 18px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(255, 250, 235, 0.72);
+  border-radius: 10px;
+}

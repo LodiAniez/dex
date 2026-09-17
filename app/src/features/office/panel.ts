@@ -50,7 +50,12 @@ export function ago(at: number, now: number): string {
  */
 export function needsYou(status: string, detail: string | null): string | null {
   switch (status) {
+    // Idle with something to say: their turn ended on a question. A prompt answers it.
+    case "idle":
+      return detail?.startsWith("asked you: ") ? `Asked you: ${detail.slice("asked you: ".length)} Answer with Prompt, or in their pane.` : null;
     case "waiting":
+      // Asked in Claude Code's own dialog: only the pane can answer it.
+      if (detail?.startsWith("asked you: ")) return `Asked you: ${detail.slice("asked you: ".length)} Answer it in their pane.`;
       return detail ? `Waiting for you: ${detail}. Answer it in their pane.` : "Waiting for you to answer something in their pane.";
     case "error":
       return `Stopped: ${detail ?? "no reason given"}. Their pane says more.`;

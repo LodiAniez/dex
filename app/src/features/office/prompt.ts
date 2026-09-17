@@ -6,9 +6,11 @@
  */
 
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
+import { askedYou } from "../agents";
 
 interface Promptable {
   status: AgentStatus;
+  status_detail?: string | null;
   pane_id: string | null;
   /** Whether Claude Code has started in the pane. Until it has, the pane is a bare shell. */
   started: boolean;
@@ -56,6 +58,15 @@ export function announcePlan<A extends Promptable, M extends Member<A>>(staff: r
     }
   }
   return { to, skipped, reasons };
+}
+
+/**
+ * Whoever an announcement would reach in the middle of a question of their
+ * own. It arrives as their next prompt, and "everyone, wrap up" reads very like
+ * an answer to "shall I overwrite the file": the owner is told before sending.
+ */
+export function midQuestion<A extends Promptable, M extends Member<A>>(to: readonly M[]): M[] {
+  return to.filter((member) => askedYou({ status: member.agent.status, status_detail: member.agent.status_detail ?? null }) !== null);
 }
 
 /** One sentence for the owner: who heard it, and who did not. */

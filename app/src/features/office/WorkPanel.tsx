@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { request } from "../../platform/daemon";
 import { showError } from "../../platform/notices";
 import { useActivity } from "../activity";
-import { AgentStatusDot, STATUS_WORDS } from "../agents";
+import { AgentStatusDot, STATUS_WORDS, askedYou, lastSaid, seenAs } from "../agents";
 import { Avatar } from "./Avatar";
 import { useAgentActions } from "./agentActions";
 import { memoArgs } from "./hire";
@@ -75,6 +75,7 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
   };
 
   const attention = needsYou(agent.status, agent.status_detail);
+  const said = lastSaid(agent);
   const { prompt, clockOut, leaving } = useAgentActions(employee);
 
   return (
@@ -102,12 +103,15 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
         </button>
       </div>
       <div className="office-panel-status">
-        <AgentStatusDot status={agent.status} />
-        {STATUS_WORDS[agent.status]}
-        {agent.status_detail && ` · ${agent.status_detail}`}
+        <AgentStatusDot status={seenAs(agent)} />
+        {STATUS_WORDS[seenAs(agent)]}
+        {/* What they asked or said has its own line below; here, only why they wait or stopped. */}
+        {agent.status_detail && said === null && askedYou(agent) === null && ` · ${agent.status_detail}`}
       </div>
+      {/* How their turn ended, in their words: spotting a question is a guess, and this is the evidence. */}
+      {said !== null && <div className="office-panel-said">“{said}”</div>}
       {attention && (
-        <button type="button" className={`office-panel-needs ${agent.status}`} disabled={!agent.pane_id} onClick={() => agent.pane_id && onGoToPane(agent.pane_id)}>
+        <button type="button" className={`office-panel-needs ${seenAs(agent)}`} disabled={!agent.pane_id} onClick={() => agent.pane_id && onGoToPane(agent.pane_id)}>
           <span>{attention}</span>
           <span className="go">Go to pane →</span>
         </button>

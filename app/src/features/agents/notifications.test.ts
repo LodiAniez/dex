@@ -134,4 +134,10 @@ describe("toasts for agents needing attention", () => {
       pane: "pane-a",
     });
   });
+
+  it("says an agent that ended its turn on a question asked something, not that it finished", () => {
+    const asked = agent("a", "idle", { status_detail: "asked you: Should I run it against staging?" });
+    notifyTransitions(list(agent("a", "running")), list(asked), elsewhere);
+    expect(bodies()).toEqual(["Claude asked you: Should I run it against staging?"]);
+  });
 });
