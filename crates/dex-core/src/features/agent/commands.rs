@@ -316,6 +316,19 @@ pub async fn pane_exited(
 /// `unknown`, which covers every way hook delivery can fail. Announces a
 /// change only when it made one.
 pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
+    let statuses = sweep_statuses(state).await?;
+    // Last, because it may take a couple of seconds and announces what it does
+    // itself; and never fatal - what the rest of the sweep found still stands.
+    let departed = presence::end_the_departed(state)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!(%err, "could not look for agents whose Claude Code has gone");
+            0
+        });
+    Ok(if departed > 0 { APPLIED } else { statuses })
+}
+
+async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
     let now = clock::now_millis();
     // Orphans first: a pane closed from the UI, or lost with a crashed
     // session, nulls `pane_id` but leaves status where it was. Left alone,
@@ -324,8 +337,6 @@ pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
         .db
         .call(move |conn| store::end_orphans(conn, now))
         .await?;
-    // Then whoever is in the list with no Claude Code behind them.
-    let orphaned = orphaned + presence::end_the_departed(state).await?;
     let running = state
         .db
         .call(|conn| store::list_by_status(conn, AgentStatus::Running))

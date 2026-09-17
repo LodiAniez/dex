@@ -16,8 +16,12 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use super::{AgentError, store};
+use dex_protocol::agent::AgentStatus;
+
+use super::model::Agent;
+use super::{AgentError, identity, stop, store};
 use crate::app::AppState;
+use crate::features::context;
 use crate::platform::clock;
 use crate::platform::proctree::{self, Presence, Proc};
 
@@ -78,20 +82,55 @@ pub async fn end_the_departed(state: &AppState) -> Result<usize, AgentError> {
     // Looked for afresh: a pane may have closed, or a new session started in it, meanwhile.
     let still = candidates(state).await?;
     let departed = confirmed(&first, &look(&still).await);
+    end_confirmed(state, departed).await
+}
+
+/// Why, in the workspace log: a lead reads it, and a child that crashed must
+/// not simply stop answering.
+const WHY: &str = "Claude Code is no longer running in its pane";
+
+/// Ends `departed`, says so in the workspace log as any other end is said, and
+/// closes the panes Dex made for them - a pane the owner opened stays, a shell
+/// that may say why. Whoever ended in the meantime is left alone. Returns how
+/// many were ended.
+pub async fn end_confirmed(state: &AppState, departed: Vec<String>) -> Result<usize, AgentError> {
     if departed.is_empty() {
         return Ok(0);
     }
     let now = clock::now_millis();
-    let count = departed.len();
-    state
+    let ended: Vec<Agent> = state
         .db
         .call(move |conn| {
+            let mut ended = Vec::new();
             for id in &departed {
-                tracing::info!(agent = %id, "no Claude Code runs in its pane any more; ended");
+                let Some(agent) = store::find_agent(conn, id)? else {
+                    continue;
+                };
+                if agent.status == AgentStatus::Dead {
+                    continue;
+                }
                 store::end_agent(conn, id, now)?;
+                let label = identity::label_of(conn, id)?.unwrap_or_else(|| "an agent".into());
+                let body = format!("{label} is dead ({WHY})");
+                context::record_status(conn, &agent.workspace_id, id, body, now)?;
+                ended.push(agent);
             }
-            Ok(())
+            Ok(ended)
         })
         .await?;
-    Ok(count)
+    if ended.is_empty() {
+        return Ok(0);
+    }
+    state.bus.publish("agents");
+    for agent in &ended {
+        tracing::info!(agent = %agent.id, "{WHY}; ended");
+        let spawned = agent.parent_id.is_some() || agent.depth > 0;
+        if let (true, Some(pane)) = (spawned, agent.pane_id.as_deref()) {
+            // Ended either way: a pane that would not close is not worth failing the sweep over.
+            if let Err(err) = stop::close(state, pane).await {
+                tracing::warn!(%err, agent = %agent.id, "could not close the pane Dex made for it");
+            }
+        }
+    }
+    Ok(ended.len())
 }

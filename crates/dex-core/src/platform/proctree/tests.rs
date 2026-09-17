@@ -90,3 +90,38 @@ fn the_snapshot_is_parsed_whether_powershell_prints_a_list_or_a_single_object() 
     assert_eq!(parse(one).unwrap().len(), 1);
     assert!(parse("not json").is_err());
 }
+
+#[test]
+fn claude_code_under_another_runtime_is_recognised_by_its_command_line() {
+    // The watchdog ends whoever is judged gone, so a miss costs an agent:
+    // anything under the shell that names Claude Code counts.
+    let procs = vec![
+        proc(600, 1, "pwsh.exe", "pwsh.exe"),
+        proc(
+            610,
+            600,
+            "bun.exe",
+            "bun C:/Users/me/.bun/install/global/node_modules/@anthropic-ai/claude-code/cli.js",
+        ),
+    ];
+    assert_eq!(claude_under(&procs, 600), Presence::There);
+}
+
+#[test]
+fn a_runtime_whose_command_line_cannot_be_read_concludes_nothing() {
+    // It may be Claude Code and it may not: that is not evidence that it has gone.
+    for runtime in ["node.exe", "bun.exe", "deno.exe"] {
+        let procs = vec![
+            proc(700, 1, "pwsh.exe", "pwsh.exe"),
+            proc(710, 700, runtime, ""),
+        ];
+        assert_eq!(claude_under(&procs, 700), Presence::CannotTell, "{runtime}");
+    }
+}
+
+#[test]
+fn a_pane_whose_own_process_is_claude_code_has_it() {
+    // `shell = "claude"`: nothing runs under it, because it is it.
+    let procs = vec![proc(800, 1, "claude.exe", "claude")];
+    assert_eq!(claude_under(&procs, 800), Presence::There);
+}

@@ -88,3 +88,103 @@ async fn a_sweep_with_nobody_to_look_for_does_not_read_the_process_table() {
     let (_dir, state, _first) = pane().await;
     assert_eq!(presence::end_the_departed(&state).await.unwrap(), 0);
 }
+
+async fn pane_ids(state: &crate::app::AppState) -> Vec<String> {
+    crate::features::workspace::list(state)
+        .await
+        .unwrap()
+        .workspaces[0]
+        .panes
+        .iter()
+        .map(|pane| pane.id.clone())
+        .collect()
+}
+
+async fn log_bodies(state: &crate::app::AppState, pane: &str) -> Vec<String> {
+    crate::features::context::events(
+        state,
+        dex_protocol::context::ScopeArgs::for_caller(dex_protocol::context::Caller {
+            pane: Some(pane.to_owned()),
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap()
+    .events
+    .into_iter()
+    .map(|event| event.body)
+    .collect()
+}
+
+#[tokio::test]
+async fn whoever_has_departed_is_ended_and_the_workspace_is_told_why() {
+    let (_dir, state, first) = pane().await;
+    fire(&state, "session-start", &first, 1, session("s1")).await;
+    let id = agents(&state).await[0].id.clone();
+
+    let ended = presence::end_confirmed(&state, vec![id.clone()])
+        .await
+        .unwrap();
+
+    assert_eq!(ended, 1);
+    assert_eq!(
+        agents(&state).await[0].status,
+        dex_protocol::agent::AgentStatus::Dead
+    );
+    // A lead reads this log: a child that crashed must not just stop answering.
+    let log = log_bodies(&state, &first).await;
+    assert!(
+        log.iter()
+            .any(|body| body.contains("is dead")
+                && body.contains("Claude Code is no longer running")),
+        "{log:?}"
+    );
+    // The owner opened this pane: it stays, a shell that may say why.
+    assert!(pane_ids(&state).await.contains(&first));
+}
+
+#[tokio::test]
+async fn a_spawned_agent_that_departed_takes_its_pane_with_it() {
+    use dex_protocol::agent::SpawnArgs;
+    let (_dir, state, first) = pane().await;
+    fire(&state, "session-start", &first, 1, session("lead")).await;
+    let child = crate::features::agent::spawn(
+        &state,
+        SpawnArgs {
+            task: "count to ten".into(),
+            repo: None,
+            worktree: None,
+            label: None,
+            direction: None,
+            pane: Some(first.clone()),
+            workspace: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(pane_ids(&state).await.contains(&child.pane));
+
+    presence::end_confirmed(&state, vec![child.agent.clone()])
+        .await
+        .unwrap();
+
+    // Dex made that pane; a lead whose agents crash is not left a row of empty shells.
+    assert!(!pane_ids(&state).await.contains(&child.pane));
+    assert!(pane_ids(&state).await.contains(&first));
+}
+
+#[tokio::test]
+async fn someone_who_ended_in_the_meantime_is_not_ended_or_announced_twice() {
+    let (_dir, state, first) = pane().await;
+    fire(&state, "session-start", &first, 1, session("s1")).await;
+    let id = agents(&state).await[0].id.clone();
+    fire(&state, "session-end", &first, 2, session("s1")).await;
+
+    assert_eq!(presence::end_confirmed(&state, vec![id]).await.unwrap(), 0);
+    let deaths = log_bodies(&state, &first)
+        .await
+        .iter()
+        .filter(|body| body.contains("is dead"))
+        .count();
+    assert_eq!(deaths, 1);
+}

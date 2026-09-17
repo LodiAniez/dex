@@ -52,7 +52,8 @@ agent: the dot goes dead at once, not after the watchdog's ninety seconds.
 
 Kill an idle agent's `claude` process from Task Manager (no hook fires). Within about
 twenty seconds the agent is dead: gone from the sidebar, walked out of the office, and the
-pane still there as a shell. Run `claude` in that pane again: a new agent appears. While an
+pane still there as a shell, and the activity log says "... is dead (Claude Code is no longer
+running in its pane)". Do the same to an agent the lead spawned: its pane closes too. Run `claude` in that pane again: a new agent appears. While an
 agent is starting, or while Claude Code updates itself, nobody is ended.
 
 ## Office — by eye, with real agents

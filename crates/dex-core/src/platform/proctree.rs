@@ -39,23 +39,38 @@ pub enum Presence {
     There,
     /// The shell is there and nothing under it is Claude Code.
     Gone,
-    /// The table cannot say: the shell is not in it, or what runs in the pane
-    /// runs inside WSL, which this table does not see into.
+    /// The table cannot say: the shell is not in it, what runs in the pane runs
+    /// inside WSL, which this table does not see into, or a runtime is there
+    /// whose command line could not be read.
     CannotTell,
 }
 
+/// Runtimes Claude Code may run under, named only on the command line.
+const RUNTIMES: [&str; 3] = ["node", "bun", "deno"];
+
+/// Generous on purpose: the watchdog ends whoever is judged gone, so a miss
+/// costs an agent, while a false match only keeps a dead one a little longer.
 fn is_claude(proc: &Proc) -> bool {
+    // The native build is `claude.exe`; an npm, bun or deno install runs as its
+    // runtime, named by the package on its command line.
+    proc.name.to_ascii_lowercase().starts_with("claude")
+        || proc.command.to_ascii_lowercase().contains("claude")
+}
+
+/// A runtime whose command line could not be read: it may be Claude Code.
+fn is_unreadable_runtime(proc: &Proc) -> bool {
     let name = proc.name.to_ascii_lowercase();
-    // The native build is `claude.exe`; an npm install runs as node, named by
-    // the package on its command line.
-    name.starts_with("claude")
-        || (name.starts_with("node") && proc.command.to_ascii_lowercase().contains("claude"))
+    proc.command.is_empty() && RUNTIMES.iter().any(|runtime| name.starts_with(runtime))
 }
 
 /// Whether Claude Code runs under `shell_pid`, at any depth.
 pub fn claude_under(procs: &[Proc], shell_pid: u32) -> Presence {
-    if !procs.iter().any(|proc| proc.pid == shell_pid) {
+    let Some(shell) = procs.iter().find(|proc| proc.pid == shell_pid) else {
         return Presence::CannotTell;
+    };
+    // `shell = "claude"`: the pane's own process is it.
+    if shell.name.to_ascii_lowercase().starts_with("claude") {
+        return Presence::There;
     }
     let mut children: HashMap<u32, Vec<&Proc>> = HashMap::new();
     for proc in procs {
@@ -63,7 +78,7 @@ pub fn claude_under(procs: &[Proc], shell_pid: u32) -> Presence {
     }
     let mut seen = HashSet::from([shell_pid]);
     let mut queue = vec![shell_pid];
-    let mut through_wsl = false;
+    let mut unseen = false;
     while let Some(pid) = queue.pop() {
         for child in children.get(&pid).into_iter().flatten() {
             // Pids are reused, and a corrupt table can loop.
@@ -73,11 +88,13 @@ pub fn claude_under(procs: &[Proc], shell_pid: u32) -> Presence {
             if is_claude(child) {
                 return Presence::There;
             }
-            through_wsl |= child.name.to_ascii_lowercase().starts_with("wsl");
+            // WSL cannot be seen into, and an unreadable runtime cannot be told apart.
+            unseen |=
+                child.name.to_ascii_lowercase().starts_with("wsl") || is_unreadable_runtime(child);
             queue.push(child.pid);
         }
     }
-    if through_wsl {
+    if unseen {
         Presence::CannotTell
     } else {
         Presence::Gone
