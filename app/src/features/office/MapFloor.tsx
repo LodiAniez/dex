@@ -2,6 +2,7 @@ import type { Headcount } from "./floor";
 import { MapBackdrop } from "./MapBackdrop";
 import { MAP_WIDTH, mapHeight } from "./mapGeometry";
 import type { Employee, Office } from "./officeStore";
+import type { ChatLine } from "./phrasing";
 import { Pod, VacantPod } from "./Pod";
 import { Walker, useWalks } from "./Walker";
 
@@ -14,6 +15,8 @@ interface Props {
   seats: Headcount;
   /** What HR has to say under its button. */
   hrNote: string;
+  /** The last few things that happened, as the office would say them. */
+  chat: readonly ChatLine[];
   onPick: (employee: Employee) => void;
   onHire: () => void;
 }
@@ -23,7 +26,7 @@ interface Props {
  * pane: everything on it — name tags and HR's button included — is inside, so
  * nothing drifts off its desk when the pane is resized.
  */
-export function MapFloor({ workspaceId, office, seats, hrNote, onPick, onHire }: Props) {
+export function MapFloor({ workspaceId, office, seats, hrNote, chat, onPick, onHire }: Props) {
   // One person crosses the floor at a time; the rest wait their turn at HR.
   const { queue, finish } = useWalks(workspaceId, office.employees);
   const onTheirWay = new Set(queue.filter((walk) => walk.kind === "arrive").map((walk) => walk.id));
@@ -56,6 +59,18 @@ export function MapFloor({ workspaceId, office, seats, hrNote, onPick, onHire }:
           ) : (
             <VacantPod key={`vacant-${pod}`} pod={pod} />
           ),
+        )}
+        {chat.length > 0 && (
+          <foreignObject x="26" y={height - 196} width="360" height="112">
+            <div className="office-chat">
+              <span className="office-chat-title">Activity</span>
+              {chat.map((line) => (
+                <span key={line.seq} className={`office-chat-line ${line.tone}`}>
+                  <span className="who">{line.who}</span> {line.text}
+                </span>
+              ))}
+            </div>
+          </foreignObject>
         )}
         {queue[0] && <Walker key={`${queue[0].kind}-${queue[0].id}`} walk={queue[0]} onDone={finish} />}
       </svg>

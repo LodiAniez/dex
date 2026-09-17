@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { agentCounts, loadAgents, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
+import { officeNameOf } from "../features/office";
 import { CommandPalette, type PaletteItem } from "../features/palette";
 import {
   closePane,
@@ -123,7 +124,7 @@ export function App() {
   }, []);
 
   // Toasts for agents that need attention in panes the user is not looking at.
-  useEffect(() => watchAgentChanges((before, after) => notifyTransitions(before, after, locatePane)), []);
+  useEffect(() => watchAgentChanges((before, after) => notifyTransitions(before, after, locatePane, officeNameOf)), []);
 
   // A clicked toast brings the app forward; show the pane it was about.
   useEffect(() => {

@@ -5,8 +5,9 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "./office.css";
 import "./map.css";
 import "./panel.css";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOfficeSettings } from "../../platform/config";
+import { useActivity, watchActivity } from "../activity";
 import { useWorkspaces } from "../workspaces";
 import { CardsFloor } from "./CardsFloor";
 import { headcount, hrNote } from "./floor";
@@ -14,12 +15,15 @@ import { HireDialog } from "./HireDialog";
 import { MapFloor } from "./MapFloor";
 import { useOffice, useScreens, type Employee } from "./officeStore";
 import { chooseView, rememberView, storedView, type OfficeViewKind } from "./officeView";
+import { chatLines } from "./phrasing";
 import { PANEL_SCREEN_LINES, WorkPanel } from "./WorkPanel";
 
 /** Seats to draw before the daemon has said how many there are: its own default. */
 const DEFAULT_SEATS = 6;
 /** Lines of an agent's screen that fit on a card. */
 const CARD_LINES = 2;
+/** Lines of chat the map has room for. */
+const CHAT_LINES = 3;
 
 /**
  * The workspace's agents as a team in an office: who is here, what each was
@@ -41,6 +45,20 @@ export function OfficePane({ workspaceId }: { workspaceId: string }) {
   const [hiring, setHiring] = useState(false);
   const [refused, setRefused] = useState(false);
 
+  // The same events the activity pane shows, retold by name for the map.
+  useEffect(() => watchActivity(workspaceId), [workspaceId]);
+  const log = useActivity(workspaceId);
+  const chat = useMemo(() => {
+    const names = new Map(office.employees.map(({ agent, persona }) => [agent.id, persona.name]));
+    const labels = new Map<string, string>();
+    for (const { agent, persona } of office.employees) {
+      // An agent is messaged by its own label or its pane's, whichever it has.
+      const pane = workspace?.panes.find((candidate) => candidate.id === agent.pane_id);
+      for (const label of [agent.label, pane?.label]) if (label) labels.set(label, persona.name);
+    }
+    return chatLines(log?.events, { names, labels }, CHAT_LINES);
+  }, [log, office.employees, workspace]);
+
   const seats = headcount(office.employees.length, maxConcurrent);
   const note = hrNote(seats, office.pods, refused);
   // Whoever is picked may leave while their panel is open; it closes with them.
@@ -61,7 +79,7 @@ export function OfficePane({ workspaceId }: { workspaceId: string }) {
       {view === "cards" ? (
         <CardsFloor office={office} seats={seats} hrNote={note} cardLines={CARD_LINES} screens={screens} onPick={pick} onHire={hire} />
       ) : (
-        <MapFloor workspaceId={workspaceId} office={office} seats={seats} hrNote={note} onPick={pick} onHire={hire} />
+        <MapFloor workspaceId={workspaceId} office={office} seats={seats} hrNote={note} chat={chat} onPick={pick} onHire={hire} />
       )}
       {picked && (
         <WorkPanel
