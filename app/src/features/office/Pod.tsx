@@ -3,6 +3,7 @@ import { STATUS_WORDS } from "../agents";
 import { poseOf, type Pose } from "./floor";
 import { POD, podOrigin } from "./mapGeometry";
 import type { Employee } from "./officeStore";
+import { TalkBubble } from "./Walker";
 
 /** The two lines of "code" on a desk screen: their colours say what the agent is doing. */
 const SCREEN: Record<Pose, [string, string]> = {
@@ -58,10 +59,12 @@ interface PodProps {
   employee: Employee;
   /** Out delivering a message: the desk is theirs, the chair is empty. */
   away?: boolean;
+  /** A colleague is at their desk with a message: they are shown answering. */
+  listening?: boolean;
   onPick: (employee: Employee) => void;
 }
 
-export function Pod({ employee, away = false, onPick }: PodProps) {
+export function Pod({ employee, away = false, listening = false, onPick }: PodProps) {
   const { agent, persona, role, pod } = employee;
   const { x, y } = podOrigin(pod);
   const pose = poseOf(agent.status);
@@ -111,7 +114,8 @@ export function Pod({ employee, away = false, onPick }: PodProps) {
             <circle cx="122" cy="118" r="13" fill={persona.skin} />
             <path d="M107 116 a15 15 0 0 1 30 0 v-2 a15 12 0 0 0 -30 0 z" fill={persona.hair} />
             <ellipse cx="122" cy="107" rx="15" ry="8" fill={persona.hair} />
-            {(pose === "raised" || pose === "error") && (
+            {listening && <TalkBubble x={150} y={84} turn="b" />}
+            {!listening && (pose === "raised" || pose === "error") && (
               <g className="office-bubble">
                 {/* Rounded on three corners, pointed at the one nearest the speaker. */}
                 <path d="M194 4 h8 a10 10 0 0 1 10 10 v6 a10 10 0 0 1 -10 10 h-16 a2 2 0 0 1 -2 -2 v-14 a10 10 0 0 1 10 -10 z" fill="#f8f5ec" />

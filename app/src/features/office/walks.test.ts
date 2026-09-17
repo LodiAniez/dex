@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { HR_DOOR, VISIT_SECONDS, awayFromDesk, deliveries, enqueue, legsTo, movements, routeOf, walkDuration, type Walk } from "./walks";
+import { HR_DOOR, TALK_SECONDS, awayFromDesk, deliveries, enqueue, legsTo, movements, nextLegs, routeOf, walkDuration, type Walk } from "./walks";
 
 const agent = (id: string, extra: Partial<{ status: AgentStatus; parent_id: string | null; depth: number; workspace_id: string }> = {}) => ({
   id,
@@ -89,7 +89,6 @@ describe("the corridor", () => {
     // The speaker stands in the corridor from x = 1100; a walker is 48 wide.
     for (let pod = 0; pod < 12; pod += 1) {
       for (const leg of legsTo(pod)) expect(leg.x + 48, `pod ${pod}`).toBeLessThan(1100);
-      for (const leg of routeOf({ kind: "deliver", pod: 0, to: pod }).legs) expect(leg.x + 48, `visit to ${pod}`).toBeLessThan(1100);
     }
   });
 });
@@ -148,12 +147,14 @@ describe("deliveries", () => {
   const seats = new Map([["lead", 0], ["a", 1], ["b", 4]]);
   const message = (seq: number, from: string | null, to: string | null) => ({ seq, kind: "message", agent_id: from, target_agent_id: to });
 
-  it("walks the sender to each recipient's desk, a trip per message", () => {
+  it("sends the sender on one round of everyone they wrote to, in the order they wrote", () => {
     const walks = deliveries([message(7, "lead", "a"), message(8, "lead", "b")], 6, seats);
-    expect(walks).toEqual([
-      { kind: "deliver", id: "lead", pod: 0, to: 1, key: "m7" },
-      { kind: "deliver", id: "lead", pod: 0, to: 4, key: "m8" },
-    ]);
+    expect(walks).toEqual([{ kind: "deliver", id: "lead", pod: 0, stops: [1, 4], keys: ["m7", "m8"], key: "m7" }]);
+  });
+
+  it("gives each sender a round of their own", () => {
+    const walks = deliveries([message(7, "lead", "a"), message(8, "a", "lead"), message(9, "lead", "b")], 0, seats);
+    expect(walks.map((w) => [w.id, w.stops])).toEqual([["lead", [1, 4]], ["a", [0]]]);
   });
 
   it("walks nobody for a message that was already there when the office opened", () => {
@@ -173,26 +174,52 @@ describe("deliveries", () => {
   });
 });
 
-describe("a delivery's route", () => {
-  it("goes out along the corridor, waits at the desk, and comes back the same way", () => {
-    const route = routeOf({ kind: "deliver", pod: 0, to: 2 });
-    expect(route.from).toEqual({ x: 420, y: 210 });
-    const stops = route.legs.map(({ x, y }) => [x, y]);
-    expect(stops).toEqual([
+describe("nextLegs: a round, one decision at a time", () => {
+  const round: Walk = { kind: "deliver", id: "lead", pod: 0, stops: [2, 1], keys: ["m1", "m2"], key: "m1" };
+  const stops = (legs: { x: number; y: number }[]) => legs.map(({ x, y }) => [x, y]);
+
+  it("sets off from their own desk to the first colleague, along the corridor, and stops to talk", () => {
+    const next = nextLegs(round, 0, "home");
+    expect(next?.arrives).toBe(2);
+    expect(stops(next?.legs ?? [])).toEqual([
       [420, 400], // out of their own pod
       [990, 400], // along the corridor
-      [990, 240], // in beside the recipient, not on top of them
-      [990, 240], // the message is handed over
-      [990, 400],
-      [420, 400],
-      [420, 210], // and home
+      [990, 240], // in beside the colleague's chair, not on top of them
     ]);
-    expect(route.legs[3].seconds).toBe(VISIT_SECONDS);
+  });
+
+  it("goes straight from one colleague to the next, without going home in between", () => {
+    const next = nextLegs(round, 1, 2);
+    expect(next?.arrives).toBe(1);
+    expect(stops(next?.legs ?? [])).toEqual([
+      [990, 400],
+      [680, 400],
+      [680, 240],
+    ]);
+  });
+
+  it("goes home once everyone has been told", () => {
+    const next = nextLegs(round, 2, 1);
+    expect(next?.arrives).toBe("home");
+    expect(stops(next?.legs ?? [])).toEqual([
+      [680, 400],
+      [420, 400],
+      [420, 210],
+    ]);
+  });
+
+  it("is finished when they are home with nobody left to tell", () => {
+    expect(nextLegs(round, 2, "home")).toBeNull();
+  });
+
+  it("goes back out from home if another message turned up on the way back", () => {
+    const longer = { ...round, stops: [2, 1, 4] };
+    expect(nextLegs(longer, 2, "home")?.arrives).toBe(4);
   });
 
   it("uses the side aisle between corridors, never a row of desks", () => {
-    const stops = routeOf({ kind: "deliver", pod: 1, to: 7 }).legs.map(({ x, y }) => [x, y]);
-    expect(stops.slice(0, 5)).toEqual([
+    const far: Walk = { kind: "deliver", id: "a", pod: 1, stops: [7], key: "m1" };
+    expect(stops(nextLegs(far, 0, "home")?.legs ?? [])).toEqual([
       [730, 400],
       [HR_DOOR.x, 400],
       [HR_DOOR.x, 1100],
@@ -201,27 +228,41 @@ describe("a delivery's route", () => {
     ]);
   });
 
-  it("takes time in proportion to the distance", () => {
-    const near = walkDuration(routeOf({ kind: "deliver", pod: 0, to: 1 }).legs);
-    const far = walkDuration(routeOf({ kind: "deliver", pod: 0, to: 2 }).legs);
-    expect(far).toBeGreaterThan(near);
+  it("never walks as far as the loudspeaker", () => {
+    for (let pod = 0; pod < 12; pod += 1) {
+      const visit = nextLegs({ pod: 0, stops: [pod] }, 0, "home");
+      for (const leg of visit?.legs ?? []) expect(leg.x + 48, `visit to ${pod}`).toBeLessThan(1100);
+    }
+  });
+
+  it("takes a moment over the conversation", () => {
+    expect(TALK_SECONDS).toBeGreaterThanOrEqual(2);
   });
 });
 
 describe("enqueue, with deliveries", () => {
-  const deliver = (id: string, to: number, key: string): Walk => ({ kind: "deliver", id, pod: 0, to, key });
+  const round = (id: string, stops: number[], keys: string[]): Walk => ({ kind: "deliver", id, pod: 0, stops, keys, key: keys[0] });
 
-  it("queues several trips by one sender, which share an id and a kind", () => {
-    const queue = enqueue([], [deliver("lead", 1, "m7"), deliver("lead", 2, "m8")]);
-    expect(queue.map((w) => w.key)).toEqual(["m7", "m8"]);
+  it("adds a later message to the round its sender is already on, even mid-walk", () => {
+    // A lead's three message_send calls land seconds apart; the first has set
+    // him walking by the time the second arrives.
+    const queue = enqueue([round("lead", [1], ["m7"])], [round("lead", [4], ["m8"])]);
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ stops: [1, 4], keys: ["m7", "m8"], key: "m7" });
   });
 
-  it("does not queue the same message twice", () => {
-    expect(enqueue([deliver("lead", 1, "m7")], [deliver("lead", 1, "m7")])).toHaveLength(1);
+  it("does not deliver the same message twice", () => {
+    const queue = enqueue([round("lead", [1], ["m7"])], [round("lead", [1, 4], ["m7", "m8"])]);
+    expect(queue[0]).toMatchObject({ stops: [1, 4], keys: ["m7", "m8"] });
   });
 
-  it("drops the trips of a sender who has left before setting off", () => {
-    const queue = enqueue([deliver("x", 1, "m1"), deliver("lead", 1, "m7"), deliver("lead", 2, "m8")], [{ kind: "leave", id: "lead", pod: 0 }]);
+  it("keeps different senders' rounds apart", () => {
+    const queue = enqueue([round("lead", [1], ["m7"])], [round("a", [0], ["m8"])]);
+    expect(queue.map((w) => w.id)).toEqual(["lead", "a"]);
+  });
+
+  it("drops the round of a sender who has left before setting off", () => {
+    const queue = enqueue([round("x", [1], ["m1"]), round("lead", [1, 2], ["m7", "m8"])], [{ kind: "leave", id: "lead", pod: 0 }]);
     expect(queue.map((w) => `${w.kind}:${w.id}`)).toEqual(["deliver:x", "leave:lead"]);
   });
 });
@@ -229,8 +270,8 @@ describe("enqueue, with deliveries", () => {
 describe("awayFromDesk", () => {
   it("is whoever is out delivering right now, and nobody who is only waiting to", () => {
     const queue: Walk[] = [
-      { kind: "deliver", id: "lead", pod: 0, to: 1, key: "m7" },
-      { kind: "deliver", id: "a", pod: 1, to: 0, key: "m8" },
+      { kind: "deliver", id: "lead", pod: 0, stops: [1], key: "m7" },
+      { kind: "deliver", id: "a", pod: 1, stops: [0], key: "m8" },
     ];
     expect(awayFromDesk(queue)).toBe("lead");
     expect(awayFromDesk([{ kind: "arrive", id: "new", pod: 3 }])).toBeNull();
