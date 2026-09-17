@@ -118,6 +118,17 @@ pub fn next_status(
     (next != current).then_some(next)
 }
 
+/// Whether a hook that leaves a waiting agent waiting is nonetheless news: a
+/// second dialog, straight after the first. The status does not move, so
+/// `next_status` has nothing to say - but what the agent is waiting *for* has
+/// changed, and the reason shown must follow the dialog on screen. Late
+/// deliveries are ignored here as there.
+pub fn is_new_wait(current: AgentStatus, status_at: i64, kind: HookKind, stamp: i64) -> bool {
+    current == AgentStatus::Waiting
+        && status_after(kind) == AgentStatus::Waiting
+        && stamp >= status_at
+}
+
 /// Whether a hook shows that an agent Dex had written off is alive after all.
 ///
 /// A dead agent normally stays dead, but Claude Code does not always get to run
