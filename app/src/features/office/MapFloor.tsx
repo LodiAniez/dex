@@ -110,6 +110,7 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
               <IdleActor
                 key={`idle-${employee.agent.id}`}
                 employee={employee}
+                mapHeight={height}
                 // Someone out with a message, or about to be brought one, is not idling.
                 loafing={isLoafing(employee.agent) && away !== employee.agent.id && !visited.includes(employee.pod)}
                 onChange={onLoaf}
