@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, doneBy, reportsTo } from "./panel";
+import { ago, doneBy, needsYou, reportsTo } from "./panel";
 
 describe("reportsTo", () => {
   const staff = [
@@ -68,5 +68,25 @@ describe("ago", () => {
 
   it("does not go negative when clocks disagree", () => {
     expect(ago(now + 5_000, now)).toBe("just now");
+  });
+});
+
+describe("needsYou", () => {
+  it("says what a waiting agent is waiting for, and where to answer", () => {
+    expect(needsYou("waiting", "permission to Edit src/main.rs")).toBe("Waiting for you: permission to Edit src/main.rs. Answer it in their pane.");
+  });
+
+  it("still says where to go when the hook did not say what for", () => {
+    expect(needsYou("waiting", null)).toBe("Waiting for you to answer something in their pane.");
+  });
+
+  it("says what went wrong for one that stopped, and that a look is needed for one gone quiet", () => {
+    expect(needsYou("error", "rate_limit")).toBe("Stopped: rate_limit. Their pane says more.");
+    expect(needsYou("unknown", null)).toBe("Nothing has been heard from them for a while. Look at their pane.");
+  });
+
+  it("has nothing to say about an agent that needs nothing", () => {
+    expect(needsYou("running", null)).toBeNull();
+    expect(needsYou("idle", "anything")).toBeNull();
   });
 });

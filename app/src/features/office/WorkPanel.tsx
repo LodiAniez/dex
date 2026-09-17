@@ -7,7 +7,7 @@ import { AgentStatusDot, STATUS_WORDS } from "../agents";
 import { Avatar } from "./Avatar";
 import { clockOutArgs, clockOutQuestion, memoArgs } from "./hire";
 import type { Employee } from "./officeStore";
-import { ago, doneBy, reportsTo } from "./panel";
+import { ago, doneBy, needsYou, reportsTo } from "./panel";
 import { phrase, type Who } from "./phrasing";
 import { promptArgs, whyNoPrompt } from "./prompt";
 
@@ -73,6 +73,7 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
     }
   };
 
+  const attention = needsYou(agent.status, agent.status_detail);
   const [leaving, setLeaving] = useState(false);
   const clockOut = async () => {
     if (!(await ask(clockOutQuestion(persona.name, role), { title: "Clock out", kind: "warning" }))) return;
@@ -115,6 +116,12 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
         {STATUS_WORDS[agent.status]}
         {agent.status_detail && ` · ${agent.status_detail}`}
       </div>
+      {attention && (
+        <button type="button" className={`office-panel-needs ${agent.status}`} disabled={!agent.pane_id} onClick={() => agent.pane_id && onGoToPane(agent.pane_id)}>
+          <span>{attention}</span>
+          <span className="go">Go to pane →</span>
+        </button>
+      )}
       <div className="office-panel-task">{agent.task_brief ?? "Started by you; no brief."}</div>
 
       <span className="office-panel-label">Their screen, live</span>

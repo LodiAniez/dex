@@ -67,6 +67,37 @@
   font-size: 12px;
 }
 
+/* What they need from the owner, and the way to it. The whole line is the button. */
+.office-panel-needs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  text-align: left;
+  color: #cfe0ff;
+  background: rgba(79, 140, 255, 0.12);
+  border: 1px solid rgba(79, 140, 255, 0.5);
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.office-panel-needs.error,
+.office-panel-needs.unknown {
+  color: #f4c9c7;
+  background: rgba(242, 95, 92, 0.1);
+  border-color: rgba(242, 95, 92, 0.45);
+}
+
+.office-panel-needs .go {
+  font-weight: 600;
+}
+
+.office-panel-needs:hover:not(:disabled) {
+  background: rgba(79, 140, 255, 0.2);
+}
+
 .office-panel-task {
   padding: 10px 12px;
   color: var(--office-soft);

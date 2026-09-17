@@ -9,6 +9,7 @@ mod identity;
 mod logic;
 mod model;
 mod prompt;
+mod reason;
 mod spawn;
 mod stop;
 mod store;

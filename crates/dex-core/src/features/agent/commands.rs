@@ -174,12 +174,17 @@ fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<
     else {
         return Ok(());
     };
-    let detail = (next == AgentStatus::Error).then(|| {
-        hook.input
-            .failure
-            .clone()
-            .unwrap_or_else(|| "unknown".into())
-    });
+    // Why, where the hook says: what failed, or what the agent is waiting for.
+    let detail = match next {
+        AgentStatus::Error => Some(
+            hook.input
+                .failure
+                .clone()
+                .unwrap_or_else(|| "unknown".into()),
+        ),
+        AgentStatus::Waiting => super::reason::waiting_reason(&hook.args.input),
+        _ => None,
+    };
     let ended = (next == AgentStatus::Dead).then_some(hook.now);
     store::update_status(
         conn,

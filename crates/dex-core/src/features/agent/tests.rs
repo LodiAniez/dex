@@ -17,6 +17,7 @@ mod orphans;
 mod prompting;
 mod spawn;
 mod stopping;
+mod waiting;
 
 /// A state with one workspace; returns its first pane's id.
 async fn pane() -> (tempfile::TempDir, AppState, String) {
