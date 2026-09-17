@@ -17,16 +17,20 @@ describe("the antics", () => {
 
 describe("isLoafing", () => {
   it("is an agent with nothing to do whose Claude Code has started", () => {
-    expect(isLoafing({ status: "idle", started: true })).toBe(true);
+    expect(isLoafing({ status: "idle", status_detail: null, started: true })).toBe(true);
   });
 
   it("is not a hire who has not started: they are about to be given their task", () => {
-    expect(isLoafing({ status: "idle", started: false })).toBe(false);
+    expect(isLoafing({ status: "idle", status_detail: null, started: false })).toBe(false);
+  });
+
+  it("is not someone who asked the owner something and is waiting to hear: they stay at their desk with a hand up", () => {
+    expect(isLoafing({ status: "idle", status_detail: "asked you: Should I run it?", started: true })).toBe(false);
   });
 
   it("is nobody who is working, waiting on the owner, stopped or gone quiet", () => {
     for (const status of ["running", "waiting", "error", "unknown", "dead"] as const) {
-      expect(isLoafing({ status, started: true }), status).toBe(false);
+      expect(isLoafing({ status, status_detail: null, started: true }), status).toBe(false);
     }
   });
 });

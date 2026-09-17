@@ -4,6 +4,7 @@
 //! `agent.sweep` (watchdog).
 //! Which hook means what, and how a status moves, is pure and lives in `logic.rs`.
 
+mod asking;
 mod commands;
 mod identity;
 mod logic;

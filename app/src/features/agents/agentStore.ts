@@ -1,3 +1,4 @@
+import { seenAs } from "./attention";
 import { useSyncExternalStore } from "react";
 import { request } from "../../platform/daemon";
 import { onDaemonChange } from "../../platform/events";
@@ -70,12 +71,12 @@ const ATTENTION: AgentStatus[] = ["waiting", "error", "unknown"];
 
 /** The most urgent status needing attention in a workspace, if any (the sidebar's dot). */
 export function workspaceAttention(list: AgentList | null, workspaceId: string): AgentStatus | null {
-  const statuses = new Set(list?.agents.filter((a) => a.workspace_id === workspaceId).map((a) => a.status));
+  const statuses = new Set(list?.agents.filter((a) => a.workspace_id === workspaceId).map(seenAs));
   return ATTENTION.find((status) => statuses.has(status)) ?? null;
 }
 
 /** How many agents are running and waiting across all workspaces (the title bar's counts). */
 export function agentCounts(list: AgentList | null): Record<"running" | "waiting" | "error", number> {
-  const count = (status: AgentStatus) => list?.agents.filter((a) => a.status === status).length ?? 0;
+  const count = (status: AgentStatus) => list?.agents.filter((a) => seenAs(a) === status).length ?? 0;
   return { running: count("running"), waiting: count("waiting"), error: count("error") };
 }

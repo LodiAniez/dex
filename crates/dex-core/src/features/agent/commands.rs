@@ -197,6 +197,8 @@ fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<
                 .unwrap_or_else(|| "unknown".into()),
         ),
         AgentStatus::Waiting => super::reason::waiting_reason(&hook.args.input),
+        // A turn that ended by asking the owner something: idle, and waiting on them.
+        AgentStatus::Idle if hook.kind == HookKind::Stop => super::asking::asked(&hook.args.input),
         _ => None,
     };
     let ended = (next == AgentStatus::Dead).then_some(hook.now);
@@ -281,7 +283,10 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                         let has_started = started.contains(&agent.id);
                         let mut seen = view(agent, has_started);
                         let theirs = asker.as_ref().is_none_or(|id| id == &seen.id);
-                        if !theirs && seen.status == AgentStatus::Waiting {
+                        // Nor what a colleague asked the owner: it may quote anything.
+                        if !theirs
+                            && matches!(seen.status, AgentStatus::Waiting | AgentStatus::Idle)
+                        {
                             seen.status_detail = None;
                         }
                         seen

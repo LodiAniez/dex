@@ -8,6 +8,7 @@
  */
 
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
+import { askedYou } from "../agents";
 import { POD, WALL_INSET, podOrigin } from "./mapGeometry";
 import { between, corridorOf, deskOf, type Leg, type Spot } from "./walks";
 
@@ -30,8 +31,9 @@ const KINDS = Object.keys(ANTICS) as AnticKind[];
  * Whether an agent has nothing to do. Idle, and with Claude Code started: a
  * hire shows idle for its first seconds too, and is about to be handed its task.
  */
-export function isLoafing(agent: { status: AgentStatus; started: boolean }): boolean {
-  return agent.status === "idle" && agent.started;
+export function isLoafing(agent: { status: AgentStatus; status_detail: string | null; started: boolean }): boolean {
+  // Someone who asked the owner something is waiting to hear, hand up, at their desk.
+  return agent.status === "idle" && agent.started && askedYou(agent) === null;
 }
 
 function hash(text: string): number {

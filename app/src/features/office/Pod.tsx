@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { STATUS_WORDS } from "../agents";
+import { STATUS_WORDS, seenAs } from "../agents";
 import { poseOf, type Pose } from "./floor";
 import { POD, podOrigin } from "./mapGeometry";
 import type { Employee } from "./officeStore";
@@ -73,7 +73,9 @@ interface PodProps {
 export function Pod({ employee, away = false, listening = false, antic = null, shouting = false, onPick }: PodProps) {
   const { agent, persona, role, pod } = employee;
   const { x, y } = podOrigin(pod);
-  const pose = poseOf(agent.status);
+  // As the owner should see them: someone who asked them something has a hand up.
+  const shown = seenAs(agent);
+  const pose = poseOf(shown);
   const typing = pose === "typing";
   const passing = !away && !listening && !shouting && pose === "still" ? antic : null;
   const [code1, code2] = SCREEN[pose];
@@ -91,7 +93,7 @@ export function Pod({ employee, away = false, listening = false, antic = null, s
       transform={`translate(${x} ${y})`}
       role="button"
       tabIndex={0}
-      aria-label={`${persona.name}, ${role}, ${STATUS_WORDS[agent.status]}`}
+      aria-label={`${persona.name}, ${role}, ${STATUS_WORDS[shown]}`}
       onClick={() => onPick(employee)}
       onKeyDown={onKey}
     >
@@ -99,7 +101,7 @@ export function Pod({ employee, away = false, listening = false, antic = null, s
       <rect width={POD.width} height={POD.height} fill="transparent" />
       <Tag>
         <span className="office-tag">
-          <span className="office-tag-dot" style={{ background: DOT[agent.status] ?? DOT.idle }} />
+          <span className="office-tag-dot" style={{ background: DOT[shown] ?? DOT.idle }} />
           {persona.name}
           <span className="office-tag-role">{role}</span>
         </span>
