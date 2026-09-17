@@ -61,7 +61,7 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, onPick, onH
           ),
         )}
         {chat.length > 0 && (
-          <foreignObject x="26" y={height - 140} width="360" height="112">
+          <foreignObject x="26" y={height - 190} width="360" height="112">
             <div className="office-chat">
               <span className="office-chat-title">Activity</span>
               {chat.map((line) => (

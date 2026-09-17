@@ -3,7 +3,6 @@ import { request } from "../../platform/daemon";
 import { showError } from "../../platform/notices";
 import { useActivity } from "../activity";
 import { AgentStatusDot, STATUS_WORDS } from "../agents";
-import { focusPane } from "../workspaces";
 import { Avatar } from "./Avatar";
 import { memoArgs } from "./hire";
 import type { Employee } from "./officeStore";
@@ -19,11 +18,13 @@ interface Props {
   staff: readonly Employee[];
   /** The last lines on their terminal. */
   screen: string[];
+  /** Leaves the view for the terminals, on this pane. */
+  onGoToPane: (paneId: string) => void;
   onClose: () => void;
 }
 
 /** One employee's work: what they were asked, what is on their screen, what they have done. */
-export function WorkPanel({ workspaceId, employee, staff, screen, onClose }: Props) {
+export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, onClose }: Props) {
   const { agent, persona, role } = employee;
   const events = eventsOf(useActivity(workspaceId)?.events, agent.id, PANEL_EVENTS);
   const [memo, setMemo] = useState<string | null>(null);
@@ -121,7 +122,7 @@ export function WorkPanel({ workspaceId, employee, staff, screen, onClose }: Pro
               type="button"
               className="primary"
               disabled={!agent.pane_id}
-              onClick={() => agent.pane_id && void focusPane(agent.pane_id).catch(showError)}
+              onClick={() => agent.pane_id && onGoToPane(agent.pane_id)}
             >
               Go to pane
             </button>
