@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { isLoafing } from "./antics";
 import type { Headcount } from "./floor";
 import { ActivityBox } from "./ActivityBox";
@@ -9,8 +9,9 @@ import { MAP_WIDTH, mapHeight } from "./mapGeometry";
 import type { Employee, Office } from "./officeStore";
 import type { ChatLine } from "./phrasing";
 import { Pod, VacantPod } from "./Pod";
+import { ShoutBubble, useShout } from "./Shouting";
 import { Walker, prefersStill, useWalks } from "./Walker";
-import { awayFromDesk, expectingVisitor } from "./walks";
+import { awayFromDesk, expectingVisitor, heldBack } from "./walks";
 
 /** Pods in the design's two rows; a map that size fits the pane, a taller one scrolls. */
 const FITTING_PODS = 6;
@@ -56,7 +57,16 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
       return next;
     });
   }, []);
+  // An agent sending to HR for staff shouts for them; the hire waits a moment inside the door, so the shout comes first.
+  const { shout, holding } = useShout(workspaceId);
+  const shouter = shout ? office.employees.find((employee) => employee.agent.id === shout.hirer) : undefined;
   const still = prefersStill();
+  // Whoever is next sets off from their desk - once they are back at it, if they were out fooling around - and a hire after the shout for them.
+  const head = queue[0];
+  const headKey = head ? (head.key ?? `${head.kind}-${head.id}`) : null;
+  const setOff = useRef<string | null>(null);
+  const waiting = head !== undefined && heldBack(head, { outLoafing: loafing.get(head.id)?.away === true, shoutInTheAir: holding, alreadyOff: setOff.current === headKey });
+  if (head && !waiting) setOff.current = headKey;
   const height = mapHeight(office.pods.length);
   const fits = office.pods.length <= FITTING_PODS;
   return (
@@ -88,6 +98,7 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
               antic={loafing.get(employee.agent.id)?.atDesk ?? null}
              
               listening={talkingAt === pod}
+              shouting={shouter?.agent.id === employee.agent.id}
               onPick={onPick}
             />
           ) : (
@@ -115,8 +126,8 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
                 onChange={onLoaf}
               />
             ))}
-        {/* Whoever is next across the floor sets off from their desk: if they are out fooling around, once they are back at it. */}
-        {queue[0] && loafing.get(queue[0].id)?.away !== true && <Walker key={queue[0].key ?? `${queue[0].kind}-${queue[0].id}`} walk={queue[0]} onTalk={setTalkingAt} onDone={finish} />}
+        {shout && shouter && <ShoutBubble pod={shouter.pod} count={shout.count} />}
+        {head && headKey && !waiting && <Walker key={headKey} walk={head} onTalk={setTalkingAt} onDone={finish} />}
       </svg>
     </div>
   );

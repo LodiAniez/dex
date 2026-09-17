@@ -274,6 +274,16 @@ export function expectingVisitor(queue: readonly Walk[]): number[] {
 }
 
 /**
+ * Whether whoever is next across the floor should wait before setting off: a
+ * hire while the shout for them is still new, anyone until they are back from
+ * fooling around. Someone already on their way is never called back.
+ */
+export function heldBack(walk: Pick<Walk, "kind">, now: { outLoafing: boolean; shoutInTheAir: boolean; alreadyOff: boolean }): boolean {
+  if (now.alreadyOff) return false;
+  return now.outLoafing || (now.shoutInTheAir && walk.kind === "arrive");
+}
+
+/**
  * The queue once whoever was at its head has finished. `visited` is how many
  * stops a round made. If its round has grown past that - a message added in
  * the instant the walker decided it was done - they go out again for the
