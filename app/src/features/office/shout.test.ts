@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BURST_SECONDS, HEAD_START_SECONDS, SHOUT_SECONDS, hear, holdsTheDoor, isShouting, newHires, shoutText } from "./shout";
+import { BURST_SECONDS, HEAD_START_SECONDS, SHOUT_SECONDS, hear, holdsTheDoor, isShouting, knownFrom, newHires, shoutText } from "./shout";
 
-const agent = (id: string, parent_id: string | null = null) => ({ id, parent_id });
+const agent = (id: string, parent_id: string | null = null, workspace_id = "ws", status = "running") => ({ id, parent_id, workspace_id, status });
 
 describe("shoutText", () => {
   it("asks HR for as many engineers as were sent for", () => {
@@ -17,22 +17,43 @@ describe("shoutText", () => {
 describe("newHires", () => {
   it("is whoever another agent has just sent for, with who sent for them", () => {
     const known = new Set(["lead"]);
-    expect(newHires(known, [agent("lead"), agent("a", "lead"), agent("b", "lead")])).toEqual([
+    expect(newHires(known, [agent("lead"), agent("a", "lead"), agent("b", "lead")], "ws")).toEqual([
       { id: "a", hirer: "lead" },
       { id: "b", hirer: "lead" },
     ]);
   });
 
   it("is nobody the owner hired: HR did that, and nobody shouted", () => {
-    expect(newHires(new Set(["lead"]), [agent("lead"), agent("mine")])).toEqual([]);
+    expect(newHires(new Set(["lead"]), [agent("lead"), agent("mine")], "ws")).toEqual([]);
   });
 
   it("is nobody already seen", () => {
-    expect(newHires(new Set(["lead", "a"]), [agent("lead"), agent("a", "lead")])).toEqual([]);
+    expect(newHires(new Set(["lead", "a"]), [agent("lead"), agent("a", "lead")], "ws")).toEqual([]);
   });
 
   it("is nobody when the map has only just opened: they were sent for before anyone was watching", () => {
-    expect(newHires(null, [agent("lead"), agent("a", "lead")])).toEqual([]);
+    expect(newHires(null, [agent("lead"), agent("a", "lead")], "ws")).toEqual([]);
+  });
+});
+
+describe("newHires across workspaces", () => {
+  const everyone = [agent("lead"), agent("a", "lead"), agent("boss", null, "other"), agent("x", "boss", "other"), agent("y", "boss", "other")];
+
+  it("is nobody when the owner only switches workspace: those agents were already known, wherever they sit", () => {
+    const known = knownFrom(everyone);
+    expect(newHires(known, everyone, "other")).toEqual([]);
+    expect(newHires(known, everyone, "ws")).toEqual([]);
+  });
+
+  it("is only a hire on this floor", () => {
+    const known = knownFrom(everyone);
+    const after = [...everyone, agent("z", "boss", "other")];
+    expect(newHires(known, after, "ws")).toEqual([]);
+    expect(newHires(known, after, "other")).toEqual([{ id: "z", hirer: "boss" }]);
+  });
+
+  it("is nobody who has already ended", () => {
+    expect(newHires(knownFrom(everyone), [...everyone, agent("late", "lead", "ws", "dead")], "ws")).toEqual([]);
   });
 });
 

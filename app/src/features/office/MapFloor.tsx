@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { isLoafing } from "./antics";
 import type { Headcount } from "./floor";
 import { ActivityBox } from "./ActivityBox";
@@ -59,14 +59,22 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
   }, []);
   // An agent sending to HR for staff shouts for them; the hire waits a moment inside the door, so the shout comes first.
   const { shout, holding } = useShout(workspaceId);
-  const shouter = shout ? office.employees.find((employee) => employee.agent.id === shout.hirer) : undefined;
+  const out = (agentId: string) => loafing.get(agentId)?.away === true;
+  // Nobody shouts from an empty chair: whoever is sending for staff is at their desk, or on their way back to it.
+  const hirer = shout ? office.employees.find((employee) => employee.agent.id === shout.hirer) : undefined;
+  const shouter = hirer && !out(hirer.agent.id) ? hirer : undefined;
   const still = prefersStill();
-  // Whoever is next sets off from their desk - once they are back at it, if they were out fooling around - and a hire after the shout for them.
+  // Whoever is next sets off once everyone concerned is where they should be:
+  // they and whoever they are calling on back from fooling around, and a hire
+  // after the shout for them - if there is anyone on this floor to shout it.
   const head = queue[0];
   const headKey = head ? (head.key ?? `${head.kind}-${head.id}`) : null;
-  const setOff = useRef<string | null>(null);
-  const waiting = head !== undefined && heldBack(head, { outLoafing: loafing.get(head.id)?.away === true, shoutInTheAir: holding, alreadyOff: setOff.current === headKey });
-  if (head && !waiting) setOff.current = headKey;
+  const [setOff, setSetOff] = useState<string | null>(null);
+  const partiesOut = head !== undefined && (out(head.id) || office.employees.some((employee) => visited.includes(employee.pod) && out(employee.agent.id)));
+  const waiting = head !== undefined && heldBack(head, { outLoafing: partiesOut, shoutInTheAir: holding && hirer !== undefined, alreadyOff: setOff === headKey });
+  useEffect(() => {
+    if (!waiting) setSetOff(headKey);
+  }, [waiting, headKey]);
   const height = mapHeight(office.pods.length);
   const fits = office.pods.length <= FITTING_PODS;
   return (
@@ -122,8 +130,8 @@ export function MapFloor({ workspaceId, office, seats, hrNote, chat, events, onP
                 key={`idle-${employee.agent.id}`}
                 employee={employee}
                 mapHeight={height}
-                // Someone out with a message, or about to be brought one, is not idling.
-                loafing={isLoafing(employee.agent) && away !== employee.agent.id && !visited.includes(employee.pod)}
+                // Someone out with a message, about to be brought one, or sending for staff is not idling.
+                loafing={isLoafing(employee.agent) && away !== employee.agent.id && !visited.includes(employee.pod) && hirer?.agent.id !== employee.agent.id}
                 onChange={onLoaf}
               />
             ))}

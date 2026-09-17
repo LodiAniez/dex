@@ -277,8 +277,8 @@ export function expectingVisitor(queue: readonly Walk[]): number[] {
 
 /**
  * Whether whoever is next across the floor should wait before setting off: a
- * hire while the shout for them is still new, anyone until they are back from
- * fooling around. Someone already on their way is never called back.
+ * hire while the shout for them is still new, anyone until they - and whoever
+ * they are calling on - are back from fooling around. Someone already on their way is never called back.
  */
 export function heldBack(walk: Pick<Walk, "kind">, now: { outLoafing: boolean; shoutInTheAir: boolean; alreadyOff: boolean }): boolean {
   if (now.alreadyOff) return false;

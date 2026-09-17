@@ -27,14 +27,28 @@ export function shoutText(count: number): string {
   return `I need ${count} ${count === 1 ? "engineer" : "engineers"} on the floor ASAP!`;
 }
 
+interface Listed {
+  id: string;
+  parent_id: string | null;
+  workspace_id: string;
+  status: string;
+}
+
+/** Everyone there is, on every floor: switching workspace must not make old hands look like new hires. */
+export function knownFrom(agents: readonly { id: string }[]): Set<string> {
+  return new Set(agents.map((agent) => agent.id));
+}
+
 /**
- * Whoever has appeared since `known` was taken and was sent for by another
- * agent. `known` is null when the map has only just opened: whoever is there
- * was hired before anyone was watching.
+ * Whoever has appeared on this floor since `known` was taken and was sent for
+ * by another agent. `known` is null when the map has only just opened: whoever
+ * is there was hired before anyone was watching.
  */
-export function newHires(known: ReadonlySet<string> | null, agents: readonly { id: string; parent_id: string | null }[]): { id: string; hirer: string }[] {
+export function newHires(known: ReadonlySet<string> | null, agents: readonly Listed[], workspaceId: string): { id: string; hirer: string }[] {
   if (known === null) return [];
-  return agents.flatMap((agent) => (agent.parent_id !== null && !known.has(agent.id) ? [{ id: agent.id, hirer: agent.parent_id }] : []));
+  return agents.flatMap((agent) =>
+    agent.workspace_id === workspaceId && agent.status !== "dead" && agent.parent_id !== null && !known.has(agent.id) ? [{ id: agent.id, hirer: agent.parent_id }] : [],
+  );
 }
 
 /** The shout once `hirer` has sent for one more. */

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgents } from "../agents";
 import { POD, podOrigin } from "./mapGeometry";
 import type { Persona } from "./persona";
-import { HEAD_START_SECONDS, SHOUT_SECONDS, hear, holdsTheDoor, isShouting, newHires, shoutText, type Shout } from "./shout";
+import { HEAD_START_SECONDS, SHOUT_SECONDS, hear, holdsTheDoor, isShouting, knownFrom, newHires, shoutText, type Shout } from "./shout";
 
 /**
  * Who is shouting to HR for staff right now, read off the agent list: an agent
@@ -17,9 +17,8 @@ export function useShout(workspaceId: string): { shout: Shout | null; holding: b
 
   useEffect(() => {
     if (!list) return;
-    const here = list.agents.filter((agent) => agent.workspace_id === workspaceId);
-    const hires = newHires(known.current, here);
-    known.current = new Set(here.map((agent) => agent.id));
+    const hires = newHires(known.current, list.agents, workspaceId);
+    known.current = knownFrom(list.agents);
     if (hires.length > 0) setShout((current) => hires.reduce<Shout | null>((so, hire) => hear(so, hire.hirer, Date.now()), current));
   }, [list, workspaceId]);
 
