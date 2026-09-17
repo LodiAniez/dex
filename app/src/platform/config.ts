@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { request } from "./daemon";
 import { onDaemonChange } from "./events";
 import type { ConfigView } from "./generated/ConfigView";
@@ -5,7 +6,8 @@ import { showError, showWarning } from "./notices";
 import { buildKeymap, SHIPPED_KEYMAP, type Keymap } from "../shell/keybindings";
 
 /**
- * The owner's settings, as far as the UI is concerned: the keymap.
+ * The owner's settings, as far as the UI is concerned: the keymap, and the
+ * few values the office draws from.
  *
  * Read once at startup and again whenever the daemon announces `config`, so an
  * edit to `config.toml` rebinds keys without a restart. Until the first answer
@@ -14,6 +16,19 @@ import { buildKeymap, SHIPPED_KEYMAP, type Keymap } from "../shell/keybindings";
  */
 let keymap: Keymap = SHIPPED_KEYMAP;
 const listeners = new Set<() => void>();
+
+/** What the office needs to know; null until the daemon has answered once. */
+export interface OfficeSettings {
+  /** How many agents a workspace may have: the office's seats. */
+  maxConcurrent: number;
+  /** `[ui] office_view`: what the office shows until the owner chooses. */
+  officeView: string;
+}
+let office: OfficeSettings | null = null;
+
+export function useOfficeSettings(): OfficeSettings | null {
+  return useSyncExternalStore(subscribeKeymap, () => office);
+}
 
 /** The bindings in force. Read on every keystroke, so it must stay a lookup. */
 export function currentKeymap(): Keymap {
@@ -31,6 +46,9 @@ async function refresh(): Promise<void> {
   const view = await request<ConfigView>("config.get", {});
   const built = buildKeymap(view.keys);
   keymap = built.keymap;
+  if (office?.maxConcurrent !== view.max_concurrent || office.officeView !== view.office_view) {
+    office = { maxConcurrent: view.max_concurrent, officeView: view.office_view };
+  }
   for (const listener of listeners) listener();
   // The daemon reports what it could not use; this reports what the UI could
   // not. Both are the owner's own file talking back to them, so both are shown.

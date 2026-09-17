@@ -6,6 +6,7 @@ import type { WorkspaceList } from "../../platform/generated/WorkspaceList";
 import type { WorkspaceView } from "../../platform/generated/WorkspaceView";
 import { showError } from "../../platform/notices";
 import { disposeTerminal } from "../../platform/terminalRegistry";
+import { singletonTarget } from "./singleton";
 
 /**
  * The workspace list as the daemon last reported it. Every workspace command
@@ -126,10 +127,19 @@ export async function splitPane(
  * same thing.
  */
 export async function showActivity(workspace: WorkspaceView): Promise<void> {
-  const existing = workspace.panes.find((pane) => pane.kind === "activity");
-  if (existing) return focusPane(existing.id);
-  const from = workspace.active_pane ?? workspace.panes[0]?.id;
-  if (from) await splitPane(from, "right", "activity");
+  await showSingleton(workspace, "activity");
+}
+
+/** Shows the office: the workspace's agents as a team. One is enough here too. */
+export async function showOffice(workspace: WorkspaceView): Promise<void> {
+  await showSingleton(workspace, "office");
+}
+
+async function showSingleton(workspace: WorkspaceView, kind: "activity" | "office"): Promise<void> {
+  const target = singletonTarget(workspace, kind);
+  if (!target) return;
+  if ("focus" in target) return focusPane(target.focus);
+  await splitPane(target.split, "right", kind);
 }
 
 /** Closes a pane. The daemon refuses to close a workspace's last pane. */

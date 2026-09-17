@@ -70,6 +70,41 @@ export function personaOf(id: string): Persona {
   };
 }
 
+/**
+ * Names for the people present, no two alike. An id asks for a name; if someone
+ * who arrived earlier has it, the newcomer takes the next one along that nobody
+ * is using. `previous` is who was called what a moment ago, and wins: nobody is
+ * renamed because a namesake left. In an office larger than the list, the
+ * overflow share names — the label beside each still tells them apart.
+ */
+export function nameStaff(
+  previous: ReadonlyMap<string, string>,
+  present: readonly { id: string }[],
+): ReadonlyMap<string, string> {
+  const names = new Map<string, string>();
+  for (const { id } of present) {
+    const kept = previous.get(id);
+    if (kept) names.set(id, kept);
+  }
+  const taken = new Set(names.values());
+  for (const { id } of present) {
+    if (names.has(id)) continue;
+    const pool: readonly string[] = NAMES;
+    const wanted = pool.indexOf(personaOf(id).name);
+    let name: string = NAMES[wanted];
+    for (let step = 0; step < NAMES.length; step += 1) {
+      const candidate = NAMES[(wanted + step) % NAMES.length];
+      if (!taken.has(candidate)) {
+        name = candidate;
+        break;
+      }
+    }
+    names.set(id, name);
+    taken.add(name);
+  }
+  return names;
+}
+
 /** The longest role a name tag has room for. */
 const ROLE_CHARS = 24;
 const ROLE_WORDS = 3;
