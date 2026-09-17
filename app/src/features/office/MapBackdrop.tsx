@@ -28,6 +28,7 @@ export function MapBackdrop({ height }: { height: number }) {
           <line key={`v${x}`} x1={x} y1="68" x2={x} y2={floorBottom} />
         ))}
       </g>
+      <ExitDoor />
       <HrRoom />
       <BreakRoom />
       {/* Water cooler, on the right-hand wall. */}
@@ -40,6 +41,27 @@ export function MapBackdrop({ height }: { height: number }) {
       <rect x="1202" y={height - 82} width="26" height="24" rx="6" fill={PLANT.pot} />
       <circle cx="346" cy={height - 76} r="15" fill={PLANT.leaf} />
       <rect x="336" y={height - 68} width="22" height="22" rx="6" fill={PLANT.pot} />
+    </g>
+  );
+}
+
+/**
+ * The way out, in the left wall at the end of the main corridor. Whoever ends
+ * leaves by it (`EXIT_DOOR` in walks.ts is where they stand to wave).
+ */
+function ExitDoor() {
+  return (
+    <g>
+      {/* A mat, a frame let into the wall, the door standing open, and a sign. */}
+      <rect x="22" y="392" width="54" height="76" rx="8" fill="#b8894f" opacity="0.55" />
+      <rect x="6" y="384" width="16" height="92" rx="4" fill="#3a4152" />
+      <rect x="9" y="390" width="10" height="80" rx="2" fill="#bfe6f4" />
+      <path d="M20 388 L44 376 L44 452 L20 472 z" fill="#96613a" />
+      <circle cx="39" cy="424" r="2.5" fill="#e8b04b" />
+      <rect x="6" y="364" width="40" height="16" rx="4" fill="#2f8f5b" />
+      <text x="26" y="376" textAnchor="middle" fontSize="10" fontWeight="700" fill="#eafff2" letterSpacing="1">
+        EXIT
+      </text>
     </g>
   );
 }
