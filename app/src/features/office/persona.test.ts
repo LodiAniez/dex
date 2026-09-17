@@ -60,6 +60,12 @@ describe("personaOf", () => {
     expect(skinsInBlue.size).toBe(SKINS.length);
   });
 
+  it("calls nobody by the product's name", () => {
+    // "Dex raised a hand" reads as the app speaking.
+    expect(NAMES.map((name) => name.toLowerCase())).not.toContain("dex");
+    expect(NAMES).toHaveLength(64);
+  });
+
   it("uses names that are unique and short enough for a name tag", () => {
     expect(new Set(NAMES).size).toBe(NAMES.length);
     for (const name of NAMES) expect(name.length, name).toBeLessThanOrEqual(8);
