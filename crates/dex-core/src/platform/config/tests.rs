@@ -222,3 +222,11 @@ fn a_view_that_does_not_exist_falls_back_and_says_so() {
     assert!(problems[0].contains("ui.view"), "{problems:?}");
     assert!(problems[0].contains("penthouse"), "{problems:?}");
 }
+
+#[test]
+fn spawned_agents_stay_out_of_the_browser_unless_the_owner_says_otherwise() {
+    assert!(!Config::default().agents.spawn_chrome);
+    let (config, problems) = parse("[agents]\nspawn_chrome = true\n");
+    assert!(config.agents.spawn_chrome);
+    assert!(problems.is_empty(), "{problems:?}");
+}

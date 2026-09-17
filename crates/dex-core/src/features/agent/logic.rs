@@ -167,6 +167,18 @@ pub fn status_from_name(name: &str) -> AgentStatus {
     }
 }
 
+/// The line typed into a spawned agent's shell to start Claude Code.
+///
+/// `--no-chrome` unless the owner asked otherwise: with Claude in Chrome on by
+/// default, every new session connects to the browser extension, which brings
+/// claude.ai up in the owner's browser - once per agent spawned. With `chrome`
+/// the flag is left out rather than turned on, so Claude Code's own setting
+/// decides, and an older Claude Code that has no such flag is not handed one.
+pub fn launch_command(permission_mode: &str, chrome: bool, kickoff: &str) -> String {
+    let browser = if chrome { "" } else { " --no-chrome" };
+    format!("claude --permission-mode {permission_mode}{browser} \"{kickoff}\"\r")
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
