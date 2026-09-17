@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hireArgs, isHiringFreeze, memoArgs } from "./hire";
+import { clockOutArgs, clockOutQuestion, hireArgs, isHiringFreeze, memoArgs } from "./hire";
 
 const pane = (id: string, kind: string) => ({ id, kind });
 
@@ -49,5 +49,18 @@ describe("memoArgs", () => {
 
   it("has nothing to send when nothing was written", () => {
     expect(memoArgs("ws-1", "agent-7", " \n ")).toBeNull();
+  });
+});
+
+describe("clocking out", () => {
+  it("asks Claude Code to leave rather than killing it, and takes the pane too", () => {
+    expect(clockOutArgs("agent-7")).toEqual({ agent: "agent-7", graceful: true, close_pane: true });
+  });
+
+  it("says, before anything happens, what cannot be undone", () => {
+    const question = clockOutQuestion("Pip", "tests");
+    expect(question).toContain("Pip (tests)");
+    expect(question).toContain("/exit");
+    expect(question).toContain("pane");
   });
 });

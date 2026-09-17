@@ -1,10 +1,11 @@
+import { ask } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
 import { request } from "../../platform/daemon";
 import { showError } from "../../platform/notices";
 import { useActivity } from "../activity";
 import { AgentStatusDot, STATUS_WORDS } from "../agents";
 import { Avatar } from "./Avatar";
-import { memoArgs } from "./hire";
+import { clockOutArgs, clockOutQuestion, memoArgs } from "./hire";
 import type { Employee } from "./officeStore";
 import { eventsOf, reportsTo } from "./panel";
 
@@ -51,6 +52,19 @@ export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, on
       showError(err);
     } finally {
       setSending(false);
+    }
+  };
+
+  const [leaving, setLeaving] = useState(false);
+  const clockOut = async () => {
+    if (!(await ask(clockOutQuestion(persona.name, role), { title: "Clock out", kind: "warning" }))) return;
+    setLeaving(true);
+    try {
+      // The panel closes by itself: it follows the agent, and the agent is about to go.
+      await request("agent.stop", clockOutArgs(agent.id));
+    } catch (err) {
+      showError(err);
+      setLeaving(false);
     }
   };
 
@@ -134,6 +148,9 @@ export function WorkPanel({ workspaceId, employee, staff, screen, onGoToPane, on
             </button>
             <button type="button" onClick={() => setMemo("")}>
               Send a memo
+            </button>
+            <button type="button" className="danger" disabled={leaving} onClick={() => void clockOut()}>
+              {leaving ? "Leaving…" : "Clock out"}
             </button>
           </>
         ) : (

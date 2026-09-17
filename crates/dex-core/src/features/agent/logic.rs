@@ -179,6 +179,26 @@ pub fn launch_command(permission_mode: &str, chrome: bool, kickoff: &str) -> Str
     format!("claude --permission-mode {permission_mode}{browser} \"{kickoff}\"\r")
 }
 
+/// One thing done to an agent's terminal to make Claude Code leave.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExitStep {
+    /// Press Escape: interrupts a turn, or dismisses a dialog.
+    Escape,
+    /// Type this and press Enter.
+    Type(&'static str),
+}
+
+/// How to ask an agent in this state to leave. At an idle prompt `/exit` is a
+/// command. Anywhere else it is not: typed during a turn it is queued for the
+/// model as a message, and typed at a permission dialog it answers the dialog.
+/// Escape clears both, and leaves the prompt the command needs.
+pub fn exit_plan(status: AgentStatus) -> Vec<ExitStep> {
+    match status {
+        AgentStatus::Idle => vec![ExitStep::Type("/exit")],
+        _ => vec![ExitStep::Escape, ExitStep::Type("/exit")],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

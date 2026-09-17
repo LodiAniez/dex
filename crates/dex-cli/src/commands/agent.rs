@@ -35,6 +35,13 @@ pub enum AgentCommand {
     Stop {
         /// Agent id, or the label or id of its pane.
         target: String,
+        /// Ask it to leave with /exit first, so its SessionEnd hook runs;
+        /// Ctrl+C only if it is still there a few seconds later.
+        #[arg(long)]
+        graceful: bool,
+        /// Close its pane whoever made it (a workspace's last pane stays).
+        #[arg(long)]
+        close_pane: bool,
     },
     /// Start another agent on a task, in its own pane.
     Spawn {
@@ -104,9 +111,15 @@ pub fn run(
                 println!("{}", spawned.agent);
             }
         }
-        AgentCommand::Stop { target } => {
-            let stopped: Stopped =
-                client::connect()?.call("agent.stop", json!({ "agent": target }))?;
+        AgentCommand::Stop {
+            target,
+            graceful,
+            close_pane,
+        } => {
+            let stopped: Stopped = client::connect()?.call(
+                "agent.stop",
+                json!({ "agent": target, "graceful": graceful, "close_pane": close_pane }),
+            )?;
             if format.json {
                 output::json(&stopped);
             } else {

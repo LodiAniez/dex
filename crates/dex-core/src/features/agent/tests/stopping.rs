@@ -91,3 +91,66 @@ async fn agents_all(state: &crate::app::AppState) -> Vec<dex_protocol::agent::Ag
     .unwrap()
     .agents
 }
+
+#[test]
+fn an_idle_agent_is_simply_told_to_exit() {
+    use crate::features::agent::logic::{ExitStep, exit_plan};
+    assert_eq!(exit_plan(AgentStatus::Idle), [ExitStep::Type("/exit")]);
+}
+
+#[test]
+fn a_busy_agent_is_interrupted_first_or_the_command_would_queue_as_a_message() {
+    use crate::features::agent::logic::{ExitStep, exit_plan};
+    // Text typed during a turn is queued for the model; text typed at a
+    // permission dialog answers the dialog. Escape clears both.
+    for status in [
+        AgentStatus::Running,
+        AgentStatus::Waiting,
+        AgentStatus::Error,
+        AgentStatus::Unknown,
+    ] {
+        assert_eq!(
+            exit_plan(status),
+            [ExitStep::Escape, ExitStep::Type("/exit")],
+            "{status:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn clocking_out_closes_the_pane_even_of_an_agent_the_owner_started() {
+    // Clock-out is the owner's own, confirmed, choice about that pane.
+    let (_dir, state, first) = pane().await;
+    let second = workspace::split_pane(
+        &state,
+        dex_protocol::workspace::SplitPaneArgs {
+            pane: first.clone(),
+            direction: dex_protocol::workspace::SplitDirection::Right,
+            cwd: None,
+            label: None,
+            kind: None,
+        },
+    )
+    .await
+    .unwrap()
+    .workspaces[0]
+        .active_pane
+        .clone()
+        .unwrap();
+    fire(&state, "session-start", &second, 1, session("mine")).await;
+    let id = agents(&state).await[0].id.clone();
+
+    let stopped = stop(
+        &state,
+        dex_protocol::agent::StopAgentArgs {
+            agent: id,
+            graceful: true,
+            close_pane: true,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(stopped.closed_pane, "{stopped:?}");
+    assert_eq!(pane_ids(&state).await, [first]);
+}

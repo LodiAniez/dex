@@ -300,6 +300,8 @@ async fn list_takes_a_workspace_name_and_rejects_unknown_ones() {
 fn stop_args(target: &str) -> StopAgentArgs {
     StopAgentArgs {
         agent: target.into(),
+        graceful: false,
+        close_pane: false,
     }
 }
 
