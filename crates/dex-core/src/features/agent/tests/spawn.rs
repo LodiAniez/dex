@@ -220,8 +220,8 @@ async fn spawning_past_the_concurrency_limit_is_refused() {
     let (_dir, state, first) = pane().await;
     parent_agent(&state, &first, "parent").await;
 
-    // The parent counts, so five more reach the limit of six.
-    for i in 0..5 {
+    // The parent counts, so nine more reach the limit of ten.
+    for i in 0..9 {
         spawn(&state, brief(&format!("job {i}"), &first))
             .await
             .unwrap_or_else(|err| panic!("spawn {i} should be allowed: {err:?}"));
@@ -230,7 +230,7 @@ async fn spawning_past_the_concurrency_limit_is_refused() {
     assert!(
         matches!(
             refused,
-            Err(AgentError::ConcurrencyLimit { live: 6, max: 6 })
+            Err(AgentError::ConcurrencyLimit { live: 10, max: 10 })
         ),
         "{refused:?}"
     );

@@ -77,17 +77,27 @@ describe("seat", () => {
 });
 
 describe("podCount", () => {
-  it("is two rows of three for the default limit", () => {
-    expect(podCount(new Map(), 6)).toBe(6);
+  const seated = (count: number): Seating => new Map(Array.from({ length: count }, (_, i) => [`a${i}`, i]));
+
+  it("is two rows of three however high the limit, while that is enough", () => {
+    // Ten seats drawn for one agent would be an office nobody works in, and a
+    // floor plan too tall to fit the window.
+    expect(podCount(seated(0), 10)).toBe(6);
+    expect(podCount(seated(5), 10)).toBe(6);
   });
 
   it("never shows fewer than two rows, however low the limit", () => {
-    expect(podCount(new Map(), 1)).toBe(6);
+    expect(podCount(seated(0), 1)).toBe(6);
   });
 
-  it("adds a whole row when the limit is raised", () => {
-    expect(podCount(new Map(), 7)).toBe(9);
-    expect(podCount(new Map(), 9)).toBe(9);
+  it("opens another row as soon as the next hire would need it", () => {
+    expect(podCount(seated(6), 10)).toBe(9);
+    expect(podCount(seated(9), 10)).toBe(12);
+    expect(podCount(seated(10), 10)).toBe(12);
+  });
+
+  it("opens no row for a hire the limit would refuse", () => {
+    expect(podCount(seated(6), 6)).toBe(6);
   });
 
   it("keeps a row for someone seated beyond a limit that was lowered", () => {

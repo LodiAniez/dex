@@ -380,6 +380,6 @@ mod tests {
     fn the_shipped_limits_are_the_documented_ones() {
         let shipped = AgentSettings::default();
         assert_eq!(shipped.max_depth, 2);
-        assert_eq!(shipped.max_concurrent, 6);
+        assert_eq!(shipped.max_concurrent, 10);
     }
 }

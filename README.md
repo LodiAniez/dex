@@ -133,7 +133,7 @@ worktree_base = "D:/work/worktrees"                # default: %USERPROFILE%\dex\
 
 [agents]
 max_depth = 2                # how deep spawning may go
-max_concurrent = 6           # live agents per workspace
+max_concurrent = 10          # live agents per workspace
 spawn_permission_mode = "auto"   # what spawned agents run with
 spawn_chrome = false         # true lets spawned agents connect to Claude in Chrome
 
@@ -209,9 +209,9 @@ dex agent spawn --task "port the remaining call sites to the new client API" --r
 
 Dex creates the worktree, splits a pane for it, records the task, starts Claude Code there, and gives it its brief through its opening digest — the task never passes through a shell command line. The child answers Claude Code's folder-trust dialog by itself (only in a worktree Dex created, from a repository you registered) and begins work. Its pane header shows the permission mode it runs in, so an unattended agent is never unattended invisibly.
 
-Guardrails are in Dex, not in prose an agent might skip: **depth 2** (a child may spawn, its child may not) and **six live agents per workspace**. A refused spawn says why and what to do instead.
+Guardrails are in Dex, not in prose an agent might skip: **depth 2** (a child may spawn, its child may not) and **ten live agents per workspace**. A refused spawn says why and what to do instead.
 
-Each child is a full Claude Code session under your account, so six agents spend roughly six times what one does. The limits exist for your usage as much as for your machine; lower `max_concurrent` in the config if you want a tighter cap.
+Each child is a full Claude Code session under your account, so ten agents spend roughly ten times what one does. The limits exist for your usage as much as for your machine; lower `max_concurrent` in the config if you want a tighter cap.
 
 The judgment side — when spawning helps and when it just costs a cold start, how to write a brief, what to do while waiting — is the `dex-agentic` skill (`skills/dex-agentic/SKILL.md`), which `dex skill install` puts where Claude Code finds it. Agents load it when a task looks splittable.
 

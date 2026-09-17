@@ -25,7 +25,7 @@ interface Props {
 }
 
 /** Seats to draw before the daemon has said how many there are: its own default. */
-const DEFAULT_SEATS = 6;
+const DEFAULT_SEATS = 10;
 /** Lines of an agent's screen that fit on a card. */
 const CARD_LINES = 2;
 /** Lines of chat the map has room for. */
