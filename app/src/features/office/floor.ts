@@ -96,3 +96,14 @@ export function hrNote(seats: Headcount, pods: readonly unknown[], refused: bool
   if (!seats.full && vacant >= 0) return `Office ${vacant + 1} is free.`;
   return refused ? "Hiring freeze — every seat is taken." : "No seat until someone leaves.";
 }
+
+/**
+ * Drops what was remembered about anything not in `alive`. The office keeps
+ * seating and names per workspace for as long as the window is open; a deleted
+ * workspace should not be kept for ever.
+ */
+export function keepOnly<T>(remembered: Map<string, T>, alive: readonly string[]): void {
+  for (const key of [...remembered.keys()]) {
+    if (!alive.includes(key)) remembered.delete(key);
+  }
+}

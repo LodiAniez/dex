@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
-import { headcount, hrNote, occupants, podCount, poseOf, seat, type Seating } from "./floor";
+import { headcount, hrNote, keepOnly, occupants, podCount, poseOf, seat, type Seating } from "./floor";
 
 const agent = (id: string, extra: Partial<{ workspace_id: string; status: AgentStatus; started_at: number }> = {}) => ({
   id,
@@ -138,5 +138,13 @@ describe("hrNote", () => {
   it("calls a refused hire what it is, until a seat frees up", () => {
     expect(hrNote(headcount(6, 6), [{}, {}], true)).toBe("Hiring freeze — every seat is taken.");
     expect(hrNote(headcount(5, 6), vacancy, true)).toBe("Office 2 is free.");
+  });
+});
+
+describe("keepOnly", () => {
+  it("forgets what was remembered about workspaces that no longer exist", () => {
+    const remembered = new Map([["ws-1", "a"], ["gone", "b"]]);
+    keepOnly(remembered, ["ws-1", "ws-2"]);
+    expect([...remembered.keys()]).toEqual(["ws-1"]);
   });
 });

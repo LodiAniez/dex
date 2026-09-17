@@ -3,7 +3,7 @@ import type { AgentView } from "../../platform/generated/AgentView";
 import { readScreen } from "../../platform/terminalRegistry";
 import { useAgents } from "../agents";
 import { useWorkspaces } from "../workspaces";
-import { occupants, podCount, seat, type Seating } from "./floor";
+import { keepOnly, occupants, podCount, seat, type Seating } from "./floor";
 import { labelFor, nameStaff, personaOf, roleOf, type Persona } from "./persona";
 import { lastLines } from "./screen";
 
@@ -47,7 +47,15 @@ export function officeNameOf(agentId: string): string | undefined {
 /** The workspace's office: its living agents, seated. */
 export function useOffice(workspaceId: string, maxConcurrent: number): Office {
   const list = useAgents();
-  const panes = useWorkspaces()?.workspaces.find((ws) => ws.id === workspaceId)?.panes;
+  const workspaces = useWorkspaces()?.workspaces;
+  const panes = workspaces?.find((ws) => ws.id === workspaceId)?.panes;
+  // Only once the list has loaded: an empty list then would forget everyone.
+  useEffect(() => {
+    if (!workspaces) return;
+    const alive = workspaces.map((ws) => ws.id);
+    keepOnly(seatings, alive);
+    keepOnly(namings, alive);
+  }, [workspaces]);
   return useMemo(() => {
     const present = occupants(list?.agents ?? [], workspaceId);
     const seating = seat(seatings.get(workspaceId) ?? new Map(), present);

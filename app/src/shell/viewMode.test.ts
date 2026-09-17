@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VIEW_MODES, chooseMode, modeOfAction, showsPanes, whenPanesHidden } from "./viewMode";
+import { VIEW_MODES, chooseMode, modeOfAction, nextMode, showsPanes, whenPanesHidden } from "./viewMode";
 
 describe("chooseMode", () => {
   it("is the terminals until anyone says otherwise", () => {
@@ -61,5 +61,13 @@ describe("whenPanesHidden", () => {
     for (const kind of ["command-palette", "new-workspace", "toggle-sidebar", "next-workspace", "switch-workspace", "open-setup", "view-cards"]) {
       expect(whenPanesHidden(kind), kind).toBe("run");
     }
+  });
+});
+
+describe("nextMode", () => {
+  it("goes round the three in the order they are offered", () => {
+    expect(nextMode("terminal")).toBe("cards");
+    expect(nextMode("cards")).toBe("office");
+    expect(nextMode("office")).toBe("terminal");
   });
 });

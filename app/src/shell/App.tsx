@@ -28,7 +28,7 @@ import { neighborPane } from "./paneGeometry";
 import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
 import { Setup } from "./SetupPanel";
 import { Sidebar } from "./Sidebar";
-import { chooseMode, modeOfAction, rememberMode, showsPanes, storedMode, whenPanesHidden, type ViewMode } from "./viewMode";
+import { chooseMode, modeOfAction, nextMode, rememberMode, showsPanes, storedMode, whenPanesHidden, type ViewMode } from "./viewMode";
 import { TitleBar } from "./TitleBar";
 
 const SIDEBAR_PREF = "dex.sidebarOpen";
@@ -231,6 +231,9 @@ export function App() {
         // The diff of whatever repository the focused pane is working in.
         setZoomed(null);
         if (pane) run(splitPane(pane, "right", "diff"));
+        return;
+      case "cycle-view":
+        chooseView(nextMode(mode));
         return;
       case "view-terminal":
       case "view-cards":
