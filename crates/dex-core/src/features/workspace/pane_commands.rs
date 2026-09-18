@@ -26,10 +26,10 @@ struct Located {
     active: Option<String>,
 }
 
-/// A pane about to be created by a split.
 /// What a split answers with.
 type Listed = Result<WorkspaceList, WorkspaceError>;
 
+/// A pane about to be created by a split.
 struct NewPane {
     id: String,
     cwd: Option<String>,

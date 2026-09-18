@@ -147,7 +147,20 @@ fn create_in_wsl(distro: &str, repo: &Path, path: &Path, branch: &str) -> Result
         wsl::linux_path(distro, &paths::normalize(windows))
             .map_err(|err| RepoError::Git(GitError::Other(err)))
     };
+    // Git on both sides must know relative worktrees: adding one marks the
+    // repository's format, and an older git then refuses the whole repository.
+    let too_old = |place: &str, printed: &str| match logic::git_version(printed) {
+        Some(version) if version >= logic::RELATIVE_WORKTREES => Ok(()),
+        _ => Err(RepoError::GitTooOld {
+            place: place.to_owned(),
+            version: printed.trim().trim_start_matches("git version ").to_owned(),
+        }),
+    };
+    let windows = proc::git(repo, &["--version"]).map_err(RepoError::Git)?;
+    too_old("Windows", &windows.stdout)?;
     let (repo, path) = (linux(repo)?, linux(path)?);
+    let linux_git = wsl::git(distro, &repo, &["--version"]).unwrap_or_default();
+    too_old(distro, &linux_git)?;
     let add = |new_branch: bool| {
         let mut args = vec!["worktree", "add", "--relative-paths", &path];
         args.extend(if new_branch {
@@ -187,7 +200,11 @@ pub async fn create_for_spawn(
     let repo_path = repo.path.clone();
     let branch = branch.to_owned();
     let made = path.clone();
-    let runtime = Runtime::parse(runtime).unwrap_or(Runtime::Windows);
+    let runtime = Runtime::parse(runtime).map_err(|err| {
+        RepoError::Target(crate::features::workspace::WorkspaceError::InvalidRuntime(
+            err,
+        ))
+    })?;
     tokio::task::spawn_blocking(move || match runtime {
         Runtime::Wsl(distro) => create_in_wsl(&distro, Path::new(&repo_path), &made, &branch),
         Runtime::Windows => create(Path::new(&repo_path), &made, &branch).map(|_| ()),

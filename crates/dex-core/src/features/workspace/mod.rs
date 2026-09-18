@@ -38,7 +38,9 @@ pub use pane_content::content as pane_content;
 pub use pane_io::{list_panes, send, send_key};
 pub use pane_move::move_pane;
 pub use runtimes::{choose_terminal, open_panes_in_terminal, terminal};
-pub use store::{find_pane_workspace, pane_cwd, pane_label, workspace_name, workspace_root};
 #[cfg(test)]
-pub use store::{pane_runtime, update_terminal as set_terminal};
+pub use store::update_terminal as set_terminal;
+pub use store::{
+    find_pane_workspace, pane_cwd, pane_label, pane_runtime, workspace_name, workspace_root,
+};
 pub use targets::{focused_pane, pane_id, workspace_id};

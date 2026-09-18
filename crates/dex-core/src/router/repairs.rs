@@ -127,6 +127,16 @@ fn repo_repair(err: &RepoError) -> (ErrorCode, String) {
         RepoError::InvalidBranch { reason, .. } => {
             (ErrorCode::InvalidArgs, reason.repair().to_owned())
         }
+        RepoError::GitTooOld { place, .. } if place == "Windows" => (
+            ErrorCode::Internal,
+            "Install the current Git for Windows (https://git-scm.com), then spawn again.".to_owned(),
+        ),
+        RepoError::GitTooOld { place, .. } => (
+            ErrorCode::Internal,
+            format!(
+                "Update git in {place}. On Ubuntu: `sudo add-apt-repository ppa:git-core/ppa && sudo apt update && sudo apt install git`. Then spawn again."
+            ),
+        ),
         RepoError::Git(GitError::Missing) => (
             ErrorCode::GitFailed,
             "Install Git for Windows and make sure git.exe is on PATH.".to_owned(),

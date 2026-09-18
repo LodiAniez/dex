@@ -63,7 +63,17 @@ fn the_pane_variables_are_added_to_wslenv_without_losing_the_owners() {
 fn a_pane_starts_its_distro_in_its_folder() {
     assert_eq!(
         pane_args("Ubuntu", "C:/src/api"),
-        vec!["-d", "Ubuntu", "--cd", "C:/src/api"]
+        vec!["-d", "Ubuntu", "--cd", r"C:\src\api"]
+    );
+}
+
+#[test]
+fn a_folder_inside_the_linux_filesystem_is_given_as_windows_writes_it() {
+    // `wsl.exe --cd //wsl.localhost/...` quietly starts in `/` instead: only
+    // the backslash form of a network path is understood.
+    assert_eq!(
+        pane_args("Ubuntu", "//wsl.localhost/Ubuntu/home/me/api")[3],
+        r"\\wsl.localhost\Ubuntu\home\me\api"
     );
 }
 
@@ -73,4 +83,32 @@ fn a_pane_starts_its_distro_in_its_folder() {
 fn a_real_distro_translates_a_windows_path() {
     let distro = distros().into_iter().next().expect("a distro");
     assert_eq!(linux_path(&distro, "C:/Windows").unwrap(), "/mnt/c/Windows");
+}
+
+#[test]
+fn the_panes_running_claude_in_a_distro_are_read_once_each() {
+    let printed = "p-1\np-2\n\np-1\n";
+    assert_eq!(parse_panes(printed), vec!["p-1", "p-2"]);
+    assert!(parse_panes("").is_empty());
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "needs WSL with a distro installed"]
+fn a_real_distro_says_which_panes_run_claude() {
+    let distro = distros().into_iter().next().expect("a distro");
+    // A stand-in: a sleep that calls itself claude, started from a Dex pane.
+    let mut stand_in = std::process::Command::new("wsl.exe")
+        .args(["-d", &distro, "--exec", "env", "DEX_PANE_ID=probe-pane"])
+        .args(["bash", "-c", "exec -a claude-probe sleep 20"])
+        .spawn()
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    let found = claude_panes(&distro);
+    let _ = stand_in.kill();
+    let _ = stand_in.wait();
+    let _ = std::process::Command::new("wsl.exe")
+        .args(["-d", &distro, "--exec", "pkill", "-f", "claude-probe"])
+        .status();
+    assert!(found.unwrap().contains(&"probe-pane".to_owned()));
 }

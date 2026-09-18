@@ -17,6 +17,7 @@ use crate::app::AppState;
 use crate::features::workspace;
 use crate::platform::clock;
 use crate::platform::proctree::{self, Presence};
+use crate::platform::wsl::{self, Runtime};
 
 /// Why an agent cannot be typed at right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,12 +126,28 @@ pub async fn prompt(state: &AppState, args: PromptAgentArgs) -> Result<Prompted,
 /// An agent's status is what its hooks last said, and Claude Code quit with
 /// Ctrl+C, or crashed, fires none: the agent goes on reading "idle" over a bare
 /// shell. Only evidence refuses a prompt - a pane with no process of its own, a
-/// table that could not be read, or a WSL pane the table cannot see into all
-/// let it through to the rule above.
+/// table that could not be read, or a WSL distro that did not answer all let
+/// it through to the rule above.
 async fn claude_has_gone(state: &AppState, pane: &str) -> bool {
     let Some(shell) = state.pty.shell_pid(pane) else {
         return false;
     };
+    // A pane in WSL: the distro says which of its panes run Claude Code.
+    let asked = pane.to_owned();
+    let runtime = state
+        .db
+        .call(move |conn| workspace::pane_runtime(conn, &asked))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|runtime| Runtime::parse(&runtime).ok());
+    if let Some(Runtime::Wsl(distro)) = runtime {
+        let pane = pane.to_owned();
+        return match tokio::task::spawn_blocking(move || wsl::claude_panes(&distro)).await {
+            Ok(Ok(running)) => !running.contains(&pane),
+            _ => false,
+        };
+    }
     match tokio::task::spawn_blocking(proctree::snapshot).await {
         Ok(Ok(procs)) => proctree::claude_under(&procs, shell) == Presence::Gone,
         Ok(Err(err)) => {

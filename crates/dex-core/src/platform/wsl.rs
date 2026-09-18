@@ -11,6 +11,10 @@
 mod tests;
 
 use std::fmt;
+use std::io::Read;
+use std::process::{Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// Where a pane's processes run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,9 +91,12 @@ pub fn wslenv(existing: Option<&str>, names: &[&str]) -> String {
 }
 
 /// What `wsl.exe` is given to start a pane: the distro's login shell, in
-/// `cwd` (a Windows path, which `wsl.exe` translates).
+/// `cwd` (a Windows path, which `wsl.exe` translates). Given with backslashes:
+/// `wsl.exe` reads `C:/src` either way, but `//wsl.localhost/...` - a folder
+/// inside the Linux filesystem - it silently replaces with `/`.
 pub fn pane_args(distro: &str, cwd: &str) -> Vec<String> {
-    ["-d", distro, "--cd", cwd].map(str::to_owned).to_vec()
+    let cwd = cwd.replace('/', "\\");
+    ["-d", distro, "--cd", &cwd].map(str::to_owned).to_vec()
 }
 
 /// The distros `wsl.exe -l -q` printed, less Docker Desktop's own.
@@ -108,17 +115,105 @@ pub fn parse_distros(printed: &[u8]) -> Vec<String> {
         .collect()
 }
 
+/// How long any one `wsl.exe` run may take. The first run starts a stopped
+/// distro, which takes seconds; one that hangs (a service wedged, a profile
+/// waiting for input) must not hang Dex with it.
+const WAIT: Duration = Duration::from_secs(15);
+
 /// Runs `wsl.exe` with `args`, hiding the console it would flash open from a
-/// GUI app. `None` if it could not be run.
-fn run(args: &[&str]) -> Option<std::process::Output> {
-    let mut command = std::process::Command::new("wsl.exe");
-    command.args(args);
+/// GUI app, and gives up after `WAIT`. `None` if it could not be run, or did
+/// not finish. `WSL_UTF8` is left out: it makes `--list` print UTF-8 instead
+/// of the UTF-16 `parse_distros` reads.
+fn run(args: &[&str]) -> Option<Output> {
+    let mut command = Command::new("wsl.exe");
+    command
+        .args(args)
+        .env_remove("WSL_UTF8")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
-    command.output().ok()
+    let mut child = command.spawn().ok()?;
+    // Drained as they fill, or a chatty command would block on a full pipe.
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            bytes
+        })
+    };
+    let stdout = drain(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let stderr = drain(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let deadline = Instant::now() + WAIT;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                tracing::warn!(?args, "wsl.exe did not answer in time");
+                return None;
+            }
+        }
+    };
+    Some(Output {
+        status,
+        stdout: stdout.join().unwrap_or_default(),
+        stderr: stderr.join().unwrap_or_default(),
+    })
+}
+
+/// Lists, for every process in the distro whose command line names Claude
+/// Code, the `DEX_PANE_ID` it was started with - so which Dex panes run
+/// Claude Code there, which Windows' process table cannot see. Itself left
+/// out: its own command line says "claude" too.
+const CLAUDE_PANES: &str = r#"for p in /proc/[0-9]*; do
+  [ "$p" = "/proc/$$" ] && continue
+  case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in
+    *claude*) tr '\0' '\n' < "$p/environ" 2>/dev/null | sed -n 's/^DEX_PANE_ID=//p' ;;
+  esac
+done"#;
+
+/// The pane ids `CLAUDE_PANES` printed, once each.
+pub fn parse_panes(printed: &str) -> Vec<String> {
+    let mut panes: Vec<String> = printed
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect();
+    panes.sort();
+    panes.dedup();
+    panes
+}
+
+/// The Dex panes in `distro` that run Claude Code now. An error when the
+/// distro could not be asked, which is no evidence of anything. Blocking.
+pub fn claude_panes(distro: &str) -> Result<Vec<String>, String> {
+    let out = run(&["-d", distro, "--exec", "sh", "-c", CLAUDE_PANES])
+        .ok_or_else(|| format!("{distro} did not answer"))?;
+    if out.status.success() {
+        Ok(parse_panes(&String::from_utf8_lossy(&out.stdout)))
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
+    }
 }
 
 /// The installed distros agents can run in; empty without WSL (or off Windows).

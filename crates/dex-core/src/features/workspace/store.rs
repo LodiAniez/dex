@@ -220,8 +220,8 @@ pub fn pane_cwd(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<Str
     .optional()
 }
 
-/// Where a pane's shell runs: `windows` or `wsl:<distro>`. For tests.
-#[cfg(test)]
+/// Where a pane's shell runs: `windows` or `wsl:<distro>`. Part of the
+/// slice's public face.
 pub fn pane_runtime(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<String>> {
     conn.query_row("SELECT runtime FROM pane WHERE id = ?1", [pane_id], |row| {
         row.get(0)
@@ -308,13 +308,27 @@ pub fn update_terminal(conn: &Connection, runtime: &str) -> rusqlite::Result<()>
     Ok(())
 }
 
-/// Every terminal pane's shell runs in `runtime` from its next start.
-pub fn update_terminal_panes(conn: &Connection, runtime: &str) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE pane SET runtime = ?1 WHERE kind = 'terminal'",
-        [runtime],
-    )?;
-    Ok(())
+/// Every terminal pane, as its id and folder.
+pub fn terminal_panes(conn: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare("SELECT id, cwd FROM pane WHERE kind = 'terminal'")?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    rows.collect()
+}
+
+/// These panes' shells run in `runtime` from their next start.
+pub fn update_pane_runtimes(
+    conn: &mut Connection,
+    ids: &[String],
+    runtime: &str,
+) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    for id in ids {
+        tx.execute(
+            "UPDATE pane SET runtime = ?2 WHERE id = ?1",
+            params![id, runtime],
+        )?;
+    }
+    tx.commit()
 }
 
 /// Records the active workspace.
