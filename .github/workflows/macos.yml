@@ -24,8 +24,10 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             arch: apple-silicon
+            lipo: arm64
           - target: x86_64-apple-darwin
             arch: intel
+            lipo: x86_64
     # An Apple Silicon runner builds both; Intel is cross-compiled.
     runs-on: macos-latest
     steps:
@@ -66,7 +68,9 @@ jobs:
           app=target/${{ matrix.target }}/release/bundle/macos/Dex.app
           ls -l "$app/Contents/MacOS" "$app/Contents/Resources/skills/dex-agentic/SKILL.md"
           codesign --verify --deep --strict "$app"
-          lipo -archs "$app/Contents/MacOS/dex-app" "$app/Contents/MacOS/dex" "$app/Contents/MacOS/dex-mcp"
+          for bin in dex-app dex dex-mcp; do
+            lipo "$app/Contents/MacOS/$bin" -verify_arch ${{ matrix.lipo }}
+          done
           "$app/Contents/MacOS/dex" --version
 
       - uses: actions/upload-artifact@v4
