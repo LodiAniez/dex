@@ -112,3 +112,19 @@ fn shapes_dex_cannot_edit_are_refused_not_clobbered() {
         Err(Malformed("\"hooks\" is not an object"))
     );
 }
+
+#[test]
+fn a_dex_hook_is_recognised_whichever_platform_wrote_its_path() {
+    // A settings file can carry either kind of path, and Dex must know its own
+    // hooks on every platform - a Unix path does not split on `\`.
+    for program in [
+        r"C:\Program Files\Dex\dex.exe",
+        "/Applications/Dex.app/Contents/MacOS/dex",
+        "dex",
+    ] {
+        let hook = json!({ "type": "command", "command": program, "args": ["event"] });
+        assert!(is_dex_hook(&hook), "{program}");
+    }
+    let other = json!({ "type": "command", "command": r"C:\tools\index.exe", "args": ["event"] });
+    assert!(!is_dex_hook(&other));
+}

@@ -211,9 +211,11 @@ struct Malformed(&'static str);
 /// Whether a hook entry is Dex's: `dex`/`dex.exe` run with `event` first.
 fn is_dex_hook(hook: &Value) -> bool {
     let command = hook.get("command").and_then(Value::as_str).unwrap_or("");
-    let program = Path::new(command)
-        .file_name()
-        .and_then(|name| name.to_str())
+    // Split on both separators: a Windows path is written with `\`, which a
+    // Unix `Path` does not treat as one.
+    let program = command
+        .rsplit(['/', '\\'])
+        .next()
         .unwrap_or("")
         .to_ascii_lowercase();
     let first_arg = hook
