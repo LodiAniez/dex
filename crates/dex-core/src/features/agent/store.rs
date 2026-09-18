@@ -302,7 +302,9 @@ pub fn presence_candidates(conn: &Connection) -> rusqlite::Result<Vec<(String, S
 
 /// The panes of the living agents in `workspace_id` that share `parent` - the
 /// caller's earlier hires - in the order they were hired, leaving out
-/// `caller_pane` itself. `None` is the owner: hires from HR or the CLI.
+/// `caller_pane` itself. `None` is the owner: hires from HR or the CLI, which
+/// Dex spawned (depth above 0) - not agents the owner started by typing
+/// `claude`, which are nobody's hires and must not be split into.
 pub fn live_sibling_panes(
     conn: &Connection,
     workspace_id: &str,
@@ -312,7 +314,7 @@ pub fn live_sibling_panes(
     let mut stmt = conn.prepare(
         "SELECT pane_id FROM agent
          WHERE workspace_id = ?1 AND status != 'dead' AND pane_id IS NOT NULL AND pane_id != ?3
-           AND ((?2 IS NULL AND parent_id IS NULL) OR parent_id = ?2)
+           AND ((?2 IS NULL AND parent_id IS NULL AND depth > 0) OR parent_id = ?2)
          ORDER BY started_at, rowid",
     )?;
     let rows = stmt.query_map(params![workspace_id, parent, caller_pane], |row| row.get(0))?;
