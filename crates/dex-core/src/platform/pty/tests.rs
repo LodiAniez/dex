@@ -334,3 +334,23 @@ fn what_dex_sets_for_a_pane_is_set_after_the_forgetting() {
         "a caller that sets one on purpose is obeyed"
     );
 }
+
+#[test]
+fn the_exit_report_waits_for_the_code_the_waiter_is_about_to_store() {
+    // On macOS and Linux the output ends the moment the child exits, which can
+    // be before the waiter has its status; the report must not say "no code".
+    let slot = Arc::new(reader::ExitSlot::default());
+    let waiter = slot.clone();
+    let setter = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(50));
+        waiter.set(Some(3));
+    });
+    assert_eq!(slot.wait(Duration::from_secs(5)), Some(3));
+    setter.join().unwrap();
+}
+
+#[test]
+fn an_exit_report_with_no_waiter_answer_gives_up_rather_than_hang() {
+    let slot = reader::ExitSlot::default();
+    assert_eq!(slot.wait(Duration::from_millis(20)), None);
+}

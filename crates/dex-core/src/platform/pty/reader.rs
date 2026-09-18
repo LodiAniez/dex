@@ -136,13 +136,48 @@ pub(super) fn run_reader(mut reader: Box<dyn Read + Send>, chunks: SyncSender<Ve
     }
 }
 
+/// How long the exit report waits for the waiter's status. The waiter has it
+/// at once, or the child is not what closed the output.
+const EXIT_WAIT: Duration = Duration::from_secs(2);
+
+/// The child's exit code, handed from the waiter to the coalescer. On Windows
+/// the output only ends after the waiter has it; on macOS and Linux the output
+/// ends as the child exits, so the coalescer waits for it here.
+#[derive(Default)]
+pub(super) struct ExitSlot {
+    /// `Some` once the waiter has answered, holding what it found.
+    code: Mutex<Option<Option<u32>>>,
+    ready: Condvar,
+}
+
+impl ExitSlot {
+    /// Stores the code the child exited with, `None` if it is unknown.
+    pub(super) fn set(&self, code: Option<u32>) {
+        if let Ok(mut slot) = self.code.lock() {
+            *slot = Some(code);
+            self.ready.notify_all();
+        }
+    }
+
+    /// The code, once the waiter has stored it; `None` after `limit` without.
+    pub(super) fn wait(&self, limit: Duration) -> Option<u32> {
+        let Ok(slot) = self.code.lock() else {
+            return None;
+        };
+        self.ready
+            .wait_timeout_while(slot, limit, |slot| slot.is_none())
+            .ok()
+            .and_then(|(slot, _)| slot.flatten())
+    }
+}
+
 /// Batches chunks for the sink and enforces flow control, until the reader ends.
 pub(super) fn run_coalescer(
     chunks: Receiver<Vec<u8>>,
     flow: Arc<Flow>,
     limits: FlowLimits,
     mut sink: OutputSink,
-    exit_code: Arc<Mutex<Option<u32>>>,
+    exit_code: Arc<ExitSlot>,
 ) {
     let mut batch = Batch::default();
     loop {
@@ -179,7 +214,7 @@ pub(super) fn run_coalescer(
             }
         }
     }
-    let code = exit_code.lock().ok().and_then(|slot| *slot);
+    let code = exit_code.wait(EXIT_WAIT);
     sink(PtyOutput::Exited { code });
 }
 

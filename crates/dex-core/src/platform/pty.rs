@@ -194,7 +194,7 @@ impl PtySupervisor {
         let killer = child.clone_killer();
         let pid = child.process_id();
         let flow = Arc::new(Flow::default());
-        let exit_code = Arc::new(Mutex::new(None));
+        let exit_code = Arc::new(reader::ExitSlot::default());
         let (chunks_tx, chunks_rx) = sync_channel(CHUNK_QUEUE);
         let id = request.pane_id.clone();
 
@@ -230,9 +230,7 @@ impl PtySupervisor {
         spawn_named(format!("pty-waiter-{id}"), move || {
             let code = child.wait().ok().map(|status| status.exit_code());
             watch::disarm(&watches, &id);
-            if let Ok(mut slot) = exit_code.lock() {
-                *slot = code;
-            }
+            exit_code.set(code);
             // Take the pane out under the lock, but drop it (closing the
             // pseudoconsole) after releasing it: ClosePseudoConsole can block
             // until the reader drains, and the reader may be paused by flow
