@@ -14,7 +14,6 @@
 use std::time::Duration;
 
 use dex_protocol::agent::{SpawnArgs, Spawned};
-use dex_protocol::workspace::{SplitDirection, SplitPaneArgs};
 
 use super::model::{Agent, AgentError};
 use super::{logic, store};
@@ -75,20 +74,16 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
     // So the trust dialog is answered for every child — see `launch`.
     let answer_trust = true;
 
-    // Step 3: the pane, split from the caller's, inheriting its runtime.
-    let direction = match args.direction.as_deref() {
-        Some("down") => SplitDirection::Down,
-        _ => SplitDirection::Right,
-    };
-    let list = workspace::split_pane(
+    // Step 3: the pane - beside the caller's earlier hires rather than split off
+    // the caller again, and keeping the workspace's arrangement (`placement`).
+    let list = super::placement::split_for(
         state,
-        SplitPaneArgs {
-            pane: caller.pane.clone(),
-            direction,
-            cwd: Some(cwd.clone()),
-            label: args.label.clone(),
-            kind: None,
-        },
+        &caller.workspace_id,
+        &caller.pane,
+        caller.agent_id.as_deref(),
+        args.direction.as_deref(),
+        cwd.clone(),
+        args.label.clone(),
     )
     .await?;
     // The new pane takes focus in its workspace, which is how it is identified.

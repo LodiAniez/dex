@@ -4,6 +4,7 @@
 //! `pane.list/send/send_key` (`pane_io.rs`); `pane.content` (`pane_content.rs`).
 //! Rules and tree operations are pure (`logic.rs`, `layout.rs`).
 
+mod arrange;
 mod commands;
 mod layout;
 mod logic;
@@ -16,7 +17,12 @@ mod targets;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub use arrange::preset_layout;
+pub use arrange::{arrange, preset_in_use};
 pub use commands::{create, delete, list, recolor, rename, reorder, switch};
+#[cfg(test)]
+pub use layout::Preset;
 pub use model::WorkspaceError;
 pub use pane_commands::{
     close_pane, create_pane, cycle_layout, focus_pane, label_pane, set_layout, split_pane,

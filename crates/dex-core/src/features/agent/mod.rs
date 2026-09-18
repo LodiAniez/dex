@@ -9,6 +9,7 @@ mod commands;
 mod identity;
 mod logic;
 mod model;
+mod placement;
 mod presence;
 mod prompt;
 mod reason;

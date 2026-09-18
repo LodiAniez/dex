@@ -15,6 +15,7 @@ use crate::features::workspace::{self, WorkspaceError};
 mod asking;
 mod launch;
 mod orphans;
+mod placement;
 mod presence;
 mod prompting;
 mod spawn;
