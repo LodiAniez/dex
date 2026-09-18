@@ -1,47 +1,41 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { request } from "./daemon";
-import type { RuntimeList } from "./generated/RuntimeList";
+import type { TerminalView } from "./generated/TerminalView";
 
 /**
- * Where a pane's shell runs: `windows`, or `wsl:<distro>` inside WSL. The
- * daemon lists what this machine has (`pane.runtimes`); a new pane runs where
- * the pane it splits from does, unless told otherwise.
+ * The terminal Dex opens: `windows` (PowerShell) or `wsl:<distro>`. One
+ * choice for the whole app (`pane.terminal`): every new pane and every agent
+ * spawned opens there, and when Dex starts, every pane does. A pane already
+ * running keeps its shell.
  */
 
-/** The distro of a WSL runtime; null for Windows or no runtime. */
+/** The distro of a WSL terminal; null for Windows or none. */
 export function distroOf(runtime: string | undefined): string | null {
   return runtime?.startsWith("wsl:") ? runtime.slice(4) : null;
 }
 
-/** A runtime as the owner reads it: "Windows", "Ubuntu (WSL)". */
+/** A terminal as the owner reads it: "PowerShell", "Ubuntu (WSL)". */
 export function runtimeLabel(runtime: string): string {
-  if (runtime === "windows") return "Windows";
+  if (runtime === "windows") return "PowerShell";
   const distro = distroOf(runtime);
   return distro ? `${distro} (WSL)` : runtime;
 }
 
-let cached: Promise<string[]> | null = null;
-
-/**
- * Where a shell can run on this machine, Windows first. Asked once per window:
- * it costs a `wsl.exe` run, and distros are not installed in the middle of a
- * session often enough to watch for.
- */
-export function useRuntimes(): string[] {
-  const [runtimes, setRuntimes] = useState<string[]>(["windows"]);
+/** The chosen terminal and the choices, and a way to choose; null until asked. */
+export function useTerminal(): { view: TerminalView | null; choose: (runtime: string) => Promise<void> } {
+  const [view, setView] = useState<TerminalView | null>(null);
   useEffect(() => {
     let live = true;
-    cached ??= request<RuntimeList>("pane.runtimes", {}).then(
-      (list) => list.runtimes,
-      () => {
-        cached = null;
-        return ["windows"];
-      },
+    void request<TerminalView>("pane.terminal", {}).then(
+      (answer) => live && setView(answer),
+      () => {},
     );
-    void cached.then((list) => live && setRuntimes(list));
     return () => {
       live = false;
     };
   }, []);
-  return runtimes;
+  const choose = useCallback(async (runtime: string) => {
+    setView(await request<TerminalView>("pane.terminal", { terminal: runtime }));
+  }, []);
+  return { view, choose };
 }

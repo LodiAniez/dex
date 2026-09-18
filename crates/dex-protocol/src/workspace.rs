@@ -179,10 +179,6 @@ pub struct SplitPaneArgs {
     /// non-terminal pane runs no shell.
     #[serde(default)]
     pub kind: Option<String>,
-    /// Where its shell runs: `windows` or `wsl:<distro>`. The split pane's
-    /// runtime by default.
-    #[serde(default)]
-    pub runtime: Option<String>,
 }
 
 /// Args naming one pane (`pane.close`, `pane.focus`).

@@ -1,14 +1,19 @@
-//! Where a pane's shell runs: on Windows, or inside a WSL distro
-//! (`platform/wsl.rs`). A pane records it as its `runtime`; a split takes the
-//! split pane's unless it is told otherwise.
+//! Which terminal Dex opens: PowerShell (or the configured shell) on Windows,
+//! or a WSL distro's shell (`platform/wsl.rs`). One choice for the whole app,
+//! kept in `app_state`: every new pane opens there - a new workspace's, a
+//! split, a spawned agent's - and when Dex starts, every pane does. A pane
+//! records the terminal its shell was started in as its `runtime`, so one
+//! already running keeps going where it is when the choice changes.
 
-use dex_protocol::pane::RuntimeList;
+use dex_protocol::pane::{TerminalArgs, TerminalView};
 
 use super::model::WorkspaceError;
+use super::store;
+use crate::app::AppState;
 use crate::platform::wsl::{self, Runtime};
 
-/// Checks a requested runtime against the distros installed. Pure: `installed`
-/// is what `wsl.exe` listed.
+/// Checks a terminal against the distros installed. Pure: `installed` is what
+/// `wsl.exe` listed.
 pub(super) fn check(text: &str, installed: &[String]) -> Result<String, WorkspaceError> {
     match Runtime::parse(text).map_err(WorkspaceError::InvalidRuntime)? {
         Runtime::Windows => Ok(Runtime::Windows.to_string()),
@@ -20,37 +25,44 @@ pub(super) fn check(text: &str, installed: &[String]) -> Result<String, Workspac
     }
 }
 
-/// A requested runtime, checked; `None` when none was asked for.
-pub(super) async fn runtime_arg(requested: Option<&str>) -> Result<Option<String>, WorkspaceError> {
-    let Some(text) = requested else {
-        return Ok(None);
-    };
-    // Only a WSL runtime needs the list, which costs a `wsl.exe` run.
-    let installed = match Runtime::parse(text) {
-        Ok(Runtime::Wsl(_)) => tokio::task::spawn_blocking(wsl::distros)
-            .await
-            .unwrap_or_default(),
-        _ => Vec::new(),
-    };
-    check(text, &installed).map(Some)
+/// The terminal new panes open in: what was chosen, else Windows.
+pub async fn terminal(state: &AppState) -> Result<String, WorkspaceError> {
+    let chosen = state.db.call(|conn| store::find_terminal(conn)).await?;
+    Ok(chosen.unwrap_or_else(|| Runtime::Windows.to_string()))
 }
 
-/// For other slices: a requested runtime, checked against what is installed.
-pub async fn checked_runtime(requested: &str) -> Result<String, WorkspaceError> {
-    runtime_arg(Some(requested))
-        .await
-        .map(|checked| checked.unwrap_or_else(|| requested.to_owned()))
-}
-
-/// `pane.runtimes`: Windows, then each installed distro.
-pub async fn list_runtimes() -> RuntimeList {
+/// `pane.terminal`: the terminal, and the choices; with `terminal`, chooses it.
+/// Panes already running keep their shells; the next ones open in it.
+pub async fn choose_terminal(
+    state: &AppState,
+    args: TerminalArgs,
+) -> Result<TerminalView, WorkspaceError> {
     let distros = tokio::task::spawn_blocking(wsl::distros)
         .await
         .unwrap_or_default();
-    RuntimeList {
+    if let Some(requested) = args.terminal {
+        let checked = check(&requested, &distros)?;
+        state
+            .db
+            .call(move |conn| store::update_terminal(conn, &checked))
+            .await?;
+    }
+    Ok(TerminalView {
+        terminal: terminal(state).await?,
         runtimes: std::iter::once(Runtime::Windows)
             .chain(distros.into_iter().map(Runtime::Wsl))
             .map(|runtime| runtime.to_string())
             .collect(),
-    }
+    })
+}
+
+/// As Dex starts, before any shell has: every terminal pane opens in the
+/// chosen terminal, which is what choosing it means.
+pub async fn open_panes_in_terminal(state: &AppState) -> Result<(), WorkspaceError> {
+    let runtime = terminal(state).await?;
+    state
+        .db
+        .call(move |conn| store::update_terminal_panes(conn, &runtime))
+        .await?;
+    Ok(())
 }

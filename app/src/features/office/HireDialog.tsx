@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DexError, request } from "../../platform/daemon";
 import type { WorkspaceView } from "../../platform/generated/WorkspaceView";
 import { useAgents } from "../agents";
-import { runtimeLabel, useRuntimes } from "../../platform/runtimes";
-import { hireArgs, hireRuntime, isHiringFreeze, labelClash } from "./hire";
+import { hireArgs, isHiringFreeze, labelClash } from "./hire";
 
 interface Props {
   workspace: WorkspaceView;
@@ -20,14 +19,12 @@ interface Props {
 export function HireDialog({ workspace, onClose, onFreeze }: Props) {
   const [task, setTask] = useState("");
   const [label, setLabel] = useState("");
-  const runtimes = useRuntimes();
-  const [runtime, setRuntime] = useState(() => hireRuntime(workspace));
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => field.current?.focus(), []);
 
-  const args = hireArgs(workspace, task, label, runtime);
+  const args = hireArgs(workspace, task, label);
   // Said here, before the daemon has to refuse: from the office, a pane with no agent in it cannot be seen.
   const agents = useAgents()?.agents ?? [];
   const panesWithAgents = new Set(agents.flatMap((agent) => (agent.status !== "dead" && agent.pane_id ? [agent.pane_id] : [])));
@@ -76,19 +73,6 @@ export function HireDialog({ workspace, onClose, onFreeze }: Props) {
           Pane label <span className="optional">optional — other agents message them by it</span>
           <input value={label} placeholder="porter" onChange={(event) => setLabel(event.target.value)} />
         </label>
-        {/* Only once there is a choice: a machine without WSL never sees it. */}
-        {runtimes.length > 1 && (
-          <label>
-            Runs in <span className="optional">their shell, and Claude Code, run there</span>
-            <select value={runtime} onChange={(event) => setRuntime(event.target.value)}>
-              {runtimes.map((option) => (
-                <option key={option} value={option}>
-                  {runtimeLabel(option)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
         {clash && (
           <div className="office-hire-problem">
             {clash.why}{" "}

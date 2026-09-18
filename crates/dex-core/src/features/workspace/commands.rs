@@ -38,6 +38,7 @@ pub async fn create(
         .map(|name| logic::clean_name(&name).ok_or(WorkspaceError::InvalidName))
         .transpose()?;
     let color = args.color.map(parse_color).transpose()?;
+    let runtime = super::runtimes::terminal(state).await?;
     let workspace_id = ids::new_id();
     let pane_id = ids::new_id();
     let layout_json = serde_json::to_string(&Layout::Leaf {
@@ -66,7 +67,7 @@ pub async fn create(
                 label: None,
                 cwd: root_path,
                 kind: "terminal".into(),
-                runtime: "windows".into(),
+                runtime,
             };
             store::insert_workspace(&tx, &workspace, now)?;
             store::insert_pane(&tx, &pane, now)?;

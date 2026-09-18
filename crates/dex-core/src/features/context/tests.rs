@@ -45,7 +45,6 @@ async fn second_pane(state: &AppState, pane: &str) -> String {
             cwd: None,
             label: None,
             kind: None,
-            runtime: None,
         },
     )
     .await

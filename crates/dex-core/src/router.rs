@@ -27,7 +27,8 @@ use repairs::error_body;
 fn changes(cmd: &str) -> Option<&'static str> {
     match cmd {
         "workspace.list" | "pane.list" | "pane.send" | "pane.send_key" | "pane.content" => None,
-        "pane.runtimes" => None,
+        // Choosing a terminal changes no pane: the next ones open in it.
+        "pane.terminal" => None,
         "agent.list" | "agent.sweep" => None,
         "context.read" | "context.list" | "context.search" | "context.events" => None,
         // A digest advances the caller's cursor, which no client displays.
@@ -42,6 +43,14 @@ fn changes(cmd: &str) -> Option<&'static str> {
         // `context.inbox` marks messages read, which the activity pane shows.
         context if context.starts_with("context.") => Some("context"),
         _ => Some("workspaces"),
+    }
+}
+
+/// Before the UI starts any shell: every terminal pane opens in the terminal
+/// the owner chose (`workspace::open_panes_in_terminal`).
+pub async fn open_panes(state: &AppState) {
+    if let Err(err) = workspace::open_panes_in_terminal(state).await {
+        tracing::warn!(%err, "panes open where they last ran");
     }
 }
 
@@ -74,7 +83,7 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "pane.list" => encode(workspace::list_panes(state, args(req)?).await?),
         "pane.create" => encode(workspace::create_pane(state, args(req)?).await?),
         "pane.split" => encode(workspace::split_pane(state, args(req)?).await?),
-        "pane.runtimes" => encode(workspace::list_runtimes().await),
+        "pane.terminal" => encode(workspace::choose_terminal(state, args(req)?).await?),
         "pane.close" => encode(workspace::close_pane(state, args(req)?).await?),
         "pane.focus" => encode(workspace::focus_pane(state, args(req)?).await?),
         "pane.swap" => encode(workspace::swap_panes(state, args(req)?).await?),

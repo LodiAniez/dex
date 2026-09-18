@@ -143,17 +143,3 @@ describe("ranking", () => {
   });
 });
 
-describe("new panes elsewhere", () => {
-  it("offers a pane in each distro, and one back on Windows, once WSL is there", () => {
-    const withWsl = buildItems(null, SHIPPED_KEYMAP, ["windows", "wsl:Ubuntu"]);
-    const places = withWsl.filter((item) => item.kind === "runtime");
-    expect(places.map((item) => item.title)).toEqual(["New pane on Windows", "New pane in Ubuntu (WSL)"]);
-    expect(places.map((item) => item.kind === "runtime" && item.runtime)).toEqual(["windows", "wsl:Ubuntu"]);
-  });
-
-  it("offers none on a machine with nowhere else to run", () => {
-    const windowsOnly = buildItems(null, SHIPPED_KEYMAP, ["windows"]);
-    expect(windowsOnly.some((item) => item.kind === "runtime")).toBe(false);
-    expect(buildItems(null, SHIPPED_KEYMAP).some((item) => item.kind === "runtime")).toBe(false);
-  });
-});

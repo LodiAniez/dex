@@ -2,7 +2,7 @@
 //! Tables: `workspace`, `pane`, `app_state`.
 //! Commands: `workspace.*` (`commands.rs`); `pane.*` tree edits (`pane_commands.rs`);
 //! `pane.list/send/send_key` (`pane_io.rs`); `pane.content` (`pane_content.rs`);
-//! `pane.runtimes` and where a pane's shell runs (`runtimes.rs`).
+//! `pane.terminal`, the terminal every new pane opens in (`runtimes.rs`).
 //! Rules and tree operations are pure (`logic.rs`, `layout.rs`).
 
 mod arrange;
@@ -37,10 +37,8 @@ pub use pane_commands::{
 pub use pane_content::content as pane_content;
 pub use pane_io::{list_panes, send, send_key};
 pub use pane_move::move_pane;
-pub use runtimes::{checked_runtime, list_runtimes};
+pub use runtimes::{choose_terminal, open_panes_in_terminal, terminal};
+pub use store::{find_pane_workspace, pane_cwd, pane_label, workspace_name, workspace_root};
 #[cfg(test)]
-pub use store::set_pane_runtime;
-pub use store::{
-    find_pane_workspace, pane_cwd, pane_label, pane_runtime, workspace_name, workspace_root,
-};
+pub use store::{pane_runtime, update_terminal as set_terminal};
 pub use targets::{focused_pane, pane_id, workspace_id};

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
+import { runtimeLabel, useTerminal } from "../platform/runtimes";
 import "./setup.css";
 import { type Check, type DoctorReport, type Step, failures, headline, stepFor, stepLabel } from "./setup";
 
@@ -78,6 +79,7 @@ export function Setup({ report, onRecheck, onClose }: SetupProps) {
               : "Dex works with Claude Code through hooks, an MCP server and a skill. These are what a fresh install still needs."}
           </p>
         </header>
+        <TerminalChoice onChosen={onRecheck} />
         <ul className="setup-checks">
           {report.checks.map((check) => (
             <CheckRow key={check.name} check={check} running={running} onRun={run} />
@@ -115,5 +117,55 @@ function CheckRow({ check, running, onRun }: { check: Check; running: Step | nul
         </button>
       )}
     </li>
+  );
+}
+
+/**
+ * Which terminal Dex opens, where there is a choice (WSL installed). Everything
+ * new opens there: panes, and every agent spawned; panes already running keep
+ * their shells until Dex next starts. A WSL distro also needs setting up for
+ * agents, which the checks below then say.
+ */
+function TerminalChoice({ onChosen }: { onChosen: () => Promise<void> }) {
+  const { view, choose } = useTerminal();
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  if (!view || view.runtimes.length < 2) return null;
+  const pick = async (runtime: string) => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await choose(runtime);
+      await onChosen();
+    } catch (err) {
+      setProblem(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="setup-check setup-terminal">
+      <span className="setup-dot" aria-hidden />
+      <span className="setup-name">terminal</span>
+      <span className="setup-detail">
+        Dex opens its panes, and every agent it spawns, here.
+        <span className="setup-explain">
+          Panes already open keep their shells until Dex restarts.{problem && ` ${problem}`}
+        </span>
+      </span>
+      <select
+        className="setup-select"
+        aria-label="Terminal"
+        value={view.terminal}
+        disabled={busy}
+        onChange={(event) => void pick(event.target.value)}
+      >
+        {view.runtimes.map((runtime) => (
+          <option key={runtime} value={runtime}>
+            {runtimeLabel(runtime)}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }

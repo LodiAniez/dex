@@ -6,6 +6,7 @@ use std::process::Command;
 
 use dex_protocol::agent::{AgentEventArgs, SpawnArgs};
 use dex_protocol::context::{Caller, DigestArgs};
+use dex_protocol::pane::TerminalArgs;
 use dex_protocol::repo::AddRepoArgs;
 use dex_protocol::workspace::CreateWorkspaceArgs;
 
@@ -23,7 +24,6 @@ fn brief(task: &str, pane: &str) -> SpawnArgs {
         direction: None,
         pane: Some(pane.into()),
         workspace: None,
-        runtime: None,
     }
 }
 
@@ -37,63 +37,50 @@ async fn runtime_of(state: &AppState, pane: &str) -> String {
         .unwrap()
 }
 
-async fn move_to_wsl(state: &AppState, pane: &str) {
-    let pane = pane.to_owned();
+async fn choose(state: &AppState, terminal: &str) {
+    let terminal = terminal.to_owned();
     state
         .db
-        .call(move |conn| workspace::set_pane_runtime(conn, &pane, "wsl:Ubuntu"))
+        .call(move |conn| workspace::set_terminal(conn, &terminal))
         .await
         .unwrap();
 }
 
 #[tokio::test]
-async fn an_agent_in_wsl_hires_into_wsl_and_one_on_windows_stays_there() {
+async fn an_agent_runs_in_the_terminal_chosen_for_dex_whoever_spawns_it() {
     let (_dir, state, first) = pane().await;
     parent_agent(&state, &first, "parent").await;
-    let on_windows = spawn(&state, brief("windows work", &first)).await.unwrap();
-    assert_eq!(runtime_of(&state, &on_windows.pane).await, "windows");
+    let unchosen = spawn(&state, brief("windows work", &first)).await.unwrap();
+    assert_eq!(runtime_of(&state, &unchosen.pane).await, "windows");
 
-    move_to_wsl(&state, &first).await;
+    // The lead is on Windows; the choice, not the lead, decides.
+    choose(&state, "wsl:Ubuntu").await;
     let in_wsl = spawn(&state, brief("linux work", &first)).await.unwrap();
     assert_eq!(runtime_of(&state, &in_wsl.pane).await, "wsl:Ubuntu");
+    assert_eq!(
+        runtime_of(&state, &first).await,
+        "windows",
+        "a running pane stays put"
+    );
 }
 
 #[tokio::test]
-async fn a_spawn_can_say_where_its_agent_runs() {
-    let (_dir, state, first) = pane().await;
-    parent_agent(&state, &first, "parent").await;
-    move_to_wsl(&state, &first).await;
-    let back = spawn(
+async fn a_distro_that_is_not_installed_cannot_be_chosen() {
+    let (_dir, state, _first) = pane().await;
+    let err = workspace::choose_terminal(
         &state,
-        SpawnArgs {
-            runtime: Some("windows".into()),
-            ..brief("windows work", &first)
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(runtime_of(&state, &back.pane).await, "windows");
-}
-
-#[tokio::test]
-async fn a_spawn_into_a_distro_that_is_not_installed_is_refused() {
-    let (_dir, state, first) = pane().await;
-    let err = spawn(
-        &state,
-        SpawnArgs {
-            runtime: Some("wsl:NoSuchDistroHere".into()),
-            ..brief("linux work", &first)
+        TerminalArgs {
+            terminal: Some("wsl:NoSuchDistroHere".into()),
         },
     )
     .await
     .unwrap_err();
     assert!(
-        matches!(
-            err,
-            AgentError::Target(workspace::WorkspaceError::NoSuchDistro { .. })
-        ),
+        matches!(err, workspace::WorkspaceError::NoSuchDistro { .. }),
         "{err:?}"
     );
+    let still = workspace::terminal(&state).await.unwrap();
+    assert_eq!(still, "windows");
 }
 
 /// A git repository with one commit.

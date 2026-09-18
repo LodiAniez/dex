@@ -25,7 +25,7 @@ pub enum WslCommand {
     /// Install the `dex` command, Dex's hooks, its MCP server and its skill
     /// into a distro, so agents there report to Dex.
     Setup {
-        /// The distro (`dex pane runtimes` lists them), e.g. Ubuntu.
+        /// The distro (`dex pane terminal` lists them), e.g. Ubuntu.
         distro: String,
     },
     /// Show what of that is in place.

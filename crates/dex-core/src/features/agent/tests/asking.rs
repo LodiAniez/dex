@@ -316,7 +316,6 @@ async fn other_agents_are_not_told_what_was_asked() {
             cwd: None,
             label: None,
             kind: None,
-            runtime: None,
         },
     )
     .await

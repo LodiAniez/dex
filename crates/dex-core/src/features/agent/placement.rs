@@ -80,7 +80,6 @@ pub async fn split_for(
             cwd: Some(child.cwd),
             label: child.label,
             kind: None,
-            runtime: None,
         },
         child.runtime,
     )

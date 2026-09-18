@@ -7,6 +7,8 @@ use super::model::{Pane, Workspace};
 
 /// `app_state` key holding the id of the workspace on screen.
 const ACTIVE_WORKSPACE: &str = "active_workspace";
+/// `app_state` key holding the terminal new panes open in (`runtimes.rs`).
+const TERMINAL: &str = "terminal";
 
 const WORKSPACE_COLUMNS: &str = "id, name, root_path, color, sort_index, layout_json, active_pane";
 
@@ -218,24 +220,13 @@ pub fn pane_cwd(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<Str
     .optional()
 }
 
-/// Where a pane's shell runs: `windows` or `wsl:<distro>`. Part of the
-/// slice's public face.
+/// Where a pane's shell runs: `windows` or `wsl:<distro>`. For tests.
+#[cfg(test)]
 pub fn pane_runtime(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<String>> {
     conn.query_row("SELECT runtime FROM pane WHERE id = ?1", [pane_id], |row| {
         row.get(0)
     })
     .optional()
-}
-
-/// For other slices' tests: a pane that runs somewhere else, without asking
-/// `wsl.exe` whether that distro exists.
-#[cfg(test)]
-pub fn set_pane_runtime(conn: &Connection, pane_id: &str, runtime: &str) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE pane SET runtime = ?2 WHERE id = ?1",
-        [pane_id, runtime],
-    )
-    .map(|_| ())
 }
 
 /// A pane's label, if it has one. Part of the slice's public face.
@@ -295,6 +286,35 @@ pub fn find_active_workspace(conn: &Connection) -> rusqlite::Result<Option<Strin
         |row| row.get(0),
     )
     .optional()
+}
+
+/// The chosen terminal, if one was ever chosen.
+pub fn find_terminal(conn: &Connection) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT value FROM app_state WHERE key = ?1",
+        [TERMINAL],
+        |row| row.get(0),
+    )
+    .optional()
+}
+
+/// Records the terminal new panes open in.
+pub fn update_terminal(conn: &Connection, runtime: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO app_state (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![TERMINAL, runtime],
+    )?;
+    Ok(())
+}
+
+/// Every terminal pane's shell runs in `runtime` from its next start.
+pub fn update_terminal_panes(conn: &Connection, runtime: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE pane SET runtime = ?1 WHERE kind = 'terminal'",
+        [runtime],
+    )?;
+    Ok(())
 }
 
 /// Records the active workspace.

@@ -147,6 +147,9 @@ fn startup() -> Result<(AppState, Token, PathBuf), String> {
     for problem in problems {
         tracing::warn!("{problem}");
     }
+    // Before the window exists, so no shell has started: every pane opens in
+    // the terminal the owner chose.
+    tauri::async_runtime::block_on(dex_core::router::open_panes(&state));
     let token = Token::generate().map_err(|err| format!("token: {err}"))?;
     Ok((state, token, dir.join("token")))
 }

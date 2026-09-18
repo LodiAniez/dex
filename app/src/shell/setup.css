@@ -131,3 +131,20 @@
   padding: 12px 20px 16px;
   border-top: 1px solid var(--border);
 }
+
+/* The terminal choice, above the checks: a row like them, with a picker. */
+.setup-terminal {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.setup-terminal .setup-dot { background: var(--accent); }
+
+.setup-select {
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12.5px;
+}

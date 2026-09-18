@@ -72,18 +72,24 @@ pub struct CreatePaneArgs {
     /// non-terminal pane runs no shell.
     #[serde(default)]
     pub kind: Option<String>,
-    /// Where its shell runs: `windows` or `wsl:<distro>`. The split pane's
-    /// runtime by default.
-    #[serde(default)]
-    pub runtime: Option<String>,
 }
 
-/// Result of `pane.runtimes`: where a pane's shell can run on this machine.
+/// Result of `pane.terminal`: the terminal new panes open in, and the choices.
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RuntimeList {
+pub struct TerminalView {
+    /// `windows` (PowerShell, or the configured shell) or `wsl:<distro>`.
+    pub terminal: String,
     /// `windows` first, then `wsl:<distro>` for each installed distro.
     pub runtimes: Vec<String>,
+}
+
+/// Args for `pane.terminal`: with `terminal`, choose it; without, only ask.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerminalArgs {
+    /// `windows` or `wsl:<distro>`, for an installed distro.
+    #[serde(default)]
+    pub terminal: Option<String>,
 }
 
 /// Args for `pane.content`: what a `markdown` pane shows.

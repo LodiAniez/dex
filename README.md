@@ -126,14 +126,14 @@ Names are for reading. Agents still message each other by **label**, which is wh
 
 **Repositories and worktrees.** Register a repo once (`dex repo add <path>`, or `dex repo scan <folder>` to find several). Then any agent — or you — can get a fresh worktree on a new branch under `%USERPROFILE%\dex\worktrees\<repo>\<branch>`, so parallel agents never share a working tree.
 
-**Agents in WSL.** On Windows with WSL installed, an agent can run inside a Linux distro instead of on Windows: `dex agent spawn --wsl Ubuntu …`, or pick *Runs in* when hiring from HR. An agent runs where the agent that started it runs unless told otherwise, so a lead in Ubuntu hires into Ubuntu. To start one yourself, open a pane there - *New pane in Ubuntu (WSL)* in the palette, or `dex pane split --wsl Ubuntu` - and run `claude` in it. WSL panes say their distro in the header; `dex pane runtimes` lists the distros.
+**PowerShell or WSL.** On Windows with WSL installed, choose the terminal Dex opens in: **Terminal** at the top of the setup panel (*Setup checks* in the palette), or `dex pane terminal wsl:Ubuntu` (`dex pane terminal windows` to go back; `dex pane terminal` shows the choices). Everything new then opens there - a new workspace, a split, and every agent spawned, by you or by another agent - and when Dex starts, every pane does. Panes already running keep their shells until Dex restarts. Panes in WSL say their distro in the header.
 
-Before the first agent there, get the distro ready once:
+Before the first agent in a distro, get it ready once:
 
 1. Install Claude Code inside the distro and sign in (in a pane there: `curl -fsSL https://claude.ai/install.sh | bash`, then `claude`). Agents in WSL use that Claude Code, with its own settings in Linux.
-2. Run `dex wsl setup Ubuntu` (or press **Set up Ubuntu** in the setup panel). It puts a `dex` command in `~/.local/bin` that runs Dex's Windows `dex.exe`, and installs Dex's hooks, MCP server and skill into the distro's Claude Code. `dex wsl status Ubuntu` says what is in place.
+2. Run `dex wsl setup Ubuntu` (or press **Set up Ubuntu** in the setup panel, which shows it once Ubuntu is your terminal). It puts a `dex` command in `~/.local/bin` that runs Dex's Windows `dex.exe`, and installs Dex's hooks, MCP server and skill into the distro's Claude Code. `dex wsl status Ubuntu` says what is in place.
 
-Nothing of Dex runs inside the distro: agents there talk to the Windows app through `dex.exe`. Give a WSL agent a worktree (`--repo … --worktree …`): Dex makes it with the distro's own git, so git on both sides reads it cleanly, whereas a checkout made by Git for Windows looks modified throughout to Linux git, because of line endings. Dex cannot see inside WSL to tell whether Claude Code is still running there, so an agent in WSL that crashes stays listed until its pane closes.
+Nothing of Dex runs inside the distro: agents there talk to the Windows app through `dex.exe`. Give an agent in WSL a worktree (`--repo … --worktree …`): Dex makes it with the distro's own git, so git on both sides reads it cleanly, whereas a checkout made by Git for Windows looks modified throughout to Linux git, because of line endings. Dex cannot see inside WSL to tell whether Claude Code is still running there, so an agent in WSL that crashes stays listed until its pane closes.
 
 ### Keyboard shortcuts
 

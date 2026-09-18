@@ -158,7 +158,6 @@ async fn a_spawned_agent_that_departed_takes_its_pane_with_it() {
             direction: None,
             pane: Some(first.clone()),
             workspace: None,
-            runtime: None,
         },
     )
     .await

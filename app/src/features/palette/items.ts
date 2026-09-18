@@ -1,14 +1,12 @@
 import type { WorkspaceList } from "../../platform/generated/WorkspaceList";
 import { ACTIONS, type Keymap, bindingsByAction } from "../../shell/keybindings";
-import { runtimeLabel } from "../../platform/runtimes";
 import { fuzzyMatch } from "./fuzzy";
 
 /** Something the palette can run. */
 export type PaletteItem =
   | { kind: "workspace"; id: string; title: string; detail: string; current: boolean }
   | { kind: "pane"; id: string; workspaceId: string; title: string; detail: string; current: boolean }
-  | { kind: "command"; action: string; title: string; detail: string }
-  | { kind: "runtime"; runtime: string; title: string; detail: string };
+  | { kind: "command"; action: string; title: string; detail: string };
 
 /** An item that matched, with where the query landed in its title. */
 export interface RankedItem {
@@ -80,7 +78,7 @@ function baseName(path: string): string {
  * then commands. Commands come last because the other two are what changes
  * while you work, and an empty query shows the list in this order.
  */
-export function buildItems(list: WorkspaceList | null, keymap: Keymap, runtimes: readonly string[] = []): PaletteItem[] {
+export function buildItems(list: WorkspaceList | null, keymap: Keymap): PaletteItem[] {
   const items: PaletteItem[] = [];
   for (const ws of list?.workspaces ?? []) {
     items.push({
@@ -113,18 +111,6 @@ export function buildItems(list: WorkspaceList | null, keymap: Keymap, runtimes:
       title: COMMAND_LABELS[action] ?? action,
       detail: bindings.get(action) ?? "",
     });
-  }
-  // Somewhere else for a shell to run, once there is somewhere else: a split
-  // runs where the pane it splits does, so these are how a pane gets out.
-  if (runtimes.length > 1) {
-    for (const runtime of runtimes) {
-      items.push({
-        kind: "runtime",
-        runtime,
-        title: runtime === "windows" ? "New pane on Windows" : `New pane in ${runtimeLabel(runtime)}`,
-        detail: "split right",
-      });
-    }
   }
   return items;
 }
