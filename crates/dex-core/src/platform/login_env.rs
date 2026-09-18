@@ -71,11 +71,11 @@ mod unix {
 
     pub(super) fn ask_login_shell() -> Option<String> {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_owned());
-        // Interactive as well as login: many people set PATH in .zshrc. Not in
-        // a process group of its own: an interactive shell that finds itself
-        // outside the foreground group gives up without printing anything.
+        // Interactive as well as login: many people set PATH in .zshrc. It
+        // stays in Dex's process group, so an interactive shell never finds
+        // itself in a background group of a terminal.
         let mut child = Command::new(&shell)
-            .args(["-ilc", &format!("printf '{MARKER}%s\\n'\"$PATH\"")])
+            .args(["-ilc", &format!("printf '{MARKER}%s\\n' \"$PATH\"")])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
