@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "popout",
+  "description": "A pane popped out into a window of its own: it talks to the main window with events, and closes itself once its pane is docked back.",
+  "windows": [
+    "pane-*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-destroy",
+    "core:window:allow-close",
+    "core:window:allow-set-focus"
+  ]
+}

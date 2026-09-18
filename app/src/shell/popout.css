@@ -1,0 +1,64 @@
+/* ---- a pane in a window of its own ---- */
+
+.popout {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg, #16181d);
+}
+
+.popout-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  flex: none;
+  padding: 0 6px 0 10px;
+  color: var(--text-dim, #8a93a6);
+  font-size: 12px;
+  background: var(--bg-raised, #1d2027);
+  border-bottom: 1px solid var(--border, #2a2e37);
+}
+
+.popout-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popout-dock {
+  padding: 2px 10px;
+  color: #d7dae0;
+  font: inherit;
+  background: rgba(79, 140, 255, 0.18);
+  border: 1px solid rgba(79, 140, 255, 0.55);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.popout-dock:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.popout-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 4px;
+}
+
+.popout-body .terminal-host {
+  height: 100%;
+}
+
+.popout-wait {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--text-dim, #8a93a6);
+  font-size: 12px;
+}

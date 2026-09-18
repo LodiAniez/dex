@@ -25,11 +25,13 @@ import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
 import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
 import { neighborPane } from "./paneGeometry";
+import { bringForward, forgetDetached, getDetached, isDetached, watchPopouts } from "./popouts";
 import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
 import { Setup } from "./SetupPanel";
 import { Sidebar } from "./Sidebar";
 import { chooseMode, modeOfAction, nextMode, rememberMode, showsPanes, storedMode, whenPanesHidden, type ViewMode } from "./viewMode";
 import { TitleBar } from "./TitleBar";
+import { visibleActive } from "./visibleLayout";
 
 const SIDEBAR_PREF = "dex.sidebarOpen";
 /** The set of setup problems the owner last chose to put off. */
@@ -64,9 +66,14 @@ function activeWorkspace(): WorkspaceView | undefined {
   return list?.workspaces.find((ws) => ws.id === list.active);
 }
 
-/** The focused pane of the active workspace (its first pane if none is recorded). */
+/**
+ * The focused pane of the active workspace (its first pane if none is
+ * recorded) - never one in a window of its own, which shortcuts here must not
+ * reach: closing it would kill its agent unseen.
+ */
 function activePane(): string | undefined {
   const ws = activeWorkspace();
+  if (ws?.layout) return visibleActive(ws.layout, getDetached(), ws.active_pane);
   return ws?.active_pane ?? ws?.panes[0]?.id;
 }
 
@@ -118,6 +125,11 @@ export function App() {
   };
   /** To the terminals, on this pane: what every "take me to that pane" means, from any view. */
   const goToPane = (paneId: string) => {
+    // A pane in a window of its own is there: bring that window forward.
+    if (isDetached(paneId)) {
+      run(bringForward(paneId));
+      return;
+    }
     chooseView("terminal");
     run(focusPane(paneId));
   };
@@ -146,6 +158,8 @@ export function App() {
   useEffect(() => {
     run(loadWorkspaces());
     run(loadAgents());
+    // Panes in windows of their own come home through here (`popouts.ts`).
+    run(watchPopouts());
     watchConfig();
     watchUpdates();
     // First run: if hooks or the MCP server are missing, say so and offer to
@@ -153,6 +167,11 @@ export function App() {
     // is usable without it and the palette can ask again.
     void checkSetup(true).catch((err) => console.warn("setup check failed", err));
   }, []);
+
+  // A pane closed while in its own window is forgotten here too.
+  useEffect(() => {
+    if (list) forgetDetached(new Set(list.workspaces.flatMap((ws) => ws.panes.map((pane) => pane.id))));
+  }, [list]);
 
   // Toasts for agents that need attention in panes the user is not looking at.
   useEffect(() => watchAgentChanges((before, after) => notifyTransitions(before, after, locatePane, officeNameOf)), []);

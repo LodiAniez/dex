@@ -76,6 +76,8 @@ dex doctor            # the table above
 
 **Moving panes.** Drag a pane by its header and drop it on another: on an edge to sit beside it there, taking half its space; in the middle to trade places. A highlight shows where it will land; Escape, or letting go anywhere else, puts it back. `Alt+Shift+Arrow` does the same from the keyboard, one step at a time.
 
+**A pane in a window of its own.** The ↗ button in a pane's header opens it in a separate window - put it on another monitor, resize it, leave it behind Dex. The terminal moves with its scrollback and whatever is running in it; the space it left in the layout closes up. **Dock ↩** in that window, or its own close button, puts it back exactly where it was. *Go to pane* (from the office or a toast) brings its window forward. Closing Dex's main window closes them all. The last pane in the main window stays in it.
+
 **Workspaces** live in the left sidebar. One per project, each with a name, a colour, and a root folder. They persist: close Dex and reopen it and your workspaces, panes and layout are back (the terminals restart; scrollback does not survive a restart in this version).
 
 **Panes** are splits within a workspace. A pane is one of:

@@ -6,6 +6,7 @@
 
 mod daemon;
 mod notify;
+mod popout;
 mod pty;
 mod setup;
 mod update;
@@ -92,6 +93,7 @@ fn main() {
             }
             Ok(())
         })
+        .on_window_event(popout::quit_with_main)
         .invoke_handler(tauri::generate_handler![
             daemon::dex_request,
             pty::pty_spawn,
@@ -99,6 +101,10 @@ fn main() {
             pty::pty_resize,
             pty::pty_ack,
             pty::pty_kill,
+            pty::pty_hold,
+            pty::pty_attach,
+            popout::pane_pop_out,
+            popout::pane_focus_popout,
             notify::notify_agent,
             setup::setup_check,
             setup::setup_run,

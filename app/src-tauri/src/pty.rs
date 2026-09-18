@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use dex_core::app::AppState;
 use dex_core::platform::pipe;
-use dex_core::platform::pty::{PtyOutput, SpawnRequest, resolve_shell};
+use dex_core::platform::pty::{OutputSink, PtyOutput, SpawnRequest, resolve_shell};
 use dex_core::router;
 use dex_protocol::Request;
 use serde::{Deserialize, Serialize};
@@ -73,11 +73,25 @@ pub async fn pty_spawn(
         cols: pane.cols,
         rows: pane.rows,
     };
-    let exited_pane = request.pane_id.clone();
-    let daemon = state.inner().clone();
-    let sink = Box::new(move |output: PtyOutput| {
+    let sink = window_sink(state.inner(), &request.pane_id, on_output, on_event);
+    state
+        .pty
+        .spawn(request, sink)
+        .map_err(|err| err.to_string())
+}
+
+/// A pane's output, sent to one window's channels. The process's exit also
+/// ends whatever agent ran in the pane (PRD §9.2), whichever window shows it.
+fn window_sink(
+    state: &AppState,
+    pane_id: &str,
+    on_output: Channel<InvokeResponseBody>,
+    on_event: Channel<PtyEvent>,
+) -> OutputSink {
+    let exited_pane = pane_id.to_owned();
+    let daemon = state.clone();
+    Box::new(move |output: PtyOutput| {
         if let PtyOutput::Exited { .. } = &output {
-            // Whatever agent ran in this pane ended with its process (PRD §9.2).
             let (daemon, pane) = (daemon.clone(), exited_pane.clone());
             tauri::async_runtime::spawn(async move {
                 let exit = Request {
@@ -94,10 +108,30 @@ pub async fn pty_spawn(
             PtyOutput::Dropped { bytes } => on_event.send(PtyEvent::Dropped { bytes }),
             PtyOutput::Exited { code } => on_event.send(PtyEvent::Exited { code }),
         };
-    });
+    })
+}
+
+/// First half of moving a pane between windows: its output is kept from now
+/// on. Returns the bytes its current window has been sent, for that window to
+/// wait for before it serializes its screen (`relay.rs` in dex-core).
+#[tauri::command]
+pub async fn pty_hold(state: State<'_, AppState>, pane_id: String) -> Result<u64, String> {
+    state.pty.hold(&pane_id).map_err(|err| err.to_string())
+}
+
+/// Second half: the calling window takes the pane's output - what was kept,
+/// then everything after.
+#[tauri::command]
+pub async fn pty_attach(
+    state: State<'_, AppState>,
+    pane_id: String,
+    on_output: Channel<InvokeResponseBody>,
+    on_event: Channel<PtyEvent>,
+) -> Result<(), String> {
+    let sink = window_sink(state.inner(), &pane_id, on_output, on_event);
     state
         .pty
-        .spawn(request, sink)
+        .attach(&pane_id, sink)
         .map_err(|err| err.to_string())
 }
 
