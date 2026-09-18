@@ -19,7 +19,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
-import { ackPty, killPty, resizePty, spawnPty, writePty, type PtyEvent } from "./pty";
+import { ackPty, attachPty, holdPty, killPty, resizePty, spawnPty, writePty, type PtyEvent } from "./pty";
 
 /** Acknowledge rendered output in batches of this size... */
 const ACK_BATCH_BYTES = 64 * 1024;
@@ -45,6 +45,10 @@ interface Entry {
   /** Input typed while a write was in flight; sent as the next write. */
   pendingInput: string;
   writing: boolean;
+  /** Output bytes this window has been sent since it took the pane: what a hand-off waits for. */
+  received: number;
+  /** In another window: this one neither sends input nor resizes the PTY. */
+  away: boolean;
 }
 
 const entries = new Map<string, Entry>();
@@ -95,7 +99,7 @@ export function openTerminal(paneId: string, cwd?: string, workspaceId?: string)
   const entry: Entry = {
     paneId, workspaceId, cwd, term, fit, serialize, element,
     webgl: null, spawned: false, dead: false, pendingAck: 0, ackTimer: null, resizeTimer: null,
-    pendingInput: "", writing: false,
+    pendingInput: "", writing: false, received: 0, away: false,
   };
   entries.set(paneId, entry);
 
@@ -166,6 +170,53 @@ export function disposeTerminal(paneId: string): void {
   entries.delete(paneId);
 }
 
+/** How long a hand-off waits for output already on its way to this window. */
+const HANDOFF_WAIT_MS = 3000;
+
+/**
+ * Gives the pane's terminal up to another window: its output is held, this
+ * window waits for everything it was already sent, and its screen and
+ * scrollback are returned as text-with-escapes for the other window to draw.
+ * The terminal stays here, parked, for the pane's return.
+ */
+export async function handOff(paneId: string): Promise<string> {
+  const entry = entries.get(paneId);
+  if (!entry) return "";
+  let owed = 0;
+  if (!entry.dead) owed = await holdPty(paneId).catch(() => 0);
+  const until = Date.now() + HANDOFF_WAIT_MS;
+  while (entry.received < owed && Date.now() < until) await new Promise((r) => window.setTimeout(r, 10));
+  await new Promise<void>((resolve) => entry.term.write("", resolve));
+  flushAck(entry);
+  entry.away = true;
+  detachTerminal(paneId);
+  return entry.serialize.serialize();
+}
+
+/**
+ * Takes a pane's terminal from another window: draws `content` - what that
+ * window showed - and receives the pane's output from here on, starting with
+ * whatever was held while it moved. `content` null keeps this window's own
+ * screen, for a pane whose other window went without handing anything back.
+ */
+export async function takeOver(paneId: string, content: string | null, cwd?: string, workspaceId?: string): Promise<void> {
+  openTerminal(paneId, cwd, workspaceId);
+  const entry = entries.get(paneId);
+  if (!entry) return;
+  if (content !== null) {
+    entry.term.reset();
+    entry.term.write(content);
+  } else if (entry.away) {
+    entry.term.write("\r\n\x1b[2m[back from its own window: what it showed there is not repeated here]\x1b[0m\r\n");
+  }
+  entry.spawned = true;
+  entry.away = false;
+  entry.received = 0;
+  await attachPty(paneId, (bytes) => writeOutput(entry, bytes), (event) => handleEvent(entry, event)).catch(() => {
+    entry.dead = true;
+  });
+}
+
 /** The pane's visible buffer as text-with-escapes (backs `dex pane capture`). */
 export function captureTerminal(paneId: string): string | undefined {
   return entries.get(paneId)?.serialize.serialize();
@@ -216,7 +267,7 @@ function loadWebgl(entry: Entry): void {
  * whatever is typed meanwhile goes out, batched, as the next write.
  */
 function sendInput(entry: Entry, data: string): void {
-  if (entry.dead) return;
+  if (entry.dead || entry.away) return;
   entry.pendingInput += data;
   if (!entry.writing) void flushInput(entry);
 }
@@ -240,6 +291,7 @@ async function flushInput(entry: Entry): Promise<void> {
 
 /** Writes PTY output and acknowledges it once xterm.js has actually processed it (flow control). */
 function writeOutput(entry: Entry, bytes: Uint8Array): void {
+  entry.received += bytes.length;
   entry.term.write(bytes, () => {
     entry.pendingAck += bytes.length;
     if (entry.pendingAck >= ACK_BATCH_BYTES) {
@@ -265,7 +317,7 @@ function scheduleResize(entry: Entry, cols: number, rows: number): void {
   if (entry.resizeTimer !== null) window.clearTimeout(entry.resizeTimer);
   entry.resizeTimer = window.setTimeout(() => {
     entry.resizeTimer = null;
-    if (entry.spawned && !entry.dead) void resizePty(entry.paneId, cols, rows).catch(() => {});
+    if (entry.spawned && !entry.dead && !entry.away) void resizePty(entry.paneId, cols, rows).catch(() => {});
   }, RESIZE_DEBOUNCE_MS);
 }
 

@@ -25,6 +25,7 @@ import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
 import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
 import { neighborPane } from "./paneGeometry";
+import { bringForward, forgetDetached, isDetached, watchPopouts } from "./popouts";
 import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
 import { Setup } from "./SetupPanel";
 import { Sidebar } from "./Sidebar";
@@ -118,6 +119,11 @@ export function App() {
   };
   /** To the terminals, on this pane: what every "take me to that pane" means, from any view. */
   const goToPane = (paneId: string) => {
+    // A pane in a window of its own is there: bring that window forward.
+    if (isDetached(paneId)) {
+      run(bringForward(paneId));
+      return;
+    }
     chooseView("terminal");
     run(focusPane(paneId));
   };
@@ -146,6 +152,8 @@ export function App() {
   useEffect(() => {
     run(loadWorkspaces());
     run(loadAgents());
+    // Panes in windows of their own come home through here (`popouts.ts`).
+    run(watchPopouts());
     watchConfig();
     watchUpdates();
     // First run: if hooks or the MCP server are missing, say so and offer to
@@ -153,6 +161,11 @@ export function App() {
     // is usable without it and the palette can ask again.
     void checkSetup(true).catch((err) => console.warn("setup check failed", err));
   }, []);
+
+  // A pane closed while in its own window is forgotten here too.
+  useEffect(() => {
+    if (list) forgetDetached(new Set(list.workspaces.flatMap((ws) => ws.panes.map((pane) => pane.id))));
+  }, [list]);
 
   // Toasts for agents that need attention in panes the user is not looking at.
   useEffect(() => watchAgentChanges((before, after) => notifyTransitions(before, after, locatePane, officeNameOf)), []);

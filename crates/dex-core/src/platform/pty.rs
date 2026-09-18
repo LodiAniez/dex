@@ -19,6 +19,8 @@
 //! the pane looks dead.
 
 mod reader;
+mod relay;
+mod session_env;
 mod shell;
 #[cfg(test)]
 mod tests;
@@ -36,6 +38,8 @@ use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_s
 use thiserror::Error;
 
 use reader::Flow;
+use relay::Relay;
+use session_env::forget_claude_session;
 pub use shell::resolve_shell;
 pub use watch::Answer;
 
@@ -131,6 +135,8 @@ struct Pane {
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     flow: Arc<Flow>,
+    /// Where the output goes: the window showing the pane (`relay.rs`).
+    relay: Arc<Relay>,
     /// The shell's process id, where the platform reports one.
     pid: Option<u32>,
 }
@@ -198,7 +204,11 @@ impl PtySupervisor {
         let coalescer_flow = flow.clone();
         let coalescer_exit = exit_code.clone();
         let limits = self.limits;
-        let sink = self.watching(&id, sink);
+        // The display's sink sits behind a relay, so a pane can move between
+        // windows; the watch sees everything, wherever it goes.
+        let relay = Arc::new(Relay::new(sink));
+        let to_display = relay.clone();
+        let sink = self.watching(&id, Box::new(move |output| to_display.deliver(output)));
         spawn_named(format!("pty-coalescer-{id}"), move || {
             reader::run_coalescer(chunks_rx, coalescer_flow, limits, sink, coalescer_exit);
         })?;
@@ -211,6 +221,7 @@ impl PtySupervisor {
                 killer,
                 pid,
                 flow,
+                relay,
             },
         );
 
@@ -274,6 +285,27 @@ impl PtySupervisor {
         self.lock().get(pane_id).and_then(|pane| pane.pid)
     }
 
+    /// Starts keeping a pane's output instead of sending it to its window, for
+    /// a move between windows. Returns the bytes that window has been sent
+    /// since it attached, so it can wait for all of them before serializing.
+    pub fn hold(&self, pane_id: &str) -> Result<u64, PtyError> {
+        Ok(self.relay(pane_id)?.hold())
+    }
+
+    /// Sends a pane's output to `sink` from now on, starting with whatever
+    /// was kept since `hold`.
+    pub fn attach(&self, pane_id: &str, sink: OutputSink) -> Result<(), PtyError> {
+        self.relay(pane_id)?.attach(sink);
+        Ok(())
+    }
+
+    fn relay(&self, pane_id: &str) -> Result<Arc<Relay>, PtyError> {
+        self.lock()
+            .get(pane_id)
+            .map(|pane| pane.relay.clone())
+            .ok_or_else(|| PtyError::NoSuchPane(pane_id.to_owned()))
+    }
+
     /// Records that the display has processed `bytes` of a pane's output.
     pub fn ack(&self, pane_id: &str, bytes: usize) -> Result<(), PtyError> {
         let flow = self
@@ -322,33 +354,6 @@ fn write_to(panes: &Panes, pane_id: &str, bytes: &[u8]) -> Result<(), PtyError> 
     pane.writer.write_all(bytes)?;
     pane.writer.flush()?;
     Ok(())
-}
-
-/// What marks a process as running inside a particular Claude Code session.
-/// Named one by one: the owner's own settings for Claude Code (`CLAUDE_CONFIG_DIR`,
-/// `ANTHROPIC_*`, provider switches) share the prefix and must get through.
-const CLAUDE_SESSION_VARS: [&str; 10] = [
-    "CLAUDECODE",
-    "CLAUDE_CODE_CHILD_SESSION",
-    "CLAUDE_CODE_ENTRYPOINT",
-    "CLAUDE_CODE_EXECPATH",
-    "CLAUDE_CODE_MESSAGING_SOCKET",
-    "CLAUDE_CODE_MESSAGING_TOKEN",
-    "CLAUDE_CODE_SESSION_ATTENDED",
-    "CLAUDE_CODE_SESSION_ID",
-    "CLAUDE_EFFORT",
-    "CLAUDE_PID",
-];
-
-/// Drops the identity of whatever Claude Code session Dex was started from.
-///
-/// A pane's shell inherits Dex's environment. Started from a terminal inside
-/// Claude Code, that includes the session's own variables, and every `claude`
-/// run in a pane would take itself for that session's child.
-fn forget_claude_session(cmd: &mut CommandBuilder) {
-    for name in CLAUDE_SESSION_VARS {
-        cmd.env_remove(name);
-    }
 }
 
 fn command(request: &SpawnRequest) -> CommandBuilder {

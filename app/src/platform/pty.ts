@@ -36,6 +36,18 @@ export async function spawnPty(options: SpawnOptions): Promise<void> {
   });
 }
 
+/** First half of moving a pane between windows: its output is kept. Returns the bytes this window was sent. */
+export const holdPty = (paneId: string) => invoke<number>("pty_hold", { paneId });
+
+/** Second half: this window takes the pane's output - what was kept, then the rest. */
+export async function attachPty(paneId: string, onData: (bytes: Uint8Array) => void, onEventCb: (event: PtyEvent) => void): Promise<void> {
+  const onOutput = new Channel<ArrayBuffer | number[]>();
+  onOutput.onmessage = (message) => onData(message instanceof ArrayBuffer ? new Uint8Array(message) : Uint8Array.from(message));
+  const onEvent = new Channel<PtyEvent>();
+  onEvent.onmessage = onEventCb;
+  await invoke("pty_attach", { paneId, onOutput, onEvent });
+}
+
 export const writePty = (paneId: string, data: string) => invoke<void>("pty_write", { paneId, data });
 
 export const resizePty = (paneId: string, cols: number, rows: number) =>

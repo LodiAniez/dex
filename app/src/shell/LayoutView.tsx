@@ -9,36 +9,41 @@ import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { showError } from "../platform/notices";
 import { paneTitle, runsShell } from "./paneKind";
 import { DropHint, PaneDragArea, usePaneDrag } from "./PaneDrag";
-
-type Side = "a" | "b";
+import { popOut, useDetached } from "./popouts";
+import { canPopOut, visibleLayout, type Shown, type Side } from "./visibleLayout";
 
 /** The workspace's pane tree, or just the zoomed pane. */
 export function WorkspaceLayout({ workspace, zoomed }: { workspace: WorkspaceView; zoomed: string | null }) {
-  const zoomedPane = zoomed ? workspace.panes.find((pane) => pane.id === zoomed) : undefined;
+  const detached = useDetached();
+  const zoomedPane = zoomed && !detached.has(zoomed) ? workspace.panes.find((pane) => pane.id === zoomed) : undefined;
   if (zoomedPane) return <PaneBox pane={zoomedPane} workspace={workspace} zoomed />;
   if (!workspace.layout) return null;
+  // Panes in windows of their own are left out; the space closes up round them.
+  const shown = visibleLayout(workspace.layout, detached);
+  if (!shown) return null;
   return (
     <PaneDragArea>
-      <Node layout={workspace.layout} path={[]} workspace={workspace} />
+      <Node layout={shown} workspace={workspace} />
     </PaneDragArea>
   );
 }
 
 interface NodeProps {
-  layout: Layout;
-  path: Side[];
+  layout: Shown;
   workspace: WorkspaceView;
 }
 
-function Node({ layout, path, workspace }: NodeProps) {
+function Node({ layout, workspace }: NodeProps) {
   if (layout.type === "leaf") {
     const pane = workspace.panes.find((p) => p.id === layout.pane_id);
     return pane ? <PaneBox pane={pane} workspace={workspace} zoomed={false} /> : null;
   }
-  return <SplitNode layout={layout} path={path} workspace={workspace} />;
+  return <SplitNode layout={layout} workspace={workspace} />;
 }
 
-function SplitNode({ layout, path, workspace }: NodeProps & { layout: Extract<Layout, { type: "split" }> }) {
+function SplitNode({ layout, workspace }: NodeProps & { layout: Extract<Shown, { type: "split" }> }) {
+  // Where this split is in the stored tree, which may have more in it than is shown.
+  const path = layout.path;
   const containerRef = useRef<HTMLDivElement>(null);
   // While dragging, the divider follows the pointer locally; one request commits on release.
   const [dragRatio, setDragRatio] = useState<number | null>(null);
@@ -77,7 +82,7 @@ function SplitNode({ layout, path, workspace }: NodeProps & { layout: Extract<La
   return (
     <div ref={containerRef} className={`split ${horizontal ? "row" : "column"}`}>
       <div className="split-child" style={{ flex: `${ratio} 1 0` }}>
-        <Node layout={layout.a} path={[...path, "a"]} workspace={workspace} />
+        <Node layout={layout.a} workspace={workspace} />
       </div>
       <div
         className="divider"
@@ -86,7 +91,7 @@ function SplitNode({ layout, path, workspace }: NodeProps & { layout: Extract<La
         onPointerDown={startDrag}
       />
       <div className="split-child" style={{ flex: `${1 - ratio} 1 0` }}>
-        <Node layout={layout.b} path={[...path, "b"]} workspace={workspace} />
+        <Node layout={layout.b} workspace={workspace} />
       </div>
     </div>
   );
@@ -108,6 +113,8 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
   const { drag, begin } = usePaneDrag();
   const lifted = drag?.moving === pane.id && drag.side !== null;
   const hint = drag?.target === pane.id ? drag.side : null;
+  const detached = useDetached();
+  const poppable = !zoomed && workspace.layout !== null && canPopOut(workspace.layout, detached, pane.id);
   return (
     <div
       className={`pane${active ? " active" : ""}${lifted ? " lifted" : ""}`}
@@ -124,6 +131,16 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
           {paneTitle(pane)}
         </span>
         {zoomed && <span className="pane-badge">zoomed</span>}
+        <button
+          type="button"
+          className="icon-button pane-popout"
+          title={poppable ? "Open in its own window" : "The last pane in the window stays in it"}
+          disabled={!poppable}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => void popOut(pane, workspace.id, pane.label ?? paneTitle(pane)).catch(showError)}
+        >
+          ↗
+        </button>
         <button
           type="button"
           className="icon-button pane-close"

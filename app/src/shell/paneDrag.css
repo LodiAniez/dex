@@ -39,3 +39,15 @@ body.pane-dragging * {
 @media (prefers-reduced-motion: reduce) {
   .pane-drop-hint { transition: none; }
 }
+
+/* Open the pane in a window of its own. */
+.pane-popout {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+
+.pane-popout:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
