@@ -80,7 +80,7 @@ export function openTerminal(paneId: string, cwd?: string, workspaceId?: string)
   if (entries.has(paneId)) return;
 
   const term = new Terminal({
-    fontFamily: '"Cascadia Mono", Consolas, monospace',
+    fontFamily: '"Cascadia Mono", Consolas, Menlo, monospace',
     fontSize: 13,
     scrollback: 10000,
     cursorBlink: true,

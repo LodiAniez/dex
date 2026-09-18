@@ -6,6 +6,7 @@ import { AgentStatusDot, useAgents, workspaceAttention } from "../agents";
 import { ColorPicker } from "./ColorPicker";
 import { ContextMenu } from "./ContextMenu";
 import { deleteWorkspace, recolorWorkspace, renameWorkspace, switchWorkspace } from "./workspaceStore";
+import { useShortcuts } from "../../platform/config";
 
 interface Props {
   workspace: WorkspaceView;
@@ -32,6 +33,7 @@ export function WorkspaceItem(props: Props) {
   const [picker, setPicker] = useState<Point | null>(null);
   const [menu, setMenu] = useState<Point | null>(null);
   const attention = workspaceAttention(useAgents(), workspace.id);
+  const shortcut = useShortcuts().get(`switch-workspace-${index + 1}`);
 
   const openPicker = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -98,7 +100,7 @@ export function WorkspaceItem(props: Props) {
         </span>
       )}
       {attention && <AgentStatusDot status={attention} />}
-      {index < 9 && <kbd className="shortcut">Ctrl+{index + 1}</kbd>}
+      {shortcut && <kbd className="shortcut">{shortcut}</kbd>}
 
       {picker && (
         <ColorPicker

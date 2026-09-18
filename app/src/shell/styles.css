@@ -56,6 +56,16 @@ body,
   gap: 8px;
 }
 
+/* Room for the macOS traffic lights, which sit over the bar's left end. */
+.titlebar.mac .titlebar-title {
+  padding-left: 80px;
+}
+
+/* Fullscreen hides them, so the bar starts where Windows' does. */
+.titlebar.mac.fullscreen .titlebar-title {
+  padding-left: 12px;
+}
+
 .titlebar-buttons {
   display: flex;
   height: 100%;

@@ -8,6 +8,7 @@ mod daemon;
 mod notify;
 mod popout;
 mod pty;
+mod quit;
 mod setup;
 mod update;
 
@@ -58,6 +59,12 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .setup(move |app| {
+            #[cfg(target_os = "macos")]
+            quit::install_menu(app.handle())?;
+            // Ask the login shell for the owner's PATH now, off the main
+            // thread, rather than on the first pane or `git` run.
+            #[cfg(unix)]
+            std::thread::spawn(dex_core::platform::login_env::login_path);
             // Bound inside the async runtime: tokio's pipes register with its reactor.
             match tauri::async_runtime::block_on(async { pipe::bind(&pipe_name) }) {
                 Ok(server) => {
@@ -94,7 +101,7 @@ fn main() {
             }
             Ok(())
         })
-        .on_window_event(popout::quit_with_main)
+        .on_window_event(quit::on_window_event)
         .invoke_handler(tauri::generate_handler![
             daemon::dex_request,
             pty::pty_spawn,

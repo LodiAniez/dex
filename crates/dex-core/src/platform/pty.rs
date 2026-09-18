@@ -1,22 +1,18 @@
 //! PTY supervisor: spawns ConPTY children and owns their I/O (docs/prd.md §7.1).
 //!
 //! Each pane gets three named threads:
-//! - **reader** — blocking reads from the PTY into 64KB chunks (`portable-pty`
-//!   readers are blocking, so this is a thread, not an async task);
+//! - **reader** — blocking reads into 64KB chunks (`portable-pty` blocks);
 //! - **coalescer** — batches chunks (~8ms or 32KB) for the display, and applies
 //!   watermark flow control (see `reader.rs`);
 //! - **waiter** — waits for the child to exit, then closes the PTY.
 //!
-//! Shutdown path: the child exits (or `kill` makes it exit) → the waiter drops
-//! the master, closing the pseudoconsole → the reader sees EOF and ends → the
-//! coalescer flushes, reports `Exited`, and ends. Nothing needs joining.
+//! Shutdown: the child exits (or `kill` ends it); the waiter stores its code
+//! and drops the master; the reader ends at EOF (on Unix as the child exits);
+//! the coalescer flushes, waits for the code, reports `Exited`. Nothing joins.
 //!
-//! ConPTY behavior to know about: `portable-pty` creates the pseudoconsole
-//! with `PSEUDOCONSOLE_INHERIT_CURSOR`, so ConPTY's first output is a
-//! cursor-position query (`ESC[6n`) and it renders *nothing* until the
-//! terminal answers. xterm.js answers automatically in the app; anything else
-//! driving a pane (tests, a future headless consumer) must answer it too, or
-//! the pane looks dead.
+//! ConPTY's first output is a cursor-position query (`ESC[6n`, from
+//! `PSEUDOCONSOLE_INHERIT_CURSOR`), and it renders nothing until answered.
+//! xterm.js answers; any other driver (tests, a headless consumer) must too.
 
 mod reader;
 #[cfg(any(unix, test))]
@@ -279,15 +275,19 @@ impl PtySupervisor {
         self.lock().get(pane_id).map(|pane| pane.flow.last_output())
     }
 
-    /// The process id of a pane's shell: the root of whatever runs in the pane.
-    /// `None` if the pane has no live process.
+    /// The pid of a pane's shell, the root of all that runs in it, if alive.
     pub fn shell_pid(&self, pane_id: &str) -> Option<u32> {
         self.lock().get(pane_id).and_then(|pane| pane.pid)
     }
 
-    /// Starts keeping a pane's output instead of sending it to its window, for
-    /// a move between windows. Returns the bytes that window has been sent
-    /// since it attached, so it can wait for all of them before serializing.
+    /// How many panes have a live process, for "quit and end them all?".
+    pub fn live(&self) -> usize {
+        self.lock().len()
+    }
+
+    /// Keeps a pane's output instead of sending it to its window, for a move
+    /// between windows. Returns the bytes that window has been sent since it
+    /// attached, so it can wait for all of them before serializing.
     pub fn hold(&self, pane_id: &str) -> Result<u64, PtyError> {
         Ok(self.relay(pane_id)?.hold())
     }

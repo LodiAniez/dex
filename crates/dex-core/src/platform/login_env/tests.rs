@@ -1,6 +1,7 @@
 //! What a pane or a helper needs from the environment on a Mac.
 
 use super::*;
+use std::path::Path;
 
 #[test]
 fn a_pane_gets_a_terminal_type_and_a_utf8_locale_when_the_app_has_none() {
@@ -42,4 +43,20 @@ fn a_login_shell_gives_a_path_with_the_system_directories_in_it() {
 fn windows_needs_none_of_it() {
     // Apps there inherit the owner's PATH, and ConPTY sets the terminal type.
     assert_eq!(login_path(), None);
+}
+
+#[test]
+fn a_pane_starts_with_the_folder_dex_runs_from_on_its_path() {
+    // On macOS `dex` lives inside the app bundle, which no installer puts on
+    // PATH; an agent in a pane runs `dex` by name.
+    let dir = Path::new("/Applications/Dex.app/Contents/MacOS");
+    assert_eq!(
+        pane_path(dir, Some("/opt/homebrew/bin:/usr/bin")),
+        "/Applications/Dex.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin"
+    );
+    assert_eq!(pane_path(dir, None), "/Applications/Dex.app/Contents/MacOS");
+    assert_eq!(
+        pane_path(dir, Some("")),
+        "/Applications/Dex.app/Contents/MacOS"
+    );
 }
