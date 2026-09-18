@@ -22,6 +22,18 @@ pub enum Preset {
     Tiled,
 }
 
+impl Preset {
+    /// Whether the preset still makes sense as panes are added: one large pane
+    /// with the rest beside or below it, or a grid, does; six panes in one even
+    /// row or column does not. A spawn keeps only these (`arrange.rs`).
+    pub fn grows_well(self) -> bool {
+        matches!(
+            self,
+            Preset::MainVertical | Preset::MainHorizontal | Preset::Tiled
+        )
+    }
+}
+
 /// Cycling order.
 pub const PRESETS: [Preset; 5] = [
     Preset::EvenHorizontal,
@@ -192,11 +204,17 @@ pub fn preset(preset: Preset, panes: &[String]) -> Option<Layout> {
 /// The next preset in the cycle: if `current` is exactly one preset's output,
 /// the one after it; otherwise the first.
 pub fn next_preset(current: &Layout, panes: &[String]) -> Option<Layout> {
-    let position = PRESETS
-        .iter()
-        .position(|&p| preset(p, panes).as_ref() == Some(current));
+    let position = preset_of(current, panes).and_then(|p| PRESETS.iter().position(|&q| q == p));
     let next = position.map_or(0, |i| (i + 1) % PRESETS.len());
     preset(PRESETS[next], panes)
+}
+
+/// The preset `current` is exactly the output of, if any.
+pub fn preset_of(current: &Layout, panes: &[String]) -> Option<Preset> {
+    PRESETS
+        .iter()
+        .copied()
+        .find(|&p| preset(p, panes).as_ref() == Some(current))
 }
 
 /// `items` in a row (or column) of equal shares: each split gives its first
@@ -216,6 +234,23 @@ mod tests {
 
     fn ids(n: usize) -> Vec<String> {
         (1..=n).map(|i| format!("p{i}")).collect()
+    }
+
+    #[test]
+    fn a_layout_is_recognised_as_the_preset_it_is_and_only_the_growing_ones_are_kept() {
+        let panes = ids(4);
+        for p in PRESETS {
+            assert_eq!(preset_of(&preset(p, &panes).unwrap(), &panes), Some(p));
+        }
+        let by_hand = split(SplitDir::Horizontal, 0.33, leaf("p1"), leaf("p2"));
+        assert_eq!(preset_of(&by_hand, &ids(2)), None);
+        // Six agents in one even row is the mess; a main pane or a grid is not.
+        assert!(!Preset::EvenHorizontal.grows_well() && !Preset::EvenVertical.grows_well());
+        assert!(
+            Preset::MainVertical.grows_well()
+                && Preset::MainHorizontal.grows_well()
+                && Preset::Tiled.grows_well()
+        );
     }
 
     #[test]

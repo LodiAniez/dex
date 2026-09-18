@@ -212,7 +212,7 @@ An agent (or you) can start another agent on a task:
 dex agent spawn --task "port the remaining call sites to the new client API" --repo api --worktree fix/client --label porter
 ```
 
-Dex creates the worktree, splits a pane for it, records the task, starts Claude Code there, and gives it its brief through its opening digest — the task never passes through a shell command line. The child answers Claude Code's folder-trust dialog by itself (only in a worktree Dex created, from a repository you registered) and begins work. Its pane header shows the permission mode it runs in, so an unattended agent is never unattended invisibly.
+Dex creates the worktree, splits a pane for it (beside the lead's earlier hires, not off the lead again - six spawns leave the lead its half and stack the six beside it; and a workspace you have arranged with a *main* or *tiled* preset stays arranged as agents arrive), records the task, starts Claude Code there, and gives it its brief through its opening digest — the task never passes through a shell command line. The child answers Claude Code's folder-trust dialog by itself (only in a worktree Dex created, from a repository you registered) and begins work. Its pane header shows the permission mode it runs in, so an unattended agent is never unattended invisibly.
 
 Guardrails are in Dex, not in prose an agent might skip: **depth 2** (a child may spawn, its child may not) and **ten live agents per workspace**. A refused spawn says why and what to do instead.
 
