@@ -117,7 +117,7 @@ fn describe(state: State, target: &Path) -> String {
 /// Where this build's copy of the skill is. Beside `dex.exe` when installed on
 /// Windows; in the app bundle's `Resources` on macOS; in a build tree, three
 /// levels up from `target/<profile>/dex.exe`.
-fn source() -> Result<PathBuf, ErrorBody> {
+pub(crate) fn source() -> Result<PathBuf, ErrorBody> {
     let exe =
         std::env::current_exe().map_err(|err| internal(format!("cannot find this dex: {err}")))?;
     let dir = exe.parent().unwrap_or(Path::new("."));

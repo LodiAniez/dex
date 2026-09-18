@@ -19,10 +19,17 @@ pub struct PaneSummary {
     pub cwd: String,
     /// `terminal`, `markdown`, `diff`, or `activity`.
     pub kind: String,
+    /// Where its shell runs: `windows` or `wsl:<distro>`.
+    #[serde(default = "windows")]
+    pub runtime: String,
     /// Whether this is its workspace's focused pane.
     pub focused: bool,
     /// Whether its workspace is the one on screen.
     pub in_active_workspace: bool,
+}
+
+fn windows() -> String {
+    "windows".into()
 }
 
 /// Result of `pane.list`.

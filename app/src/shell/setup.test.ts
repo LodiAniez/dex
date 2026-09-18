@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Check, type DoctorReport, failures, fingerprint, headline, shouldOffer, stepFor } from "./setup";
+import { type Check, type DoctorReport, failures, fingerprint, headline, shouldOffer, stepFor, stepLabel } from "./setup";
 
 function report(...checks: Check[]): DoctorReport {
   return { ok: checks.every((c) => c.status !== "fail"), checks };
@@ -79,5 +79,25 @@ describe("the headline", () => {
   it("says so when all is well", () => {
     expect(headline(report(ok("app")))).toBe("Dex is set up");
     expect(failures(report(ok("app")))).toEqual([]);
+  });
+});
+
+describe("a WSL distro in the setup panel", () => {
+  const distro = (status: "ok" | "fail" | "skip", fix?: string) => ({ name: "wsl:Ubuntu", status, detail: "", fix });
+
+  it("gets a button that sets it up, whether or not Dex uses it yet", () => {
+    expect(stepFor(distro("fail", "wsl setup Ubuntu"))).toBe("wsl:Ubuntu");
+    expect(stepFor(distro("skip", "wsl setup Ubuntu"))).toBe("wsl:Ubuntu");
+    expect(stepFor(distro("ok"))).toBeNull();
+  });
+
+  it("is labelled with the distro's name", () => {
+    expect(stepLabel("wsl:Ubuntu")).toBe("Set up Ubuntu");
+    expect(stepLabel("hooks")).toBe("Install hooks");
+  });
+
+  it("does not open the panel by itself until Dex runs something there", () => {
+    const report = { ok: true, checks: [{ name: "hooks", status: "ok" as const, detail: "" }, distro("skip", "wsl setup Ubuntu")] };
+    expect(shouldOffer(report, null)).toBe(false);
   });
 });

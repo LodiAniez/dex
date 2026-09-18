@@ -16,79 +16,8 @@ use serde_json::{Map, Value, json};
 
 use crate::output::{self, Format};
 
-/// One hook Dex installs: the Claude Code event (and matcher), the `dex event`
-/// kind it runs, and whether Claude Code waits for it. Only hooks whose output
-/// must reach the model before it continues (digests, from M6) wait; status
-/// updates run in the background (PRD §9.3).
-struct Hook {
-    event: &'static str,
-    matcher: Option<&'static str>,
-    kind: &'static str,
-    wait: bool,
-}
-
-const HOOKS: [Hook; 10] = [
-    Hook {
-        event: "SessionStart",
-        matcher: None,
-        kind: "session-start",
-        wait: true,
-    },
-    Hook {
-        event: "UserPromptSubmit",
-        matcher: None,
-        kind: "prompt",
-        wait: true,
-    },
-    Hook {
-        event: "PostToolBatch",
-        matcher: None,
-        kind: "batch",
-        wait: true,
-    },
-    Hook {
-        event: "PermissionRequest",
-        matcher: None,
-        kind: "permission",
-        wait: false,
-    },
-    Hook {
-        event: "Notification",
-        matcher: Some("permission_prompt"),
-        kind: "waiting",
-        wait: false,
-    },
-    Hook {
-        event: "Notification",
-        matcher: Some("agent_needs_input"),
-        kind: "waiting",
-        wait: false,
-    },
-    Hook {
-        event: "Notification",
-        matcher: Some("idle_prompt"),
-        kind: "idle",
-        wait: false,
-    },
-    Hook {
-        event: "Stop",
-        matcher: None,
-        kind: "stop",
-        wait: false,
-    },
-    Hook {
-        event: "StopFailure",
-        matcher: None,
-        kind: "stop-failure",
-        wait: false,
-    },
-    Hook {
-        event: "SessionEnd",
-        matcher: None,
-        kind: "session-end",
-        wait: false,
-    },
-];
+mod table;
+use table::HOOKS;
 
 #[derive(Debug, Subcommand)]
 pub enum HooksCommand {
@@ -117,10 +46,7 @@ pub fn run(command: HooksCommand, format: Format) -> Result<(), ErrorBody> {
     match command {
         HooksCommand::Install { settings } => {
             let path = settings_path(settings)?;
-            let mut doc = read(&path)?;
-            let backup = backup(&path)?;
-            install(&mut doc, &exe).map_err(|shape| malformed(&path, shape))?;
-            write(&path, &doc)?;
+            let backup = install_at(&path, &exe)?;
             if format.json {
                 output::json(
                     &json!({ "installed": HOOKS.len(), "settings": path, "backup": backup }),
@@ -152,7 +78,7 @@ pub fn run(command: HooksCommand, format: Format) -> Result<(), ErrorBody> {
         }
         HooksCommand::Status { settings } => {
             let path = settings_path(settings)?;
-            let found = status(&read(&path)?, &exe);
+            let found = status_at(&path, &exe)?;
             if format.json {
                 output::json(
                     &json!({ "expected": HOOKS.len(), "installed": found.dex, "current": found.current, "settings": path }),
@@ -183,15 +109,38 @@ pub fn doctor_check() -> (bool, String) {
     (ok, detail)
 }
 
+/// Installs Dex's hooks into the settings file at `path`, run as `exe`, and
+/// returns where the file as it was is kept. Also how `dex wsl setup` installs
+/// them into a distro, with `exe` as Linux sees `dex.exe`.
+pub(crate) fn install_at(path: &Path, exe: &str) -> Result<Option<PathBuf>, ErrorBody> {
+    let mut doc = read(path)?;
+    let backup = backup(path)?;
+    install(&mut doc, exe).map_err(|shape| malformed(path, shape))?;
+    write(path, &doc)?;
+    Ok(backup)
+}
+
+/// What the settings file at `path` holds of Dex's hooks run as `exe`.
+pub(crate) fn status_at(path: &Path, exe: &str) -> Result<Found, ErrorBody> {
+    Ok(status(&read(path)?, exe))
+}
+
 /// What a settings file holds of Dex's hooks.
-struct Found {
+pub(crate) struct Found {
     /// Entries that are Dex's.
     dex: usize,
     /// Of those, entries that run this dex.exe.
     current: usize,
 }
 
-fn describe(found: &Found) -> String {
+impl Found {
+    /// Whether every hook Dex installs is there and runs this `dex`.
+    pub(crate) fn all_current(&self) -> bool {
+        self.current == HOOKS.len()
+    }
+}
+
+pub(crate) fn describe(found: &Found) -> String {
     if found.current == HOOKS.len() {
         format!("all {} Dex hooks installed", HOOKS.len())
     } else if found.dex > found.current {
