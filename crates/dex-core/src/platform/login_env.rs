@@ -59,13 +59,9 @@ pub fn pane_defaults(var: impl Fn(&str) -> Option<OsString>) -> Vec<(String, Str
 #[cfg(unix)]
 mod unix {
     use std::io::Read;
-    use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::sync::mpsc;
     use std::time::Duration;
-
-    use nix::sys::signal::{Signal, killpg};
-    use nix::unistd::Pid;
 
     use super::{MARKER, read_marked};
 
@@ -75,15 +71,14 @@ mod unix {
 
     pub(super) fn ask_login_shell() -> Option<String> {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_owned());
-        // Interactive as well as login: many people set PATH in .zshrc. In a
-        // process group of its own, so whatever its profile starts can be
-        // ended with it.
+        // Interactive as well as login: many people set PATH in .zshrc. Not in
+        // a process group of its own: an interactive shell that finds itself
+        // outside the foreground group gives up without printing anything.
         let mut child = Command::new(&shell)
             .args(["-ilc", &format!("printf '{MARKER}%s\\n'\"$PATH\"")])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .process_group(0)
             .spawn()
             .ok()?;
         // Read as it comes: a profile that prints more than a pipe holds would
@@ -96,9 +91,7 @@ mod unix {
             let _ = sent.send(text);
         });
         let Ok(text) = printed.recv_timeout(ASK_WAIT) else {
-            if let Ok(group) = i32::try_from(child.id()) {
-                let _ = killpg(Pid::from_raw(group), Signal::SIGKILL);
-            }
+            let _ = child.kill();
             let _ = child.wait();
             tracing::warn!("{shell} did not say its PATH in time; tools keep the app's PATH");
             return None;
