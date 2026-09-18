@@ -96,8 +96,10 @@ pub fn notify_agent(
 
 /// Shows a Notification Center banner about the agent in `pane`. The title and
 /// body go to AppleScript as arguments, never as script text, so nothing in
-/// them can be run. A banner shown this way cannot say which pane it was
-/// about when clicked; it brings the owner to Dex's notifications, not the pane.
+/// them can be run. macOS credits a banner shown this way to Script Editor,
+/// and clicking it opens Script Editor, not Dex or the pane: a stopgap until
+/// Dex posts its own notifications (#40). The helper is waited for on a
+/// thread of its own, so none is left behind as a zombie.
 #[cfg(not(windows))]
 #[tauri::command]
 #[allow(unused_variables)] // Tauri names the arguments; the banner needs only two.
@@ -120,6 +122,8 @@ pub fn notify_agent(
             &body,
         ])
         .spawn()
-        .map(|_| ())
+        .map(|mut child| {
+            std::thread::spawn(move || child.wait());
+        })
         .map_err(|err| format!("could not show a notification: {err}"))
 }

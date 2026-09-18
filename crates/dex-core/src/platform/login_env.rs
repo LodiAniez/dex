@@ -58,8 +58,14 @@ pub fn pane_defaults(var: impl Fn(&str) -> Option<OsString>) -> Vec<(String, Str
 
 #[cfg(unix)]
 mod unix {
+    use std::io::Read;
+    use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use nix::sys::signal::{Signal, killpg};
+    use nix::unistd::Pid;
 
     use super::{MARKER, read_marked};
 
@@ -69,31 +75,41 @@ mod unix {
 
     pub(super) fn ask_login_shell() -> Option<String> {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_owned());
-        // Interactive as well as login: many people set PATH in .zshrc.
-        let mut child = Command::new(shell)
-            .args(["-ilc", &format!("printf '{MARKER}%s\\n' \"$PATH\"")])
+        // Interactive as well as login: many people set PATH in .zshrc. In a
+        // process group of its own, so whatever its profile starts can be
+        // ended with it.
+        let mut child = Command::new(&shell)
+            .args(["-ilc", &format!("printf '{MARKER}%s\\n'\"$PATH\"")])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
+            .process_group(0)
             .spawn()
             .ok()?;
-        let deadline = Instant::now() + ASK_WAIT;
-        loop {
-            match child.try_wait() {
-                Ok(Some(_)) => break,
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(25))
-                }
-                _ => {
-                    let _ = child.kill();
-                    tracing::warn!(
-                        "the login shell did not say its PATH in time; tools keep the app's PATH"
-                    );
-                    return None;
-                }
+        // Read as it comes: a profile that prints more than a pipe holds would
+        // otherwise block the shell and look like a timeout.
+        let mut stdout = child.stdout.take()?;
+        let (sent, printed) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut text = Vec::new();
+            let _ = stdout.read_to_end(&mut text);
+            let _ = sent.send(text);
+        });
+        let Ok(text) = printed.recv_timeout(ASK_WAIT) else {
+            if let Ok(group) = i32::try_from(child.id()) {
+                let _ = killpg(Pid::from_raw(group), Signal::SIGKILL);
             }
+            let _ = child.wait();
+            tracing::warn!("{shell} did not say its PATH in time; tools keep the app's PATH");
+            return None;
+        };
+        let _ = child.wait();
+        let path = read_marked(&String::from_utf8_lossy(&text));
+        if path.is_none() {
+            tracing::warn!(
+                "{shell} did not print its PATH (an unusual shell?); tools keep the app's PATH"
+            );
         }
-        let output = child.wait_with_output().ok()?;
-        read_marked(&String::from_utf8_lossy(&output.stdout))
+        path
     }
 }

@@ -141,3 +141,22 @@ async fn a_second_dex_is_refused_but_a_stale_socket_from_a_crash_is_replaced() {
     assert!(stale.exists());
     assert!(pipe::bind_at(&stale).is_ok());
 }
+
+#[tokio::test]
+async fn a_second_dex_is_refused_even_when_the_socket_file_has_gone() {
+    // Two launches racing over a stale socket could both clear it; the lock
+    // beside it is what decides, and the first holder keeps it.
+    let dir = tempfile::tempdir().unwrap();
+    let path = start(&dir, Token::generate().unwrap());
+    std::fs::remove_file(&path).unwrap();
+    let err = pipe::bind_at(&path).err().expect("the lock is held");
+    assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse, "{err}");
+}
+
+#[test]
+fn a_socket_path_too_long_for_macos_is_refused_with_the_fix() {
+    let dir = tempfile::tempdir().unwrap();
+    let long = dir.path().join("x".repeat(120)).join("dex-me.sock");
+    let err = pipe::bind_at(&long).err().expect("too long");
+    assert!(err.to_string().contains("DEX_DATA_DIR"), "{err}");
+}

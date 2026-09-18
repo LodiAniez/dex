@@ -19,6 +19,8 @@
 //! the pane looks dead.
 
 mod reader;
+#[cfg(any(unix, test))]
+mod reap;
 mod relay;
 mod session_env;
 mod shell;
@@ -316,11 +318,19 @@ impl PtySupervisor {
     }
 
     /// Kills a pane's process. Its final output and `Exited` still arrive.
+    /// On macOS and Linux everything under the shell goes too (`reap.rs`).
     pub fn kill(&self, pane_id: &str) -> Result<(), PtyError> {
         let mut panes = self.lock();
         let pane = panes
             .get_mut(pane_id)
             .ok_or_else(|| PtyError::NoSuchPane(pane_id.to_owned()))?;
+        #[cfg(unix)]
+        if let Some(pid) = pane.pid {
+            spawn_named(format!("pty-reap-{pane_id}"), move || {
+                reap::end_tree(pid, reap::CLOSE_GRACE);
+            })?;
+            return Ok(());
+        }
         match pane.killer.kill() {
             // portable-pty 0.9.0's cloned Windows killer has its check inverted:
             // it returns `last_os_error()` when TerminateProcess *succeeds*,
@@ -329,6 +339,12 @@ impl PtySupervisor {
             Err(err) if err.raw_os_error() == Some(0) => Ok(()),
             result => result.map_err(PtyError::from),
         }
+    }
+
+    /// Ends every pane's processes as the app quits (Windows' job already does).
+    pub fn end_all(&self) {
+        #[cfg(unix)]
+        reap::end_all(self.lock().values().filter_map(|pane| pane.pid).collect());
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Pane>> {
