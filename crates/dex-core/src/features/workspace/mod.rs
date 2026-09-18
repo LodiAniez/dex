@@ -32,7 +32,7 @@ pub use layout::leaves as leaves_of;
 pub use model::WorkspaceError;
 pub use pane_commands::{
     close_pane, create_pane, cycle_layout, focus_pane, label_pane, set_layout, split_pane,
-    swap_panes,
+    split_pane_in, swap_panes,
 };
 pub use pane_content::content as pane_content;
 pub use pane_io::{list_panes, send, send_key};

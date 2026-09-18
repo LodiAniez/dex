@@ -72,7 +72,7 @@ pub async fn split_for(
         .call(move |conn| store::live_sibling_panes(conn, &ws, parent.as_deref(), &pane))
         .await?;
     let (anchor, dir) = spawn_anchor(caller_pane, &siblings, direction);
-    let list = workspace::split_pane(
+    let list = workspace::split_pane_in(
         state,
         SplitPaneArgs {
             pane: anchor,
@@ -80,8 +80,9 @@ pub async fn split_for(
             cwd: Some(child.cwd),
             label: child.label,
             kind: None,
-            runtime: Some(child.runtime),
+            runtime: None,
         },
+        child.runtime,
     )
     .await?;
     match kept {
