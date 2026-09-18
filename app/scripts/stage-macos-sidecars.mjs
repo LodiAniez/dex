@@ -17,14 +17,23 @@ const triple = process.env.TAURI_ENV_TARGET_TRIPLE;
 if (!triple) {
   throw new Error("TAURI_ENV_TARGET_TRIPLE is not set; run this through `tauri build`.");
 }
+// One architecture per image; cargo has no universal target to build these with.
+if (!triple.endsWith("-apple-darwin") || triple.startsWith("universal")) {
+  throw new Error(
+    `cannot stage sidecars for ${triple}: build aarch64-apple-darwin or x86_64-apple-darwin, one per image.`,
+  );
+}
+// `tauri build --debug` bundles a debug app; its sidecars match it.
+const debug = process.env.TAURI_ENV_DEBUG === "true";
+const profile = debug ? "debug" : "release";
 
 const run = (program, args) => execFileSync(program, args, { cwd: repo, stdio: "inherit" });
 
-run("cargo", ["build", "--release", "--target", triple, "-p", "dex-cli", "-p", "dex-mcp"]);
+run("cargo", ["build", ...(debug ? [] : ["--release"]), "--target", triple, "-p", "dex-cli", "-p", "dex-mcp"]);
 const staged = join(app, "src-tauri", "macos");
 mkdirSync(staged, { recursive: true });
 for (const name of ["dex", "dex-mcp"]) {
   const to = join(staged, name);
-  copyFileSync(join(repo, "target", triple, "release", name), to);
+  copyFileSync(join(repo, "target", triple, profile, name), to);
   run("codesign", ["--force", "--sign", "-", to]);
 }

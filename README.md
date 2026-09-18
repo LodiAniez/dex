@@ -50,7 +50,7 @@ Not on Linux yet. Running agents inside WSL from Dex is on the roadmap but not i
 
 1. Download the `.dmg` for your Mac from the **[Releases page](https://github.com/LodiAniez/dex/releases)**: `Dex_<version>_macos_apple-silicon.dmg` for an M-series Mac, `Dex_<version>_macos_intel.dmg` for an Intel one. **About This Mac** says which you have.
 2. Open it and drag **Dex** to **Applications**.
-3. The first time you open Dex, macOS says it cannot check it for malicious software, because this build is not signed or notarized by Apple yet. Click **Done**, then open **System Settings → Privacy & Security**, scroll down to the message about Dex, and click **Open Anyway**. You only do this once. From a terminal, this does the same:
+3. The first time you open Dex, macOS says it cannot check it for malicious software, because this build is not signed or notarized by Apple yet. Click **Done**, then open **System Settings → Privacy & Security**, scroll down to the message that Dex was blocked, and click **Open Anyway**. The button is there for about an hour after the blocked launch. macOS asks once more, and for your password; after that Dex opens normally. From a terminal, this does the same, and also covers the `dex` command inside the app:
 
    ```sh
    xattr -dr com.apple.quarantine /Applications/Dex.app
@@ -62,7 +62,7 @@ Every Dex pane already has the `dex` command. To use it in other terminals too, 
 echo 'export PATH="/Applications/Dex.app/Contents/MacOS:$PATH"' >> ~/.zprofile
 ```
 
-Add the folder rather than a symlink: `dex` finds `dex-mcp` and its skill beside itself.
+That is for zsh, the Mac's default shell; for bash, use `~/.bash_profile`. Add the folder rather than a symlink: `dex` finds `dex-mcp` and its skill beside itself. If macOS blocks `dex` in another terminal, run the `xattr` command above.
 
 Neither installer touches your Claude Code configuration. That happens in the next step, in your own session, with your click.
 

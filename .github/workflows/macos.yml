@@ -1,20 +1,45 @@
 name: macos
 
 # Builds Dex for macOS: an unsigned .dmg for Apple Silicon and one for Intel
-# (#36). A published release gets both attached; a pull request that touches
-# the packaging builds them as workflow artifacts, to try before a release.
+# (#36). A published release gets both attached. A pull request or a push to
+# master that touches anything that goes into the app builds them too, as
+# workflow artifacts, so a broken Mac build shows up before a release does.
+# Run by hand with a tag (v0.4.0), it builds that tag and attaches to its
+# release; without one it only builds.
 on:
   release:
     types: [published]
   pull_request:
     paths:
       - .github/workflows/macos.yml
-      - app/scripts/stage-macos-sidecars.mjs
-      - app/src-tauri/tauri.macos.conf.json
+      - app/**
+      - crates/**
+      - skills/**
+      - Cargo.toml
+      - Cargo.lock
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/macos.yml
+      - app/**
+      - crates/**
+      - skills/**
+      - Cargo.toml
+      - Cargo.lock
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach to, e.g. v0.4.0. Empty builds this branch and attaches nothing.
+        required: false
+        default: ""
 
+# Building runs every dependency's build script; none of it gets a token that
+# can write. Only `attach`, which runs no project code, can.
 permissions:
-  contents: write
+  contents: read
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
   dmg:
@@ -32,6 +57,19 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG || github.ref }}
+          persist-credentials: false
+
+      # A release named for one version must not ship another's app.
+      - name: The tag is the app's version
+        if: env.TAG != ''
+        run: |
+          version=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::The tag is $TAG but the app at that tag is version $version."
+            exit 1
+          fi
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -78,8 +116,20 @@ jobs:
           name: ${{ steps.dmg.outputs.path }}
           path: ${{ steps.dmg.outputs.path }}
 
+  attach:
+    needs: dmg
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Dex_*_macos_*.dmg
+          merge-multiple: true
+
       - name: Attach to the release
-        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" "${{ steps.dmg.outputs.path }}" --clobber
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" Dex_*_macos_*.dmg --clobber

@@ -118,8 +118,8 @@ fn describe(state: State, target: &Path) -> String {
 /// Windows; in the app bundle's `Resources` on macOS; in a build tree, three
 /// levels up from `target/<profile>/dex.exe`.
 fn source() -> Result<PathBuf, ErrorBody> {
-    let exe = std::env::current_exe()
-        .map_err(|err| internal(format!("cannot find this dex.exe: {err}")))?;
+    let exe =
+        std::env::current_exe().map_err(|err| internal(format!("cannot find this dex: {err}")))?;
     let dir = exe.parent().unwrap_or(Path::new("."));
     source_candidates(dir)
         .into_iter()
@@ -127,7 +127,8 @@ fn source() -> Result<PathBuf, ErrorBody> {
         .ok_or_else(|| ErrorBody {
             code: ErrorCode::Internal,
             message: format!(
-                "this build has no skills\\{NAME}\\{FILE} beside {}",
+                "this build has no {} near {}",
+                ["skills", NAME, FILE].iter().collect::<PathBuf>().display(),
                 exe.display()
             ),
             repair: "Reinstall Dex; it ships the skill alongside the dex command.".into(),
