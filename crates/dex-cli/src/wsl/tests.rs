@@ -10,8 +10,20 @@ fn the_distros_wsl_lists_are_read_from_utf16_less_docker_desktops() {
 }
 
 #[test]
+fn other_programs_machinery_is_not_offered_as_a_place_to_work() {
+    let printed: Vec<u8> = "Ubuntu\r\nrancher-desktop\r\npodman-machine-default\r\n"
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    assert_eq!(parse_distros(&printed), vec!["Ubuntu"]);
+}
+
+#[test]
 fn a_linux_path_is_reached_from_windows_through_wsl_localhost() {
-    let path = unc("Ubuntu", "/home/me/.claude/settings.json");
+    let path = under(
+        std::path::Path::new(r"\\wsl.localhost\Ubuntu"),
+        "/home/me/.claude/settings.json",
+    );
     assert_eq!(
         path,
         std::path::PathBuf::from(r"\\wsl.localhost\Ubuntu\home\me\.claude\settings.json")

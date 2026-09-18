@@ -209,6 +209,9 @@ export async function handOff(paneId: string): Promise<string> {
  * whatever was held while it moved. `content` null keeps this window's own
  * screen, for a pane whose other window went without handing anything back.
  */
+// No runtime here: a taken-over pane's shell is already running (`spawned` is
+// set below), so nothing ever starts one from this path. Anything that did
+// would need the pane's runtime, or it would start the shell on Windows.
 export async function takeOver(paneId: string, content: string | null, cwd?: string, workspaceId?: string): Promise<void> {
   openTerminal(paneId, cwd, workspaceId);
   const entry = entries.get(paneId);

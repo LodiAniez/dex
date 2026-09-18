@@ -19,13 +19,6 @@ export interface HireArgs {
   label?: string;
 }
 
-/** The terminal a hire is split off: the focused one, else the first. */
-function hireSource(workspace: Workspace) {
-  const terminals = workspace.panes.filter((pane) => pane.kind === "terminal");
-  return terminals.find((pane) => pane.id === workspace.active_pane) ?? terminals[0];
-}
-
-
 /**
  * Arguments for `agent.spawn`, or null when there is no task. The new pane is
  * split off a terminal — the focused one if it is one — and never off the
@@ -34,7 +27,8 @@ function hireSource(workspace: Workspace) {
 export function hireArgs(workspace: Workspace, task: string, label: string): HireArgs | null {
   const brief = task.trim();
   if (!brief) return null;
-  const from = hireSource(workspace);
+  const terminals = workspace.panes.filter((pane) => pane.kind === "terminal");
+  const from = terminals.find((pane) => pane.id === workspace.active_pane) ?? terminals[0];
   const args: HireArgs = { task: brief, workspace: workspace.id };
   if (from) args.pane = from.id;
   if (label.trim()) args.label = label.trim();

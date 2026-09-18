@@ -72,8 +72,8 @@ describe("what the palette offers", () => {
   });
 
   it("marks what is current", () => {
-    const current = items.filter((item) => "current" in item && item.current);
-    expect(current.map((item) => ("id" in item ? item.id : ""))).toEqual(["ws-api", "pane-1"]);
+    const current = items.filter((item) => item.kind !== "command" && item.current);
+    expect(current.map((item) => item.kind === "command" ? "" : item.id)).toEqual(["ws-api", "pane-1"]);
   });
 
   it("shows each command's binding, as bound right now", () => {
@@ -142,4 +142,3 @@ describe("ranking", () => {
     expect(first.positions).toEqual([0, 1, 2, 3]);
   });
 });
-

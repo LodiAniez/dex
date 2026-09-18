@@ -116,7 +116,7 @@ export function CommandPalette({ onRun, onClose }: CommandPaletteProps) {
             >
               <span className="palette-title">
                 <Highlighted text={row.item.title} positions={row.positions} />
-                {"current" in row.item && row.item.current && <span className="palette-current">current</span>}
+                {row.item.kind !== "command" && row.item.current && <span className="palette-current">current</span>}
               </span>
               <span className="palette-detail">{row.item.detail}</span>
               {scope === "all" && <span className="palette-kind">{KIND_LABEL[row.item.kind]}</span>}

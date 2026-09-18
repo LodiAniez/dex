@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
-import { runtimeLabel, useTerminal } from "../platform/runtimes";
+import { DexError } from "../platform/daemon";
+import { terminalChoices, useTerminal } from "../platform/runtimes";
 import "./setup.css";
 import { type Check, type DoctorReport, type Step, failures, headline, stepFor, stepLabel } from "./setup";
 
@@ -79,7 +80,7 @@ export function Setup({ report, onRecheck, onClose }: SetupProps) {
               : "Dex works with Claude Code through hooks, an MCP server and a skill. These are what a fresh install still needs."}
           </p>
         </header>
-        <TerminalChoice onChosen={onRecheck} />
+        <TerminalChoice report={report} onChosen={onRecheck} />
         <ul className="setup-checks">
           {report.checks.map((check) => (
             <CheckRow key={check.name} check={check} running={running} onRun={run} />
@@ -126,11 +127,12 @@ function CheckRow({ check, running, onRun }: { check: Check; running: Step | nul
  * their shells until Dex next starts. A WSL distro also needs setting up for
  * agents, which the checks below then say.
  */
-function TerminalChoice({ onChosen }: { onChosen: () => Promise<void> }) {
-  const { view, choose } = useTerminal();
+function TerminalChoice({ report, onChosen }: { report: DoctorReport; onChosen: () => Promise<void> }) {
+  const { view, choose } = useTerminal(report);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  if (!view || view.runtimes.length < 2) return null;
+  const choices = view ? terminalChoices(view) : [];
+  if (!view || choices.length === 0) return null;
   const pick = async (runtime: string) => {
     setBusy(true);
     setProblem(null);
@@ -138,7 +140,8 @@ function TerminalChoice({ onChosen }: { onChosen: () => Promise<void> }) {
       await choose(runtime);
       await onChosen();
     } catch (err) {
-      setProblem(String(err));
+      // What happened, and the daemon's repair for it.
+      setProblem(err instanceof DexError ? `${err.message}. ${err.repair}` : String(err));
     } finally {
       setBusy(false);
     }
@@ -150,7 +153,7 @@ function TerminalChoice({ onChosen }: { onChosen: () => Promise<void> }) {
       <span className="setup-detail">
         Dex opens its panes, and every agent it spawns, here.
         <span className="setup-explain">
-          Panes already open keep their shells until Dex restarts.{problem && ` ${problem}`}
+          A pane whose shell is running keeps it until Dex restarts.{problem && ` ${problem}`}
         </span>
       </span>
       <select
@@ -160,9 +163,9 @@ function TerminalChoice({ onChosen }: { onChosen: () => Promise<void> }) {
         disabled={busy}
         onChange={(event) => void pick(event.target.value)}
       >
-        {view.runtimes.map((runtime) => (
-          <option key={runtime} value={runtime}>
-            {runtimeLabel(runtime)}
+        {choices.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.label}
           </option>
         ))}
       </select>

@@ -99,7 +99,10 @@ pub fn pane_args(distro: &str, cwd: &str) -> Vec<String> {
     ["-d", distro, "--cd", &cwd].map(str::to_owned).to_vec()
 }
 
-/// The distros `wsl.exe -l -q` printed, less Docker Desktop's own.
+/// Distros that are some other program's machinery, not a place to work.
+const NOT_FOR_AGENTS: [&str; 3] = ["docker-desktop", "rancher-desktop", "podman-machine"];
+
+/// The distros `wsl.exe -l -q` printed, less other programs' own.
 pub fn parse_distros(printed: &[u8]) -> Vec<String> {
     let units: Vec<u16> = printed
         .as_chunks::<2>()
@@ -110,7 +113,9 @@ pub fn parse_distros(printed: &[u8]) -> Vec<String> {
     String::from_utf16_lossy(&units)
         .lines()
         .map(|line| line.trim_matches(|c: char| c.is_whitespace() || c == '\0'))
-        .filter(|name| !name.is_empty() && !name.starts_with("docker-desktop"))
+        .filter(|name| {
+            !name.is_empty() && !NOT_FOR_AGENTS.iter().any(|other| name.starts_with(other))
+        })
         .map(str::to_owned)
         .collect()
 }

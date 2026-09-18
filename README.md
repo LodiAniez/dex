@@ -79,7 +79,7 @@ Start Dex. The first time, a setup panel opens on its own and runs the same chec
 | `hooks`   | Dex's hooks are in your Claude Code settings               | Press **Install hooks**                        |
 | `mcp`     | Dex's MCP server is registered with Claude Code            | Press **Register MCP server**                  |
 | `skill`   | The `dex-agentic` skill is in your Claude Code skills      | Press **Install skill**                        |
-| `wsl:<distro>` | A WSL distro Dex runs panes in is set up for agents (only checked once it does) | Install Claude Code in the distro, then press **Set up <distro>** |
+| `wsl:<distro>` | A WSL distro is set up for agents (checked once Dex runs panes there, or it is your terminal) | Install Claude Code in the distro, then press **Set up <distro>** |
 
 Press the three buttons. All go green without a restart. That is the whole setup; the panel is in the command palette as **Setup checks** if you ever want it back, and it reappears by itself if something new goes wrong — including after a Dex upgrade, when `skill` turns red until you refresh it.
 
@@ -126,14 +126,16 @@ Names are for reading. Agents still message each other by **label**, which is wh
 
 **Repositories and worktrees.** Register a repo once (`dex repo add <path>`, or `dex repo scan <folder>` to find several). Then any agent — or you — can get a fresh worktree on a new branch under `%USERPROFILE%\dex\worktrees\<repo>\<branch>`, so parallel agents never share a working tree.
 
-**PowerShell or WSL.** On Windows with WSL installed, choose the terminal Dex opens in: **Terminal** at the top of the setup panel (*Setup checks* in the palette), or `dex pane terminal wsl:Ubuntu` (`dex pane terminal windows` to go back; `dex pane terminal` shows the choices). Everything new then opens there - a new workspace, a split, and every agent spawned, by you or by another agent - and when Dex starts, every pane does. Panes already running keep their shells until Dex restarts. Panes in WSL say their distro in the header.
+**PowerShell or WSL.** On Windows with WSL installed, choose the terminal Dex opens in: **Terminal** at the top of the setup panel (*Setup checks* in the palette), or `dex pane terminal wsl:Ubuntu` (`dex pane terminal windows` to go back; `dex pane terminal` shows the choices). Everything new then opens there - a new workspace, a split, and every agent spawned, by you or by another agent - and so does every pane whose shell has not started yet; when Dex starts, every pane does. A pane whose shell is running keeps it until Dex restarts. Panes in WSL say their distro in the header. If the chosen distro is uninstalled, Dex opens in PowerShell again and says so.
 
 Before the first agent in a distro, get it ready once:
 
 1. Install Claude Code inside the distro and sign in (in a pane there: `curl -fsSL https://claude.ai/install.sh | bash`, then `claude`). Agents in WSL use that Claude Code, with its own settings in Linux.
-2. Run `dex wsl setup Ubuntu` (or press **Set up Ubuntu** in the setup panel, which shows it once Ubuntu is your terminal). It puts a `dex` command in `~/.local/bin` that runs Dex's Windows `dex.exe`, and installs Dex's hooks, MCP server and skill into the distro's Claude Code. `dex wsl status Ubuntu` says what is in place.
+2. Run `dex wsl setup Ubuntu`, or press **Set up Ubuntu** in the setup panel, which lists every installed distro. It puts a `dex` command in `~/.local/bin` that runs Dex's Windows `dex.exe`, and installs Dex's hooks, MCP server and skill into the distro's Claude Code. Panes already open in the distro find `dex` once restarted. `dex wsl status Ubuntu` checks it all, including that `dex` really runs there. Setup refuses when the distro's `~/.claude` is a link to your Windows one, whose hooks are Windows Dex's.
 
-Nothing of Dex runs inside the distro: agents there talk to the Windows app through `dex.exe`. Give an agent in WSL a worktree (`--repo … --worktree …`): Dex makes it with the distro's own git, so git on both sides reads it cleanly, whereas a checkout made by Git for Windows looks modified throughout to Linux git, because of line endings. Dex cannot see inside WSL to tell whether Claude Code is still running there, so an agent in WSL that crashes stays listed until its pane closes.
+Nothing of Dex runs inside the distro: agents there talk to the Windows app through `dex.exe`, and Dex asks the distro which of its panes run Claude Code, so an agent there that crashes is ended like any other.
+
+**Worktrees for agents in WSL.** Give an agent in WSL a worktree (`--repo … --worktree …`): Dex makes it with the distro's own git and `--relative-paths`, so git on both sides reads it cleanly - a checkout made by Git for Windows looks modified throughout to Linux git, because of line endings, and its worktrees' links are `C:/…` paths Linux git cannot follow (a pane in one stays on Windows when you switch to WSL). This needs git 2.48 or later on both sides, and marks the repository's format so that an older git, or a tool built on an older libgit2, refuses the repository afterwards; Dex checks both versions first and says how to update.
 
 ### Keyboard shortcuts
 

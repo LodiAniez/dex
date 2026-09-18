@@ -8,6 +8,9 @@
 //! Windows `dex.exe`, because agents run `dex` by name and Linux only has
 //! `dex.exe` (Dex runs no daemon inside the distro).
 
+#[cfg(test)]
+mod tests;
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -57,13 +60,15 @@ impl Place {
     }
 }
 
-fn place(distro: &str) -> Result<Place, ErrorBody> {
-    let installed = wsl::distros();
+/// Where Dex's pieces go in `distro`, one of `installed`.
+fn place(distro: &str, installed: &[String]) -> Result<Place, ErrorBody> {
     if !installed.iter().any(|name| name == distro) {
         return Err(ErrorBody {
             code: ErrorCode::InvalidArgs,
             message: format!("no WSL distro named {distro:?} is installed"),
-            repair: if installed.is_empty() {
+            repair: if !cfg!(windows) {
+                "WSL is part of Windows; on this machine agents run in its own terminal.".into()
+            } else if installed.is_empty() {
                 "Install one first (`wsl --install Ubuntu`).".into()
             } else {
                 format!("Use one of: {}.", installed.join(", "))
@@ -78,6 +83,14 @@ fn place(distro: &str) -> Result<Place, ErrorBody> {
     let exe = std::env::current_exe()
         .map_err(|err| failed(format!("cannot find this dex.exe: {err}")))?;
     let server = exe.with_file_name("dex-mcp.exe");
+    if !server.is_file() {
+        return Err(ErrorBody {
+            code: ErrorCode::Internal,
+            message: format!("{} is missing", server.display()),
+            repair: "dex-mcp must sit beside dex; reinstall Dex, or build it with `cargo build --release`."
+                .into(),
+        });
+    }
     Ok(Place {
         home: wsl::home(distro).map_err(failed)?,
         dex: wsl::linux_path(distro, &exe).map_err(failed)?,
@@ -116,10 +129,19 @@ fn claude_version(distro: &str) -> Option<String> {
     (out.status.success() && !version.is_empty()).then_some(version)
 }
 
+/// Whether `dex` runs in the distro as an agent would run it: found on the
+/// login `PATH`, and able to start the Windows `dex.exe` (interop may be off).
+fn dex_runs(distro: &str) -> bool {
+    wsl::run_login(distro, "dex", &["--version"]).is_ok_and(|out| {
+        out.status.success() && String::from_utf8_lossy(&out.stdout).starts_with("dex ")
+    })
+}
+
 fn report(place: &Place) -> Report {
     let claude = claude_version(&place.distro);
     let command = fs::read_to_string(place.at(".local/bin/dex"))
-        .is_ok_and(|text| text == wsl::shim(&place.dex));
+        .is_ok_and(|text| text == wsl::shim(&place.dex))
+        && dex_runs(&place.distro);
     let hooks = hooks::status_at(&place.at(".claude/settings.json"), &place.dex)
         .is_ok_and(|found| found.all_current());
     // Asking Claude Code needs Claude Code.
@@ -141,8 +163,40 @@ fn report(place: &Place) -> Report {
 
 /// Installs everything that can be. Claude Code itself is the owner's to
 /// install and sign in to, so without it the MCP server is left for later.
+/// A failure part-way says what was done before it.
 fn setup(place: &Place) -> Result<Vec<String>, ErrorBody> {
     let mut done = Vec::new();
+    install(place, &mut done).map_err(|mut err| {
+        if !done.is_empty() {
+            err.message = format!("{} (done before that: {})", err.message, done.join("; "));
+        }
+        err
+    })?;
+    Ok(done)
+}
+
+/// `~/.claude` as a link to the Windows one (a way to share settings): Dex's
+/// Windows hooks live in that file, and rewriting them for Linux would break
+/// every Windows agent's.
+fn shared_with_windows(place: &Place) -> Option<String> {
+    let real = wsl::real_path(&place.distro, &format!("{}/.claude", place.home)).ok()?;
+    real.starts_with("/mnt/").then_some(real)
+}
+
+fn install(place: &Place, done: &mut Vec<String>) -> Result<(), ErrorBody> {
+    if let Some(real) = shared_with_windows(place) {
+        return Err(ErrorBody {
+            code: ErrorCode::InvalidArgs,
+            message: format!(
+                "{}/.claude in {} is {real}, the Windows one; its hooks are Windows Dex's",
+                place.home, place.distro
+            ),
+            repair: format!(
+                "Give {} its own ~/.claude (replace the link with a folder), then run this again.",
+                place.distro
+            ),
+        });
+    }
     let file_error = |message: String| ErrorBody {
         code: ErrorCode::Internal,
         message,
@@ -156,7 +210,12 @@ fn setup(place: &Place) -> Result<Vec<String>, ErrorBody> {
     fs::write(&command, wsl::shim(&place.dex))
         .map_err(|err| file_error(format!("cannot write {}: {err}", command.display())))?;
     wsl::make_executable(&place.distro, &place.command()).map_err(file_error)?;
-    done.push(format!("`dex` in {} runs {}", place.command(), place.dex));
+    done.push(format!(
+        "`dex` in {} runs {} (panes already open in {} find it once restarted)",
+        place.command(),
+        place.dex,
+        place.distro
+    ));
 
     hooks::install_at(&place.at(".claude/settings.json"), &place.dex)?;
     done.push(format!(
@@ -171,9 +230,8 @@ fn setup(place: &Place) -> Result<Vec<String>, ErrorBody> {
         return Err(ErrorBody {
             code: ErrorCode::InvalidArgs,
             message: format!(
-                "Claude Code is not installed in {}; everything but the MCP server is set up ({})",
-                place.distro,
-                done.join("; ")
+                "Claude Code is not installed in {}; everything but the MCP server is set up",
+                place.distro
             ),
             repair: format!(
                 "Open a pane in {0}, install Claude Code there \
@@ -185,13 +243,13 @@ fn setup(place: &Place) -> Result<Vec<String>, ErrorBody> {
     }
     mcp::install_in(At::Wsl(&place.distro), &place.mcp)?;
     done.push("the Dex MCP server is registered".into());
-    Ok(done)
+    Ok(())
 }
 
 pub fn run(command: WslCommand, format: Format) -> Result<(), ErrorBody> {
     match command {
         WslCommand::Setup { distro } => {
-            let place = place(&distro)?;
+            let place = place(&distro, &wsl::distros())?;
             let done = setup(&place)?;
             if format.json {
                 output::json(&json!({ "distro": distro, "done": done }));
@@ -204,7 +262,7 @@ pub fn run(command: WslCommand, format: Format) -> Result<(), ErrorBody> {
             }
         }
         WslCommand::Status { distro } => {
-            let place = place(&distro)?;
+            let place = place(&distro, &wsl::distros())?;
             let found = report(&place);
             if format.json {
                 output::json(&json!({
@@ -245,9 +303,11 @@ pub type DistroCheck = (String, Option<bool>, String);
 /// examined - that would start its VM on every check - and is no failure:
 /// nobody has asked for agents there yet.
 pub fn doctor_checks(used: &[String]) -> Vec<DistroCheck> {
-    wsl::distros()
-        .into_iter()
+    let installed = wsl::distros();
+    installed
+        .iter()
         .map(|distro| {
+            let distro = distro.clone();
             let name = format!("wsl:{distro}");
             if !used.contains(&distro) {
                 let detail = format!(
@@ -255,7 +315,7 @@ pub fn doctor_checks(used: &[String]) -> Vec<DistroCheck> {
                 );
                 return (name, None, detail);
             }
-            match place(&distro) {
+            match place(&distro, &installed) {
                 Err(err) => (name, Some(false), err.message),
                 Ok(place) => {
                     let found = report(&place);

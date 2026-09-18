@@ -269,7 +269,12 @@ fn claude(at: At, args: &[&str]) -> Result<String, ErrorBody> {
                 args.join(" "),
                 String::from_utf8_lossy(&output.stderr).trim()
             ),
-            repair: "Run that command yourself to see what Claude Code reports.".into(),
+            repair: match at {
+                At::Windows => "Run that command yourself to see what Claude Code reports.".into(),
+                At::Wsl(distro) => {
+                    format!("Run that command in a {distro} pane to see what Claude Code reports.")
+                }
+            },
         });
     }
     Ok(stdout)

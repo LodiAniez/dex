@@ -21,8 +21,28 @@ export function runtimeLabel(runtime: string): string {
   return distro ? `${distro} (WSL)` : runtime;
 }
 
-/** The chosen terminal and the choices, and a way to choose; null until asked. */
-export function useTerminal(): { view: TerminalView | null; choose: (runtime: string) => Promise<void> } {
+/**
+ * What the terminal picker offers: every terminal there is, or nothing where
+ * Windows is all there is. A chosen distro that has since been uninstalled
+ * stays in the list, marked, so the owner can see it and choose away from it.
+ */
+export function terminalChoices(view: TerminalView): { value: string; label: string }[] {
+  const gone = !view.runtimes.includes(view.terminal);
+  if (view.runtimes.length < 2 && !gone) return [];
+  const choices = view.runtimes.map((value) => ({ value, label: runtimeLabel(value) }));
+  if (gone) choices.push({ value: view.terminal, label: `${runtimeLabel(view.terminal)} - not installed` });
+  return choices;
+}
+
+/**
+ * The chosen terminal and the choices, and a way to choose; null until asked.
+ * Asked again whenever `generation` changes - the setup panel's checks - so a
+ * distro installed meanwhile, or a first ask that failed, is caught up with.
+ */
+export function useTerminal(generation?: unknown): {
+  view: TerminalView | null;
+  choose: (runtime: string) => Promise<void>;
+} {
   const [view, setView] = useState<TerminalView | null>(null);
   useEffect(() => {
     let live = true;
@@ -33,7 +53,7 @@ export function useTerminal(): { view: TerminalView | null; choose: (runtime: st
     return () => {
       live = false;
     };
-  }, []);
+  }, [generation]);
   const choose = useCallback(async (runtime: string) => {
     setView(await request<TerminalView>("pane.terminal", { terminal: runtime }));
   }, []);
