@@ -1,5 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBuildCommand": "npm run build && node scripts/stage-macos-sidecars.mjs"
+  },
   "app": {
     "windows": [
       {
@@ -14,5 +17,19 @@
         "hiddenTitle": true
       }
     ]
+  },
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
+    "category": "DeveloperTool",
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-",
+      "files": {
+        "MacOS/dex": "macos/dex",
+        "MacOS/dex-mcp": "macos/dex-mcp",
+        "Resources/skills/dex-agentic/SKILL.md": "../../skills/dex-agentic/SKILL.md"
+      }
+    }
   }
 }

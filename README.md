@@ -4,7 +4,7 @@
 
 **One window, several Claude Code agents, and a shared memory between them.**
 
-Dex is a Windows terminal workspace for multi-agent coding. You open a workspace per project, split it into panes, and run a Claude Code agent in each. Dex watches what every agent does, shows you their status at a glance, tells you when one needs you, and gives the agents a place to leave notes for each other — so four agents working on one codebase stop solving the same problem four times.
+Dex is a terminal workspace for multi-agent coding, on Windows and macOS. You open a workspace per project, split it into panes, and run a Claude Code agent in each. Dex watches what every agent does, shows you their status at a glance, tells you when one needs you, and gives the agents a place to leave notes for each other — so four agents working on one codebase stop solving the same problem four times.
 
 An agent in Dex can also start another agent: on its own task, in its own pane, in its own git worktree, and it gets to work without anyone typing anything.
 
@@ -19,19 +19,22 @@ You have a job that's bigger than one agent should do alone, or several jobs at 
 - **Not losing track.** Status dots on every pane, a title bar counting who's working and who's waiting, a toast when an agent in a pane you're not looking at needs you, and a live activity stream of everything every agent has said and done.
 - **Agents that remember what their siblings found out.** A shared context store per workspace: notes, durable facts under keys, directed messages. Each agent gets a short digest of what changed at the start of its turns, automatically.
 
-It is a terminal first. Every pane is a real shell (PowerShell by default) running a real ConPTY, and you can use it with no agents at all.
+It is a terminal first. Every pane is a real shell (PowerShell by default on Windows, your login shell on macOS) in a real pseudo-terminal, and you can use it with no agents at all.
 
 ## Where it runs
 
 - **Windows 11**, or Windows 10 1809 or later (ConPTY is required). WebView2 is preinstalled on Windows 11.
+- **macOS 11** or later, on Apple Silicon or Intel. macOS support is new and less tried than Windows; please [report](https://github.com/LodiAniez/dex/issues) what goes wrong.
 - **Claude Code** installed and signed in with **your own Anthropic account** — a Claude Pro or Max subscription, or an API key with billing. Dex drives Claude Code; it does not replace it, and it has no account, keys or usage of its own. Every agent you run in Dex, including the ones agents spawn, is an ordinary Claude Code session on your plan and counts against your usage exactly as if you had opened a terminal and typed `claude`. Any account Claude Code accepts works — Pro, Max, API billing, Bedrock or Vertex — because Dex never touches the credentials.
 
   **Claude Code only.** Status dots, toasts, shared context and spawning all come through Claude Code's hooks and MCP registration. Other coding agents (Codex, Gemini CLI, Aider…) run fine in a Dex pane as plain terminals, but Dex will not know they exist. Supporting them would take an adapter per agent; none is planned for v1.
-- **Git for Windows** on PATH — worktrees and the diff pane need it.
+- **Git** on PATH — worktrees and the diff pane need it. On Windows that is Git for Windows; on macOS, the Xcode Command Line Tools (`xcode-select --install`) or Git from Homebrew.
 
-Not on macOS or Linux, by design. Running agents inside WSL from Dex is on the roadmap but not in this release; panes run Windows shells.
+Not on Linux yet. Running agents inside WSL from Dex is on the roadmap but not in this release; on Windows, panes run Windows shells.
 
 ## Install
+
+### Windows
 
 1. Download the latest `Dex_<version>_x64_en-US.msi` from the **[Releases page](https://github.com/LodiAniez/dex/releases)**.
 2. Run it and accept the defaults. It installs Dex to Program Files, adds the `dex` command to your PATH, and puts Dex in the Start Menu.
@@ -43,7 +46,25 @@ Not on macOS or Linux, by design. Running agents inside WSL from Dex is on the r
    dex --version
    ```
 
-The installer does not touch your Claude Code configuration. That happens in the next step, in your own session, with your click.
+### macOS
+
+1. Download the `.dmg` for your Mac from the **[Releases page](https://github.com/LodiAniez/dex/releases)**: `Dex_<version>_macos_apple-silicon.dmg` for an M-series Mac, `Dex_<version>_macos_intel.dmg` for an Intel one. **About This Mac** says which you have.
+2. Open it and drag **Dex** to **Applications**.
+3. The first time you open Dex, macOS says it cannot check it for malicious software, because this build is not signed or notarized by Apple yet. Click **Done**, then open **System Settings → Privacy & Security**, scroll down to the message that Dex was blocked, and click **Open Anyway**. The button is there for about an hour after the blocked launch. macOS asks once more, and for your password; after that Dex opens normally. From a terminal, this does the same, and also covers the `dex` command inside the app:
+
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/Dex.app
+   ```
+
+Every Dex pane already has the `dex` command. To use it in other terminals too, put Dex's folder on your PATH, then open a new terminal:
+
+```sh
+echo 'export PATH="/Applications/Dex.app/Contents/MacOS:$PATH"' >> ~/.zprofile
+```
+
+That is for zsh, the Mac's default shell; for bash, use `~/.bash_profile`. Add the folder rather than a symlink: `dex` finds `dex-mcp` and its skill beside itself. If macOS blocks `dex` in another terminal, run the `xattr` command above.
+
+Neither installer touches your Claude Code configuration. That happens in the next step, in your own session, with your click.
 
 ## Set up
 
@@ -51,10 +72,10 @@ Start Dex. The first time, a setup panel opens on its own and runs the same chec
 
 | Check     | What it means                                              | If it's red                                    |
 |-----------|------------------------------------------------------------|------------------------------------------------|
-| `app`     | Dex is running and answering on its control pipe           | Restart Dex                                    |
+| `app`     | Dex is running and answering on its control pipe or socket | Restart Dex                                    |
 | `version` | The app and the `dex` command are from the same build      | Reinstall                                      |
 | `claude`  | Claude Code is on PATH                                     | Install Claude Code, open a new terminal       |
-| `git`     | Git is on PATH                                             | Install Git for Windows                        |
+| `git`     | Git is on PATH                                             | Install Git (see *Where it runs*)              |
 | `hooks`   | Dex's hooks are in your Claude Code settings               | Press **Install hooks**                        |
 | `mcp`     | Dex's MCP server is registered with Claude Code            | Press **Register MCP server**                  |
 | `skill`   | The `dex-agentic` skill is in your Claude Code skills      | Press **Install skill**                        |
