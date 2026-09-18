@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUpdate, useUpdate } from "../platform/update";
 import { showError } from "../platform/notices";
@@ -27,8 +28,9 @@ interface Props {
 export function TitleBar({ title, color, counts, onShowActivity, view }: Props) {
   const win = getCurrentWindow();
   const update = useUpdate();
+  const fullscreen = useMacFullscreen();
   return (
-    <header className={IS_MAC ? "titlebar mac" : "titlebar"} data-tauri-drag-region>
+    <header className={["titlebar", IS_MAC && "mac", fullscreen && "fullscreen"].filter(Boolean).join(" ")} data-tauri-drag-region>
       <span className="titlebar-title" data-tauri-drag-region>
         {color && <span className="color-dot" style={{ background: color }} data-tauri-drag-region />}
         <span data-tauri-drag-region>{title ? `${title} — Dex` : "Dex"}</span>
@@ -76,4 +78,21 @@ export function TitleBar({ title, color, counts, onShowActivity, view }: Props) 
       )}
     </header>
   );
+}
+
+/**
+ * Whether a Mac window is fullscreen, where macOS hides the traffic lights and
+ * the bar needs no room for them. Always false elsewhere.
+ */
+function useMacFullscreen(): boolean {
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    if (!IS_MAC) return;
+    const win = getCurrentWindow();
+    const check = () => void win.isFullscreen().then(setFullscreen, () => {});
+    check();
+    const unlisten = win.onResized(check);
+    return () => void unlisten.then((stop) => stop());
+  }, []);
+  return fullscreen;
 }

@@ -1,9 +1,9 @@
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { request } from "./daemon";
 import { onDaemonChange } from "./events";
 import type { ConfigView } from "./generated/ConfigView";
 import { showError, showWarning } from "./notices";
-import { buildKeymap, SHIPPED_KEYMAP, type Keymap } from "../shell/keybindings";
+import { bindingsByAction, buildKeymap, SHIPPED_KEYMAP, type Keymap } from "../shell/keybindings";
 
 /**
  * The owner's settings, as far as the UI is concerned: the keymap, and the
@@ -33,6 +33,15 @@ export function useUiSettings(): UiSettings | null {
 /** The bindings in force. Read on every keystroke, so it must stay a lookup. */
 export function currentKeymap(): Keymap {
   return keymap;
+}
+
+/**
+ * Each action's key as the owner has it now - their `[keys]` overrides, Cmd on
+ * a Mac - for labels and tooltips. Follows edits to the config.
+ */
+export function useShortcuts(): Map<string, string> {
+  const map = useSyncExternalStore(subscribeKeymap, currentKeymap);
+  return useMemo(() => bindingsByAction(map), [map]);
 }
 
 export function subscribeKeymap(listener: () => void): () => void {

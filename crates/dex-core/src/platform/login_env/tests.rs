@@ -46,7 +46,7 @@ fn windows_needs_none_of_it() {
 }
 
 #[test]
-fn a_pane_finds_the_dex_beside_the_app_first() {
+fn a_pane_starts_with_the_folder_dex_runs_from_on_its_path() {
     // On macOS `dex` lives inside the app bundle, which no installer puts on
     // PATH; an agent in a pane runs `dex` by name.
     let dir = Path::new("/Applications/Dex.app/Contents/MacOS");

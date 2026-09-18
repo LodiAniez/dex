@@ -57,9 +57,12 @@ pub fn pane_defaults(var: impl Fn(&str) -> Option<OsString>) -> Vec<(String, Str
     added
 }
 
-/// A pane's `PATH` on macOS and Linux: the folder Dex runs from first, so an
-/// agent finds `dex` by name - inside an app bundle no installer puts it on
-/// `PATH` - then `path`, the owner's login `PATH` if there is one.
+/// The `PATH` a pane's shell starts with on macOS and Linux: the folder Dex
+/// runs from, so an agent finds `dex` by name inside an app bundle no
+/// installer puts on `PATH`, then `path`, the owner's login `PATH`. The login
+/// shell's profile runs after this (`path_helper`, Homebrew, and so on) and
+/// may move Dex's folder later, so another `dex` on the owner's `PATH` would
+/// be found first; Dex's own folder is always on it.
 pub fn pane_path(dex_dir: &Path, path: Option<&str>) -> String {
     let dir = dex_dir.to_string_lossy();
     match path.filter(|path| !path.is_empty()) {

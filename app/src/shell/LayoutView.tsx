@@ -6,12 +6,13 @@ import { closePane, focusPane, setLayout } from "../features/workspaces";
 import type { Layout } from "../platform/generated/Layout";
 import type { PaneView } from "../platform/generated/PaneView";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
+import { useShortcuts } from "../platform/config";
 import { showError } from "../platform/notices";
 import { paneTitle, runsShell } from "./paneKind";
 import { DropHint, PaneDragArea, usePaneDrag } from "./PaneDrag";
 import { popOut, useDetached } from "./popouts";
 import { canPopOut, visibleLayout, type Shown, type Side } from "./visibleLayout";
-import { forPlatform } from "./keybindings";
+import { titled } from "./keybindings";
 
 /** The workspace's pane tree, or just the zoomed pane. */
 export function WorkspaceLayout({ workspace, zoomed }: { workspace: WorkspaceView; zoomed: string | null }) {
@@ -109,6 +110,7 @@ function withRatio(layout: Layout, path: Side[], ratio: number): Layout {
 }
 
 function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: WorkspaceView; zoomed: boolean }) {
+  const shortcuts = useShortcuts();
   const active = workspace.active_pane === pane.id;
   const agent = agentInPane(useAgents(), pane.id);
   const { drag, begin } = usePaneDrag();
@@ -145,7 +147,7 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
         <button
           type="button"
           className="icon-button pane-close"
-          title={`Close pane (${forPlatform("Ctrl+Shift+W")})`}
+          title={titled("Close pane", shortcuts.get("close-pane"))}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={() => void closePane(pane.id).catch(showError)}
         >
