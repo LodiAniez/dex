@@ -64,7 +64,7 @@ fn main() {
             // Ask the login shell for the owner's PATH now, off the main
             // thread, rather than on the first pane or `git` run.
             #[cfg(unix)]
-            std::thread::spawn(|| dex_core::platform::login_env::login_path());
+            std::thread::spawn(dex_core::platform::login_env::login_path);
             // Bound inside the async runtime: tokio's pipes register with its reactor.
             match tauri::async_runtime::block_on(async { pipe::bind(&pipe_name) }) {
                 Ok(server) => {
