@@ -240,3 +240,53 @@ async fn a_layout_arranged_by_hand_is_not_rearranged_by_a_spawn() {
     assert_eq!(**lead_side, Layout::Leaf { pane_id: first });
     assert_eq!(leaves(agents), vec![a.pane, b.pane]);
 }
+
+/// The two panes a leaf's parent split holds, if `pane` is one of them.
+fn beside(layout: &Layout, pane: &str) -> Option<(Layout, Layout)> {
+    match layout {
+        Layout::Leaf { .. } => None,
+        Layout::Split { a, b, .. } => {
+            let here = |node: &Layout| matches!(node, Layout::Leaf { pane_id } if pane_id == pane);
+            if here(a) || here(b) {
+                return Some(((**a).clone(), (**b).clone()));
+            }
+            beside(a, pane).or_else(|| beside(b, pane))
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_owner_hire_never_splits_an_agent_the_owner_started_by_hand() {
+    // A lead the owner started by typing `claude` in the first pane; the owner
+    // hires from HR with the second pane focused. The hire goes beside the
+    // second pane - not beside the lead, who is nobody's hire.
+    let (_dir, state, first) = pane().await;
+    lead(&state, &first).await;
+    let list = workspace::split_pane(
+        &state,
+        dex_protocol::workspace::SplitPaneArgs {
+            pane: first.clone(),
+            direction: SplitDirection::Right,
+            cwd: None,
+            label: None,
+            kind: None,
+        },
+    )
+    .await
+    .unwrap();
+    let second = list.workspaces[0].active_pane.clone().unwrap();
+
+    let hire = spawn(&state, brief("one", &second, None)).await.unwrap();
+
+    let layout = layout_of(&state).await;
+    let (a, b) = beside(&layout, &hire.pane).expect("the hire is in a split");
+    let partner = if a
+        == (Layout::Leaf {
+            pane_id: hire.pane.clone(),
+        }) {
+        b
+    } else {
+        a
+    };
+    assert_eq!(partner, Layout::Leaf { pane_id: second });
+}
