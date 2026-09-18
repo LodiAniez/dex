@@ -2,7 +2,7 @@ import "./paneDrag.css";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { movePane } from "../features/workspaces";
 import { showError } from "../platform/notices";
-import { dropSide, isDrag, type DropSide } from "./paneDrop";
+import { dragKey, dropSide, isDrag, type DropSide } from "./paneDrop";
 
 /** A pane being dragged by its header, and where it would land if let go now. */
 export interface Drag {
@@ -27,7 +27,8 @@ export function usePaneDrag(): PaneDragApi {
  * Drag a pane by its header and drop it on another: on an edge to sit beside
  * it there, in the middle to trade places (issue #31). A click on a header still
  * only focuses the pane - it lifts after a few pixels - and Escape, or letting
- * go anywhere but on another pane, puts it back.
+ * go anywhere but on another pane, puts it back. The header holds the pointer
+ * until then, so letting go outside the window is seen too.
  */
 export function PaneDragArea({ children }: { children: ReactNode }) {
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -38,6 +39,14 @@ export function PaneDragArea({ children }: { children: ReactNode }) {
     if (down.button !== 0) return;
     cleanup.current?.();
     const start = { x: down.clientX, y: down.clientY };
+    // Held by the header, so the release is seen wherever it happens - even outside the window.
+    const handle = down.currentTarget;
+    const pointer = down.pointerId;
+    try {
+      handle.setPointerCapture(pointer);
+    } catch {
+      // The pointer is already gone; the window listeners still end the drag.
+    }
     let lifted = false;
     let latest: Drag = { moving: paneId, target: null, side: null };
 
@@ -59,15 +68,26 @@ export function PaneDragArea({ children }: { children: ReactNode }) {
       if (drop && latest.target && latest.side) void movePane(latest.moving, latest.target, latest.side).catch(showError);
     };
     const onUp = () => finish(lifted);
+    const onCancel = () => finish(false);
     const onKey = (key: KeyboardEvent) => {
-      if (key.key === "Escape") finish(false);
+      const { cancel, swallow } = dragKey(lifted, key.key);
+      if (swallow) {
+        key.preventDefault();
+        key.stopImmediatePropagation();
+      }
+      if (cancel) finish(false);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    handle.addEventListener("lostpointercapture", onUp);
     window.addEventListener("keydown", onKey, true);
     cleanup.current = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      handle.removeEventListener("lostpointercapture", onUp);
+      if (handle.hasPointerCapture(pointer)) handle.releasePointerCapture(pointer);
       window.removeEventListener("keydown", onKey, true);
       document.body.classList.remove("pane-dragging");
       cleanup.current = null;

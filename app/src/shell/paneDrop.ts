@@ -42,3 +42,14 @@ export function dropSide(box: Box, point: Point): DropSide | null {
 export function isDrag(from: Point, to: Point): boolean {
   return Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) >= DRAG_START_PX;
 }
+
+/**
+ * What a key does while a pane is being dragged. Escape cancels. Once the pane
+ * has lifted, no key goes on to the focused terminal: Escape there would
+ * interrupt a Claude Code turn, and anything else would be typed into a pane
+ * the owner is not looking at.
+ */
+export function dragKey(lifted: boolean, key: string): { cancel: boolean; swallow: boolean } {
+  return { cancel: key === "Escape", swallow: lifted };
+}
+
