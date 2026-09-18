@@ -104,6 +104,7 @@ fn main() {
             pty::pty_hold,
             pty::pty_attach,
             popout::pane_pop_out,
+            popout::pane_focus_popout,
             notify::notify_agent,
             setup::setup_check,
             setup::setup_run,

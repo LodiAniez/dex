@@ -25,12 +25,13 @@ import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
 import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
 import { neighborPane } from "./paneGeometry";
-import { bringForward, forgetDetached, isDetached, watchPopouts } from "./popouts";
+import { bringForward, forgetDetached, getDetached, isDetached, watchPopouts } from "./popouts";
 import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
 import { Setup } from "./SetupPanel";
 import { Sidebar } from "./Sidebar";
 import { chooseMode, modeOfAction, nextMode, rememberMode, showsPanes, storedMode, whenPanesHidden, type ViewMode } from "./viewMode";
 import { TitleBar } from "./TitleBar";
+import { visibleActive } from "./visibleLayout";
 
 const SIDEBAR_PREF = "dex.sidebarOpen";
 /** The set of setup problems the owner last chose to put off. */
@@ -65,9 +66,14 @@ function activeWorkspace(): WorkspaceView | undefined {
   return list?.workspaces.find((ws) => ws.id === list.active);
 }
 
-/** The focused pane of the active workspace (its first pane if none is recorded). */
+/**
+ * The focused pane of the active workspace (its first pane if none is
+ * recorded) - never one in a window of its own, which shortcuts here must not
+ * reach: closing it would kill its agent unseen.
+ */
 function activePane(): string | undefined {
   const ws = activeWorkspace();
+  if (ws?.layout) return visibleActive(ws.layout, getDetached(), ws.active_pane);
   return ws?.active_pane ?? ws?.panes[0]?.id;
 }
 

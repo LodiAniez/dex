@@ -55,6 +55,19 @@ pub async fn pane_pop_out(app: AppHandle, pane_id: String, title: String) -> Res
     Ok(())
 }
 
+/// Brings a pane's window forward. False if it has none - it went without the
+/// main window hearing, and the pane should come home rather than open empty.
+#[tauri::command]
+pub fn pane_focus_popout(app: AppHandle, pane_id: String) -> bool {
+    match app.get_webview_window(&label_for(&pane_id)) {
+        Some(window) => {
+            let _ = window.unminimize();
+            window.set_focus().is_ok()
+        }
+        None => false,
+    }
+}
+
 /// Closing the main window quits Dex, pop-outs and all: a pane's window with
 /// no main window behind it would be a terminal nobody can dock or manage.
 pub fn quit_with_main(window: &tauri::Window, event: &WindowEvent) {

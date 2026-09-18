@@ -49,6 +49,8 @@ interface Entry {
   received: number;
   /** In another window: this one neither sends input nor resizes the PTY. */
   away: boolean;
+  /** Just taken back from another window: the PTY is still at that window's size. */
+  resizeOnShow: boolean;
 }
 
 const entries = new Map<string, Entry>();
@@ -99,7 +101,7 @@ export function openTerminal(paneId: string, cwd?: string, workspaceId?: string)
   const entry: Entry = {
     paneId, workspaceId, cwd, term, fit, serialize, element,
     webgl: null, spawned: false, dead: false, pendingAck: 0, ackTimer: null, resizeTimer: null,
-    pendingInput: "", writing: false, received: 0, away: false,
+    pendingInput: "", writing: false, received: 0, away: false, resizeOnShow: false,
   };
   entries.set(paneId, entry);
 
@@ -114,6 +116,12 @@ export function attachTerminal(paneId: string, host: HTMLElement): void {
   host.appendChild(entry.element);
   loadWebgl(entry);
   entry.fit.fit();
+  // xterm reports a size only when it changes; a terminal back from another
+  // window may fit to what it had before, while the PTY is at the other size.
+  if (entry.resizeOnShow && !entry.dead) {
+    entry.resizeOnShow = false;
+    void resizePty(paneId, entry.term.cols, entry.term.rows).catch(() => {});
+  }
   if (!entry.spawned) {
     entry.spawned = true;
     // Spawned only after the first fit, so the shell starts at the real size.
@@ -212,6 +220,7 @@ export async function takeOver(paneId: string, content: string | null, cwd?: str
   entry.spawned = true;
   entry.away = false;
   entry.received = 0;
+  entry.resizeOnShow = true;
   await attachPty(paneId, (bytes) => writeOutput(entry, bytes), (event) => handleEvent(entry, event)).catch(() => {
     entry.dead = true;
   });

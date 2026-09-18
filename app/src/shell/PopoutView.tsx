@@ -22,6 +22,9 @@ export function popoutOfThisWindow(): { paneId: string; title: string } | null {
 export function PopoutView({ paneId, title }: { paneId: string; title: string }) {
   const host = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
+  // Read by the close handler, which is registered once for the window's life.
+  const readyNow = useRef(false);
+  readyNow.current = ready;
   const [docking, setDocking] = useState(false);
   const leaving = useRef(false);
 
@@ -67,25 +70,34 @@ export function PopoutView({ paneId, title }: { paneId: string; title: string })
         resolve();
       });
     });
-    const content = ready ? await handOff(paneId) : null;
+    const content = readyNow.current ? await handOff(paneId) : null;
     if (content !== null) await emitTo("main", DOCK, { paneId, content } satisfies Screen);
     await done;
     await me.destroy();
   };
 
   // The window's own close button docks the pane rather than losing its screen.
+  // Registered once: a second registration still in flight when the first was
+  // removed could win the race and close the window without handing back.
+  const dockRef = useRef(dock);
+  dockRef.current = dock;
   useEffect(() => {
+    let cancelled = false;
     let stop: (() => void) | undefined;
     void getCurrentWindow()
       .onCloseRequested((event) => {
         event.preventDefault();
-        void dock();
+        void dockRef.current();
       })
-      .then((unlisten) => (stop = unlisten));
-    return () => stop?.();
-    // `dock` reads refs and state setters only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paneId, ready]);
+      .then((unlisten) => {
+        if (cancelled) unlisten();
+        else stop = unlisten;
+      });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
 
   return (
     <div className="popout">
