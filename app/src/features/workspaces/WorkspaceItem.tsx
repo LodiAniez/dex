@@ -6,6 +6,7 @@ import { AgentStatusDot, useAgents, workspaceAttention } from "../agents";
 import { ColorPicker } from "./ColorPicker";
 import { ContextMenu } from "./ContextMenu";
 import { deleteWorkspace, recolorWorkspace, renameWorkspace, switchWorkspace } from "./workspaceStore";
+import { forPlatform } from "../../shell/keybindings";
 
 interface Props {
   workspace: WorkspaceView;
@@ -98,7 +99,7 @@ export function WorkspaceItem(props: Props) {
         </span>
       )}
       {attention && <AgentStatusDot status={attention} />}
-      {index < 9 && <kbd className="shortcut">Ctrl+{index + 1}</kbd>}
+      {index < 9 && <kbd className="shortcut">{forPlatform(`Ctrl+${index + 1}`)}</kbd>}
 
       {picker && (
         <ColorPicker

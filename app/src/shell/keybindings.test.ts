@@ -5,6 +5,8 @@ import {
   appActionFor,
   bindingsByAction,
   buildKeymap,
+  forPlatform,
+  isMacUserAgent,
   parseBinding,
   type Keymap,
 } from "./keybindings";
@@ -217,3 +219,61 @@ describe("applying the owner's overrides", () => {
     expect(appActionFor(press("KeyD", { ctrlKey: true }), keymap)).toEqual({ kind: "close-pane" });
   });
 });
+
+describe("on macOS", () => {
+  const mac: Keymap = buildKeymap({}, true).keymap;
+
+  it("the shipped bindings use Cmd where Windows uses Ctrl: Cmd never reaches the terminal", () => {
+    expect(appActionFor(press("KeyN", { metaKey: true, shiftKey: true }), mac)).toEqual({ kind: "new-workspace" });
+    expect(appActionFor(press("KeyP", { metaKey: true, shiftKey: true }), mac)).toEqual({ kind: "command-palette" });
+    expect(appActionFor(press("Digit3", { metaKey: true }), mac)).toEqual({ kind: "switch-workspace", index: 2 });
+    expect(appActionFor(press("KeyW", { metaKey: true, shiftKey: true }), mac)).toEqual({ kind: "close-pane" });
+  });
+
+  it("leaves every Ctrl combination to the terminal, where zsh and Claude Code use them", () => {
+    expect(appActionFor(press("KeyN", { ctrlKey: true, shiftKey: true }), mac)).toBeNull();
+    expect(appActionFor(press("KeyC", { ctrlKey: true }), mac)).toBeNull();
+    expect(appActionFor(press("KeyR", { ctrlKey: true }), mac)).toBeNull();
+  });
+
+  it("keeps Option for moving between panes, as on Windows", () => {
+    expect(appActionFor(press("ArrowLeft", { altKey: true }), mac)).toEqual({ kind: "focus-pane", direction: "left" });
+    expect(appActionFor(press("ArrowLeft", { altKey: true, shiftKey: true }), mac)).toEqual({ kind: "move-pane", direction: "left" });
+  });
+
+  it("leaves copy, paste and the rest of Cmd's everyday keys to the window", () => {
+    for (const code of ["KeyC", "KeyV", "KeyX", "KeyA", "KeyQ", "KeyM", "KeyH"]) {
+      expect(appActionFor(press(code, { metaKey: true }), mac), code).toBeNull();
+    }
+  });
+
+  it("reads Cmd in a written binding, by any name a Mac user would write", () => {
+    expect(parseBinding("cmd+k")).toEqual({ binding: "Cmd+K" });
+    expect(parseBinding("Command+Shift+K")).toEqual({ binding: "Cmd+Shift+K" });
+    expect(parseBinding("Shift+Meta+K")).toEqual({ binding: "Cmd+Shift+K" });
+    expect(parseBinding("Ctrl+Cmd+K")).toEqual({ binding: "Ctrl+Cmd+K" });
+  });
+
+  it("lets the owner bind onto Cmd in their config", () => {
+    const { keymap, problems } = buildKeymap({ "command-palette": "Cmd+K" }, true);
+    expect(problems).toEqual([]);
+    expect(appActionFor(press("KeyK", { metaKey: true }), keymap)).toEqual({ kind: "command-palette" });
+  });
+});
+
+describe("forPlatform", () => {
+  it("says a shipped binding the way the platform presses it", () => {
+    expect(forPlatform("Ctrl+Shift+W", true)).toBe("Cmd+Shift+W");
+    expect(forPlatform("Ctrl+1", true)).toBe("Cmd+1");
+    expect(forPlatform("Alt+Shift+ArrowLeft", true)).toBe("Alt+Shift+ArrowLeft");
+    expect(forPlatform("Ctrl+Shift+W", false)).toBe("Ctrl+Shift+W");
+  });
+});
+
+describe("isMacUserAgent", () => {
+  it("knows a Mac from Windows by what the webview says it is", () => {
+    expect(isMacUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15")).toBe(true);
+    expect(isMacUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/140.0")).toBe(false);
+  });
+});
+

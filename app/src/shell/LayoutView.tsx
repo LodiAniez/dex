@@ -11,6 +11,7 @@ import { paneTitle, runsShell } from "./paneKind";
 import { DropHint, PaneDragArea, usePaneDrag } from "./PaneDrag";
 import { popOut, useDetached } from "./popouts";
 import { canPopOut, visibleLayout, type Shown, type Side } from "./visibleLayout";
+import { forPlatform } from "./keybindings";
 
 /** The workspace's pane tree, or just the zoomed pane. */
 export function WorkspaceLayout({ workspace, zoomed }: { workspace: WorkspaceView; zoomed: string | null }) {
@@ -144,7 +145,7 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
         <button
           type="button"
           className="icon-button pane-close"
-          title="Close pane (Ctrl+Shift+W)"
+          title={`Close pane (${forPlatform("Ctrl+Shift+W")})`}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={() => void closePane(pane.id).catch(showError)}
         >

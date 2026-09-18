@@ -23,6 +23,26 @@ export type AppAction =
 
 const DIRECTIONS: Direction[] = ["left", "right", "up", "down"];
 
+const MODIFIERS = ["Ctrl", "Cmd", "Alt", "Shift"];
+
+/** Whether the webview is a Mac's, by what it says it is. */
+export function isMacUserAgent(userAgent: string): boolean {
+  return /Macintosh|Mac OS X/.test(userAgent);
+}
+
+/** Whether this window is on a Mac. False where there is no browser (tests). */
+export const IS_MAC = typeof navigator !== "undefined" && isMacUserAgent(navigator.userAgent);
+
+/**
+ * A shipped binding as this platform presses it. The table is written for
+ * Windows; on a Mac every `Ctrl` in it is `Cmd` - the Mac's own convention, and
+ * a key that never reaches a terminal program, where Windows has to keep its
+ * app keys off plain `Ctrl+<letter>` because the shell owns those.
+ */
+export function forPlatform(binding: string, mac: boolean = IS_MAC): string {
+  return mac ? binding.replace(/\bCtrl\b/g, "Cmd") : binding;
+}
+
 /**
  * Every action an owner may rebind, by the name they write in `[keys]`.
  *
@@ -117,9 +137,10 @@ function keyName(event: KeyboardEvent): string {
 }
 
 /** Modifiers in one fixed order, so a binding has exactly one spelling. */
-function canonical(ctrl: boolean, alt: boolean, shift: boolean, key: string): string {
+function canonical(ctrl: boolean, cmd: boolean, alt: boolean, shift: boolean, key: string): string {
   const parts: string[] = [];
   if (ctrl) parts.push("Ctrl");
+  if (cmd) parts.push("Cmd");
   if (alt) parts.push("Alt");
   if (shift) parts.push("Shift");
   parts.push(key);
@@ -129,6 +150,9 @@ function canonical(ctrl: boolean, alt: boolean, shift: boolean, key: string): st
 const ALIASES: Record<string, string> = {
   control: "Ctrl",
   ctrl: "Ctrl",
+  cmd: "Cmd",
+  command: "Cmd",
+  meta: "Cmd",
   alt: "Alt",
   option: "Alt",
   shift: "Shift",
@@ -166,21 +190,22 @@ export function parseBinding(text: string): { binding: string } | { problem: str
     return { problem: `"${text}" is not a key combination` };
   }
   const modifiers = parts.slice(0, -1);
-  const unknown = modifiers.find((part) => !["Ctrl", "Alt", "Shift"].includes(part));
+  const unknown = modifiers.find((part) => !MODIFIERS.includes(part));
   if (unknown) {
-    return { problem: `"${text}" uses "${unknown}", which is not Ctrl, Alt, or Shift` };
+    return { problem: `"${text}" uses "${unknown}", which is not Ctrl, Cmd, Alt, or Shift` };
   }
   if (modifiers.length === 0) {
     return {
       problem: `"${text}" has no modifier, so the terminal would never receive that key`,
     };
   }
-  if (["Ctrl", "Alt", "Shift"].includes(key)) {
+  if (MODIFIERS.includes(key)) {
     return { problem: `"${text}" ends with a modifier, so there is no key to press` };
   }
   return {
     binding: canonical(
       modifiers.includes("Ctrl"),
+      modifiers.includes("Cmd"),
       modifiers.includes("Alt"),
       modifiers.includes("Shift"),
       key,
@@ -196,7 +221,7 @@ export function parseBinding(text: string): { binding: string } | { problem: str
  * shortcut. A later binding wins a collision, so an override that lands on
  * another action's default takes it over rather than doing nothing.
  */
-export function buildKeymap(overrides: Record<string, string> = {}): BuiltKeymap {
+export function buildKeymap(overrides: Record<string, string> = {}, mac: boolean = IS_MAC): BuiltKeymap {
   const problems: string[] = [];
   const bindings = new Map<string, string>();
 
@@ -217,7 +242,7 @@ export function buildKeymap(overrides: Record<string, string> = {}): BuiltKeymap
   for (const [action, shipped] of Object.entries(DEFAULT_BINDINGS)) {
     const rebound = bindings.get(action);
     if (rebound === undefined) {
-      const parsed = parseBinding(shipped);
+      const parsed = parseBinding(forPlatform(shipped, mac));
       if ("binding" in parsed) keymap.set(parsed.binding, ACTIONS[action]);
     }
   }
@@ -229,7 +254,7 @@ export function buildKeymap(overrides: Record<string, string> = {}): BuiltKeymap
 }
 
 /** The bindings Dex ships with, for when the config has not been read yet. */
-export const SHIPPED_KEYMAP: Keymap = buildKeymap().keymap;
+export const SHIPPED_KEYMAP: Keymap = buildKeymap({}, IS_MAC).keymap;
 
 /**
  * The keymap the other way round: each action's binding, for showing beside
@@ -252,8 +277,7 @@ export function appActionFor(
   event: KeyboardEvent,
   keymap: Keymap = SHIPPED_KEYMAP,
 ): AppAction | null {
-  if (event.metaKey) return null;
-  if (!event.ctrlKey && !event.altKey && !event.shiftKey) return null;
-  const binding = canonical(event.ctrlKey, event.altKey, event.shiftKey, keyName(event));
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) return null;
+  const binding = canonical(event.ctrlKey, event.metaKey, event.altKey, event.shiftKey, keyName(event));
   return keymap.get(binding) ?? null;
 }

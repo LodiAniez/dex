@@ -1,4 +1,5 @@
 import { NewWorkspaceForm, WorkspaceDots, WorkspaceList } from "../features/workspaces";
+import { forPlatform } from "./keybindings";
 
 interface Props {
   open: boolean;
@@ -17,14 +18,14 @@ export function Sidebar({ open, creating, onToggle, onCreatingChange }: Props) {
   if (!open) {
     return (
       <nav className="sidebar collapsed" aria-label="Workspaces">
-        <button type="button" className="icon-button" title="Show sidebar (Ctrl+Shift+B)" onClick={onToggle}>
+        <button type="button" className="icon-button" title={`Show sidebar (${forPlatform("Ctrl+Shift+B")})`} onClick={onToggle}>
           {ICON_EXPAND}
         </button>
         <WorkspaceDots />
         <button
           type="button"
           className="icon-button"
-          title="New workspace (Ctrl+Shift+N)"
+          title={`New workspace (${forPlatform("Ctrl+Shift+N")})`}
           onClick={() => {
             onToggle();
             onCreatingChange(true);
@@ -44,12 +45,12 @@ export function Sidebar({ open, creating, onToggle, onCreatingChange }: Props) {
           <button
             type="button"
             className="icon-button"
-            title="New workspace (Ctrl+Shift+N)"
+            title={`New workspace (${forPlatform("Ctrl+Shift+N")})`}
             onClick={() => onCreatingChange(!creating)}
           >
             {ICON_ADD}
           </button>
-          <button type="button" className="icon-button" title="Hide sidebar (Ctrl+Shift+B)" onClick={onToggle}>
+          <button type="button" className="icon-button" title={`Hide sidebar (${forPlatform("Ctrl+Shift+B")})`} onClick={onToggle}>
             {ICON_COLLAPSE}
           </button>
         </div>

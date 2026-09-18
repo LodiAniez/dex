@@ -108,6 +108,8 @@ Names are for reading. Agents still message each other by **label**, which is wh
 
 App shortcuts stay off plain `Ctrl+<letter>`, which your shell owns (`Ctrl+C`, `Ctrl+D`, `Ctrl+W`…), following Windows Terminal.
 
+On macOS every `Ctrl` in this table is `Cmd`, as Mac apps expect. `Alt` is the Option key. A binding under `[keys]` is taken as written, and can name `Cmd` on either platform.
+
 | Action                        | Keys                                |
 |-------------------------------|-------------------------------------|
 | Command palette               | `Ctrl+Shift+P`                      |

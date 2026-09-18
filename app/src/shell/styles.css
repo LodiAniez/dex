@@ -56,6 +56,11 @@ body,
   gap: 8px;
 }
 
+/* Room for the macOS traffic lights, which sit over the bar's left end. */
+.titlebar.mac .titlebar-title {
+  padding-left: 80px;
+}
+
 .titlebar-buttons {
   display: flex;
   height: 100%;

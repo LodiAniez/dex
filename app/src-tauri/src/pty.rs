@@ -63,8 +63,17 @@ pub async fn pty_spawn(
         ("DEX_SOCKET".to_owned(), socket),
     ];
     // An app started from the Finder has no terminal type and no locale.
+    // Nor is `dex`, inside the app bundle, on anyone's PATH.
     if cfg!(unix) {
         env.extend(login_env::pane_defaults(|name| std::env::var_os(name)));
+        let dex_dir = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(PathBuf::from));
+        if let Some(dex_dir) = dex_dir {
+            let inherited = std::env::var("PATH").ok();
+            let base = login_env::login_path().or(inherited.as_deref());
+            env.push(("PATH".to_owned(), login_env::pane_path(&dex_dir, base)));
+        }
     }
     if let Some(workspace_id) = pane.workspace_id {
         env.push(("DEX_WORKSPACE_ID".to_owned(), workspace_id));

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { showError } from "../../platform/notices";
 import { WorkspaceItem } from "./WorkspaceItem";
 import { reorderWorkspaces, switchWorkspace, useWorkspaces } from "./workspaceStore";
+import { forPlatform } from "../../shell/keybindings";
 
 /** The sidebar's workspace rows. Drag a row to reorder. */
 export function WorkspaceList() {
@@ -56,7 +57,7 @@ export function WorkspaceDots() {
           key={workspace.id}
           type="button"
           className={`dot-button${workspace.id === list.active ? " active" : ""}`}
-          title={index < 9 ? `${workspace.name} (Ctrl+${index + 1})` : workspace.name}
+          title={index < 9 ? `${workspace.name} (${forPlatform(`Ctrl+${index + 1}`)})` : workspace.name}
           onClick={() => void switchWorkspace(workspace.id).catch(showError)}
         >
           <span

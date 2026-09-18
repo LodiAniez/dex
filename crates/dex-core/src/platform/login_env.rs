@@ -13,6 +13,7 @@
 mod tests;
 
 use std::ffi::OsString;
+use std::path::Path;
 
 /// Printed by the login shell before its `PATH`, so a greeting from a profile
 /// is not mistaken for part of it.
@@ -54,6 +55,17 @@ pub fn pane_defaults(var: impl Fn(&str) -> Option<OsString>) -> Vec<(String, Str
         added.push(("LANG".to_owned(), "en_US.UTF-8".to_owned()));
     }
     added
+}
+
+/// A pane's `PATH` on macOS and Linux: the folder Dex runs from first, so an
+/// agent finds `dex` by name - inside an app bundle no installer puts it on
+/// `PATH` - then `path`, the owner's login `PATH` if there is one.
+pub fn pane_path(dex_dir: &Path, path: Option<&str>) -> String {
+    let dir = dex_dir.to_string_lossy();
+    match path.filter(|path| !path.is_empty()) {
+        Some(path) => format!("{dir}:{path}"),
+        None => dir.into_owned(),
+    }
 }
 
 #[cfg(unix)]

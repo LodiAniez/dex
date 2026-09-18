@@ -7,7 +7,7 @@
   --office-soft: #c6cdda;
   --office-dim: #8a93a6;
   --office-faint: #6b7386;
-  --office-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  --office-mono: "JetBrains Mono", "Cascadia Mono", Consolas, Menlo, monospace;
 
   flex: 1;
   min-height: 0;
