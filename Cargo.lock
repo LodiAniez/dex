@@ -764,6 +764,7 @@ dependencies = [
  "dex-protocol",
  "getrandom 0.4.3",
  "hmac",
+ "nix",
  "notify",
  "portable-pty",
  "rusqlite",

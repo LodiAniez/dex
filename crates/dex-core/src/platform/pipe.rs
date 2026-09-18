@@ -130,9 +130,10 @@ mod windows {
 
 #[cfg(unix)]
 mod unix {
+    use std::fs::{File, OpenOptions};
     use std::future::Future;
     use std::io;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     use std::path::{Path, PathBuf};
 
     use dex_protocol::{Request, Response};
@@ -142,8 +143,14 @@ mod unix {
     use crate::platform::auth::Token;
     use crate::platform::paths;
 
-    /// The listening socket.
-    pub type Server = UnixListener;
+    /// The listening socket, and the lock that says it is this process's.
+    pub struct Server {
+        listener: UnixListener,
+        _lock: File,
+    }
+
+    /// The longest socket path macOS takes (`sun_path` is 104 bytes, with a NUL).
+    const MAX_PATH: usize = 103;
 
     /// The socket for a name: `<name>.sock` in the data folder, beside the token.
     pub fn path(name: &str) -> io::Result<PathBuf> {
@@ -163,8 +170,33 @@ mod unix {
     /// Binds a socket at `at`, readable and writable by its owner only. Fails if
     /// another process is serving there - serving beside it would let a stranger
     /// answer our clients (PRD §6.1). A socket file nobody answers on, left by a
-    /// crash, is removed first.
+    /// crash, is removed first. An exclusive lock on `<name>.lock` beside it,
+    /// held for the life of the server, is what makes that safe: two copies
+    /// starting together cannot both decide the socket is stale.
     pub fn bind_at(at: &Path) -> io::Result<Server> {
+        let length = at.as_os_str().len();
+        if length > MAX_PATH {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "the socket path {} is {length} bytes; macOS allows {MAX_PATH}. Set DEX_DATA_DIR to a shorter folder.",
+                    at.display()
+                ),
+            ));
+        }
+        let lock_path = at.with_extension("lock");
+        let lock = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(&lock_path)?;
+        if lock.try_lock().is_err() {
+            return Err(io::Error::new(
+                io::ErrorKind::AddrInUse,
+                format!("another Dex holds {}", lock_path.display()),
+            ));
+        }
         if at.exists() {
             if std::os::unix::net::UnixStream::connect(at).is_ok() {
                 return Err(io::Error::new(
@@ -176,7 +208,10 @@ mod unix {
         }
         let listener = UnixListener::bind(at)?;
         std::fs::set_permissions(at, std::fs::Permissions::from_mode(0o600))?;
-        Ok(listener)
+        Ok(Server {
+            listener,
+            _lock: lock,
+        })
     }
 
     /// Accepts clients until the runtime shuts down. Each authenticated request
@@ -187,7 +222,7 @@ mod unix {
         F: Future<Output = Response> + Send + 'static,
     {
         loop {
-            match listener.accept().await {
+            match listener.listener.accept().await {
                 Ok((stream, _)) => spawn_client(stream, token.clone(), handler.clone()),
                 Err(err) => tracing::warn!(%err, socket = %name, "socket client failed to connect"),
             }

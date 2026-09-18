@@ -119,7 +119,10 @@ pub fn update_open(url: String) -> Result<(), String> {
     Command::new(opener)
         .arg(&url)
         .spawn()
-        .map(|_| ())
+        // Waited for on its own thread: on macOS an unwaited child stays a zombie.
+        .map(|mut child| {
+            std::thread::spawn(move || child.wait());
+        })
         .map_err(|err| format!("could not open the browser: {err}"))
 }
 

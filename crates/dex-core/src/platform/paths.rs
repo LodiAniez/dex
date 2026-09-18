@@ -20,8 +20,26 @@ pub fn app_data_dir() -> io::Result<PathBuf> {
             "no data directory: set DEX_DATA_DIR",
         )
     })?;
-    fs::create_dir_all(&dir)?;
+    private_dir(&dir)?;
     Ok(dir)
+}
+
+/// Creates `dir` if missing. On macOS and Linux it is then made owner-only,
+/// since the token and the socket are in it; a folder someone else owns cannot
+/// be, and Dex refuses to use it. On Windows the profile folder already is.
+pub fn private_dir(dir: &Path) -> io::Result<()> {
+    fs::create_dir_all(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).map_err(|err| {
+            io::Error::new(
+                err.kind(),
+                format!("{} must be Dex's own folder: {err}", dir.display()),
+            )
+        })?;
+    }
+    Ok(())
 }
 
 /// `app_data_dir` without creating it, reading the environment through `var`.
@@ -161,5 +179,18 @@ mod tests {
     #[test]
     fn normalize_leaves_forward_slash_paths_alone() {
         assert_eq!(normalize(Path::new("C:/src/api")), "C:/src/api");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_data_folder_is_made_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("Dex");
+        fs::create_dir(&data).unwrap();
+        fs::set_permissions(&data, fs::Permissions::from_mode(0o755)).unwrap();
+        private_dir(&data).unwrap();
+        let mode = fs::metadata(&data).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
     }
 }

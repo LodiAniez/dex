@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use dex_core::app::AppState;
 use dex_core::platform::auth::Token;
 use dex_core::platform::{job, paths, pipe};
+use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 fn main() {
@@ -84,9 +85,9 @@ fn main() {
                     tracing::error!(%err, "cannot bind the Dex pipe");
                     app.dialog()
                         .message(format!(
-                            "Dex could not open its control pipe:\n{err}\n\nAnother copy of Dex is probably running. Close it, then start Dex again."
+                            "Dex could not open its control pipe:\n{err}\n\nIf another copy of Dex is running, close it, then start Dex again."
                         ))
-                        .title("Dex is already running")
+                        .title("Dex cannot start")
                         .kind(MessageDialogKind::Error)
                         .show(|_| std::process::exit(1));
                 }
@@ -111,11 +112,21 @@ fn main() {
             update::update_check,
             update::update_open,
         ])
-        .run(tauri::generate_context!());
-    if let Err(err) = result {
-        eprintln!("dex failed to start: {err}");
-        std::process::exit(1);
-    }
+        .build(tauri::generate_context!());
+    let app = match result {
+        Ok(app) => app,
+        Err(err) => {
+            eprintln!("dex failed to start: {err}");
+            std::process::exit(1);
+        }
+    };
+    app.run(|app, event| {
+        // On macOS and Linux a pane's processes do not die with the app by
+        // themselves (`platform/pty/reap.rs`); on Windows this does nothing.
+        if let tauri::RunEvent::Exit = event {
+            app.state::<AppState>().pty.end_all();
+        }
+    });
 }
 
 /// Opens `%APPDATA%\Dex\dex.db`, reads `config.toml`, and prepares a fresh
