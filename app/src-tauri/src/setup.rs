@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 /// Hides the console window a console program would otherwise flash open
 /// when started from a GUI process (`CREATE_NO_WINDOW`).
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// `dex doctor --json`, as printed.
@@ -37,23 +38,35 @@ pub struct StepOutcome {
     pub output: String,
 }
 
-/// `dex.exe` beside this executable — where the installer puts it and where a
-/// build leaves it — or, failing that, whatever `dex` PATH finds.
+/// `dex` beside this executable — where the installer puts it (inside the
+/// app bundle on macOS) and where a build leaves it — or, failing that,
+/// whatever `dex` PATH finds.
 fn dex_exe() -> PathBuf {
     std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join("dex.exe")))
+        .and_then(|exe| {
+            exe.parent()
+                .map(|dir| dir.join(format!("dex{}", std::env::consts::EXE_SUFFIX)))
+        })
         .filter(|path| path.is_file())
         .unwrap_or_else(|| PathBuf::from("dex"))
 }
 
 fn dex(args: &[&str]) -> Result<std::process::Output, String> {
-    use std::os::windows::process::CommandExt;
-    Command::new(dex_exe())
-        .args(args)
-        .creation_flags(CREATE_NO_WINDOW)
+    let mut command = Command::new(dex_exe());
+    command.args(args);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    // On macOS the app has a bare PATH, and `dex` runs `claude` and `git`.
+    if let Some(path) = dex_core::platform::login_env::login_path() {
+        command.env("PATH", path);
+    }
+    command
         .output()
-        .map_err(|err| format!("could not run dex.exe: {err}"))
+        .map_err(|err| format!("could not run dex: {err}"))
 }
 
 /// Runs `dex doctor --json` and returns its report.

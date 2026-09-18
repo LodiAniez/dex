@@ -45,14 +45,16 @@ pub struct Output {
 ///
 /// Blocking: callers are on the database's blocking pool or a spawned task.
 pub fn git(dir: &Path, args: &[&str]) -> Result<Output, GitError> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .map_err(|err| match err.kind() {
-            std::io::ErrorKind::NotFound => GitError::Missing,
-            _ => GitError::Other(err.to_string()),
-        })?;
+    let mut command = Command::new("git");
+    command.args(args).current_dir(dir);
+    // A Mac app started from the Finder has a bare PATH (`login_env.rs`).
+    if let Some(path) = super::login_env::login_path() {
+        command.env("PATH", path);
+    }
+    let output = command.output().map_err(|err| match err.kind() {
+        std::io::ErrorKind::NotFound => GitError::Missing,
+        _ => GitError::Other(err.to_string()),
+    })?;
     if output.status.success() {
         return Ok(Output {
             stdout: String::from_utf8_lossy(&output.stdout).trim().to_owned(),

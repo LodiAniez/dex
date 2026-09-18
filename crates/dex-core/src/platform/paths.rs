@@ -4,21 +4,57 @@
 //! uses forward slashes (docs/prd.md §5); convert at the boundary. WSL path
 //! translation arrives with the features that need it.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::{env, fs, io};
 
-/// `%APPDATA%\Dex`, created if missing. The database, config, and token live here.
+/// Where the database, config, token and socket live, created if missing:
+/// `%APPDATA%\Dex` on Windows, `~/Library/Application Support/Dex` on macOS,
+/// `$XDG_DATA_HOME/Dex` (or `~/.local/share/Dex`) elsewhere. `DEX_DATA_DIR`
+/// overrides it everywhere, for an isolated instance beside the owner's.
+/// Must match the CLI's copy in `dex-cli/src/paths.rs`.
 pub fn app_data_dir() -> io::Result<PathBuf> {
-    let base = env::var_os("APPDATA")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "APPDATA is not set"))?;
-    let dir = PathBuf::from(base).join("Dex");
+    let dir = data_dir_from(|name| env::var_os(name)).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "no data directory: set DEX_DATA_DIR",
+        )
+    })?;
     fs::create_dir_all(&dir)?;
     Ok(dir)
 }
 
-/// The user's home directory (`%USERPROFILE%`).
+/// `app_data_dir` without creating it, reading the environment through `var`.
+pub fn data_dir_from(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    if let Some(dir) = var("DEX_DATA_DIR").filter(|dir| !dir.is_empty()) {
+        return Some(PathBuf::from(dir));
+    }
+    #[cfg(windows)]
+    {
+        var("APPDATA").map(|base| PathBuf::from(base).join("Dex"))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        var("HOME").map(|home| {
+            PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("Dex")
+        })
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        var("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| var("HOME").map(|home| PathBuf::from(home).join(".local").join("share")))
+            .map(|base| base.join("Dex"))
+    }
+}
+
+/// The user's home directory: `%USERPROFILE%` on Windows, `$HOME` elsewhere.
 pub fn home_dir() -> Option<PathBuf> {
-    env::var_os("USERPROFILE").map(PathBuf::from)
+    let name = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    env::var_os(name).map(PathBuf::from)
 }
 
 /// The stored and wire form of a path: forward slashes only. Mixed separators
@@ -79,6 +115,47 @@ mod tests {
             normalize(Path::new(r"C:\Users\First Last\src")),
             "C:/Users/First Last/src"
         );
+    }
+
+    fn env<'a>(
+        pairs: &'a [(&'a str, &'a str)],
+    ) -> impl Fn(&str) -> Option<std::ffi::OsString> + 'a {
+        move |name| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.into())
+        }
+    }
+
+    #[test]
+    fn an_explicit_data_dir_wins_everywhere() {
+        // For isolated instances - a second Dex beside the owner's, and tests.
+        let dir = data_dir_from(env(&[
+            ("DEX_DATA_DIR", "/tmp/dex-a"),
+            ("APPDATA", "C:/x"),
+            ("HOME", "/Users/me"),
+        ]));
+        assert_eq!(dir, Some(PathBuf::from("/tmp/dex-a")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_the_data_lives_in_appdata() {
+        let dir = data_dir_from(env(&[("APPDATA", r"C:\Users\me\AppData\Roaming")]));
+        assert_eq!(dir, Some(PathBuf::from(r"C:\Users\me\AppData\Roaming\Dex")));
+        assert_eq!(data_dir_from(env(&[])), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn on_macos_the_data_lives_in_application_support() {
+        let dir = data_dir_from(env(&[("HOME", "/Users/me")]));
+        assert_eq!(
+            dir,
+            Some(PathBuf::from("/Users/me/Library/Application Support/Dex"))
+        );
+        assert_eq!(data_dir_from(env(&[])), None);
     }
 
     #[test]

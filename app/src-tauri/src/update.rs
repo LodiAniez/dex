@@ -109,7 +109,14 @@ pub fn update_open(url: String) -> Result<(), String> {
     if !url.starts_with(RELEASES) {
         return Err(format!("{url:?} is not a Dex release page"));
     }
-    Command::new("explorer")
+    let opener = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    Command::new(opener)
         .arg(&url)
         .spawn()
         .map(|_| ())

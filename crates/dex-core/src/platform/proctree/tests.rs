@@ -125,3 +125,30 @@ fn a_pane_whose_own_process_is_claude_code_has_it() {
     let procs = vec![proc(800, 1, "claude.exe", "claude")];
     assert_eq!(claude_under(&procs, 800), Presence::There);
 }
+
+#[test]
+fn ps_output_is_read_into_the_same_rows_as_the_windows_table() {
+    // `ps -A -o pid=,ppid=,args=`: right-aligned numbers, then the command line.
+    let text = "    1     0 /sbin/launchd\n  501     1 -zsh\n  502   501 /Users/me/.local/bin/claude --permission-mode auto\n  503   502 node /Users/me/.npm/lib/node_modules/@anthropic-ai/claude-code/cli.js\n";
+    let procs = super::parse_ps(text);
+    assert_eq!(procs.len(), 4);
+    assert_eq!(
+        procs[2],
+        proc(
+            502,
+            501,
+            "claude",
+            "/Users/me/.local/bin/claude --permission-mode auto"
+        )
+    );
+    // A login shell is shown as "-zsh"; its name is still zsh.
+    assert_eq!(procs[1].name, "zsh");
+    assert_eq!(procs[3].name, "node");
+    assert_eq!(claude_under(&procs, 501), Presence::There);
+}
+
+#[test]
+fn a_line_ps_could_not_fill_in_is_skipped_not_misread() {
+    let procs = super::parse_ps("  12\n  abc  1 x\n\n  7   1 /bin/sleep 30\n");
+    assert_eq!(procs, vec![proc(7, 1, "sleep", "/bin/sleep 30")]);
+}

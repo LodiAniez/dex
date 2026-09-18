@@ -92,8 +92,8 @@ fn connection_checks() -> Vec<Check> {
                     "app",
                     Status::Ok,
                     format!(
-                        "running; pipe {} answered and proved it is Dex",
-                        client::pipe_name()
+                        "running; {} answered and proved it is Dex",
+                        client::describe_address()
                     ),
                 ),
                 version_check,
@@ -140,7 +140,11 @@ fn git() -> Check {
         _ => check(
             "git",
             Status::Fail,
-            "git.exe is not on PATH; install Git for Windows (worktrees need it)",
+            if cfg!(windows) {
+                "git.exe is not on PATH; install Git for Windows (worktrees need it)"
+            } else {
+                "git is not on PATH; install the Xcode Command Line Tools (`xcode-select --install`) or Git from Homebrew (worktrees need it)"
+            },
         ),
     }
 }

@@ -5,8 +5,6 @@
 //! two go through the daemon, which is the only thing that knows what is
 //! actually in force — the file on disk may have been edited since.
 
-use std::path::PathBuf;
-
 use clap::Subcommand;
 use dex_protocol::ErrorBody;
 use dex_protocol::config::ConfigView;
@@ -56,12 +54,10 @@ pub fn run(command: ConfigCommand, format: Format) -> Result<(), ErrorBody> {
     Ok(())
 }
 
-/// `%APPDATA%\Dex\config.toml`, worked out without asking the daemon.
+/// The data folder's `config.toml`, worked out without asking the daemon.
 fn local_path() -> String {
-    let base = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    base.join("Dex")
+    dex_cli::paths::data_dir()
+        .unwrap_or_default()
         .join("config.toml")
         .to_string_lossy()
         .replace('\\', "/")

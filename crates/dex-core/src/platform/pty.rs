@@ -40,7 +40,7 @@ use thiserror::Error;
 use reader::Flow;
 use relay::Relay;
 use session_env::forget_claude_session;
-pub use shell::resolve_shell;
+pub use shell::{resolve_shell, shell_args};
 pub use watch::Answer;
 
 /// How many reader chunks may queue before the reader blocks. Small on

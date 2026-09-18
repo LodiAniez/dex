@@ -42,9 +42,17 @@ impl Token {
         Ok(Self { bytes })
     }
 
-    /// Writes the token as hex, replacing any previous token.
+    /// Writes the token as hex, replacing any previous token. On macOS and
+    /// Linux the file is readable by its owner only; on Windows the profile
+    /// folder it lives in already is.
     pub fn write(&self, path: &Path) -> io::Result<()> {
-        fs::write(path, to_hex(&self.bytes))
+        fs::write(path, to_hex(&self.bytes))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+        }
+        Ok(())
     }
 
     /// Reads a token written by `write`.

@@ -1,14 +1,17 @@
 //! The pipe client: connect, prove both sides know the token, send requests.
 //!
-//! Synchronous on purpose: a Windows named pipe opens like a file, and not
-//! starting an async runtime keeps every hook invocation fast (PRD §9.3).
+//! A Windows named pipe, or a Unix socket on macOS and Linux (`paths.rs` says
+//! which). Synchronous on purpose: both open like files, and not starting an
+//! async runtime keeps every hook invocation fast (PRD §9.3).
 //! The HMAC helpers duplicate `dex_core::platform::auth` so the CLI stays free
 //! of the daemon's dependencies; both are tested against RFC 4231's vector.
 
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, ErrorKind, Write};
-use std::path::PathBuf;
+#[cfg(windows)]
+use std::fs::OpenOptions;
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
+#[cfg(windows)]
 use std::thread;
+#[cfg(windows)]
 use std::time::{Duration, Instant};
 
 use dex_protocol::{
@@ -20,49 +23,34 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use sha2::Sha256;
 
+use crate::paths::{self, Address};
+
 /// Windows' ERROR_PIPE_BUSY: every pipe instance is taken for the moment.
+#[cfg(windows)]
 const ERROR_PIPE_BUSY: i32 = 231;
 /// How long to keep retrying a busy pipe before giving up.
+#[cfg(windows)]
 const BUSY_WAIT: Duration = Duration::from_secs(2);
 
 /// An authenticated connection to the running app.
 pub struct Client {
-    reader: BufReader<File>,
-    writer: File,
+    reader: BufReader<Box<dyn Read + Send>>,
+    writer: Box<dyn Write + Send>,
     next_id: u64,
     app_version: String,
 }
 
-/// The pipe to use: the name in `DEX_SOCKET=pipe:<name>`, else `dex-<username>`.
-/// The default must match `dex_core::platform::pipe::default_name`.
-pub fn pipe_name() -> String {
-    if let Some(name) = std::env::var("DEX_SOCKET")
-        .ok()
-        .and_then(|socket| socket.strip_prefix("pipe:").map(str::to_owned))
-        .filter(|name| !name.is_empty())
-    {
-        return name;
-    }
-    let user = std::env::var("USERNAME").unwrap_or_default().to_lowercase();
-    let safe: String = user
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    format!("dex-{safe}")
+/// Where the app is, as `dex doctor` names it.
+pub fn describe_address() -> String {
+    paths::address().map_or_else(|| "no address".to_owned(), |address| address.describe())
 }
 
 /// Connects to the app and completes the handshake.
 pub fn connect() -> Result<Client, ErrorBody> {
-    let file = open_pipe(&format!(r"\\.\pipe\{}", pipe_name()))?;
-    let writer = file.try_clone().map_err(|err| pipe_error(&err))?;
+    let address = paths::address().ok_or_else(not_running)?;
+    let (reader, writer) = open(&address)?;
     let mut client = Client {
-        reader: BufReader::new(file),
+        reader: BufReader::new(reader),
         writer,
         next_id: 0,
         app_version: String::new(),
@@ -71,7 +59,38 @@ pub fn connect() -> Result<Client, ErrorBody> {
     Ok(client)
 }
 
-fn open_pipe(path: &str) -> Result<File, ErrorBody> {
+type Halves = (Box<dyn Read + Send>, Box<dyn Write + Send>);
+
+fn open(address: &Address) -> Result<Halves, ErrorBody> {
+    match address {
+        #[cfg(windows)]
+        Address::Pipe(path) => {
+            let file = open_pipe(path)?;
+            let writer = file.try_clone().map_err(|err| pipe_error(&err))?;
+            Ok((Box::new(file), Box::new(writer)))
+        }
+        #[cfg(unix)]
+        Address::Unix(path) => {
+            let stream = std::os::unix::net::UnixStream::connect(path).map_err(|err| {
+                if matches!(
+                    err.kind(),
+                    ErrorKind::NotFound | ErrorKind::ConnectionRefused
+                ) {
+                    not_running()
+                } else {
+                    pipe_error(&err)
+                }
+            })?;
+            let writer = stream.try_clone().map_err(|err| pipe_error(&err))?;
+            Ok((Box::new(stream), Box::new(writer)))
+        }
+        #[allow(unreachable_patterns)]
+        _ => Err(not_running()),
+    }
+}
+
+#[cfg(windows)]
+fn open_pipe(path: &str) -> Result<std::fs::File, ErrorBody> {
     let deadline = Instant::now() + BUSY_WAIT;
     loop {
         match OpenOptions::new().read(true).write(true).open(path) {
@@ -174,14 +193,13 @@ fn refusal(reply: Value) -> ErrorBody {
 }
 
 fn read_token() -> Result<Vec<u8>, ErrorBody> {
-    let path =
-        std::env::var_os("APPDATA").map(|base| PathBuf::from(base).join("Dex").join("token"));
-    let text = path
+    let text = paths::data_dir()
+        .map(|dir| dir.join("token"))
         .and_then(|path| std::fs::read_to_string(path).ok())
         .ok_or_else(|| ErrorBody {
             code: ErrorCode::NotRunning,
             message: "Dex's token file is missing".into(),
-            repair: r"Start the Dex app as this user; it writes %APPDATA%\Dex\token at launch."
+            repair: "Start the Dex app as this user; it writes a fresh token in its data folder at launch."
                 .into(),
         })?;
     from_hex(text.trim()).ok_or_else(|| unauthorized("Dex's token file is corrupt"))

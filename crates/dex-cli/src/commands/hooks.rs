@@ -326,9 +326,11 @@ fn settings_path(requested: Option<PathBuf>) -> Result<PathBuf, ErrorBody> {
     if let Some(path) = requested {
         return Ok(path);
     }
-    std::env::var_os("USERPROFILE")
-        .map(|home| PathBuf::from(home).join(".claude").join("settings.json"))
-        .ok_or_else(|| file_error("USERPROFILE is not set".into()))
+    dex_cli::paths::home_dir()
+        .map(|home| home.join(".claude").join("settings.json"))
+        .ok_or_else(|| {
+            file_error("no home folder: USERPROFILE (Windows) or HOME is not set".into())
+        })
 }
 
 /// The settings document; a missing file is an empty one.

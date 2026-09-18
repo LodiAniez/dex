@@ -1,5 +1,6 @@
 //! Integration tests: a real named pipe, the real handshake, a stub handler.
-
+//! The macOS and Linux twin is `socket.rs`.
+#![cfg(windows)]
 // A test crate: panicking is how a test fails.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 

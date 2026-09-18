@@ -7,7 +7,8 @@ use std::path::PathBuf;
 
 use dex_core::app::AppState;
 use dex_core::platform::pipe;
-use dex_core::platform::pty::{OutputSink, PtyOutput, SpawnRequest, resolve_shell};
+use dex_core::platform::pty::{OutputSink, PtyOutput, SpawnRequest, resolve_shell, shell_args};
+use dex_core::platform::{login_env, paths};
 use dex_core::router;
 use dex_protocol::Request;
 use serde::{Deserialize, Serialize};
@@ -46,28 +47,33 @@ pub async fn pty_spawn(
     on_output: Channel<InvokeResponseBody>,
     on_event: Channel<PtyEvent>,
 ) -> Result<(), String> {
-    let program = resolve_shell(state.config.get().shell.as_deref())
-        .ok_or("no shell found: pwsh.exe, powershell.exe and cmd.exe are all missing from PATH")?;
+    let program = resolve_shell(state.config.get().shell.as_deref()).ok_or(if cfg!(windows) {
+        "no shell found: pwsh.exe, powershell.exe and cmd.exe are all missing from PATH"
+    } else {
+        "no shell found: $SHELL, /bin/zsh, /bin/bash and /bin/sh are all missing"
+    })?;
     let cwd = pane
         .cwd
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+        .or_else(paths::home_dir)
         .unwrap_or_else(std::env::temp_dir);
+    let socket = pipe::socket_env(&pipe::default_name()).map_err(|err| err.to_string())?;
     let mut env = vec![
         ("DEX_PANE_ID".to_owned(), pane.pane_id.clone()),
-        (
-            "DEX_SOCKET".to_owned(),
-            format!("pipe:{}", pipe::default_name()),
-        ),
+        ("DEX_SOCKET".to_owned(), socket),
     ];
+    // An app started from the Finder has no terminal type and no locale.
+    if cfg!(unix) {
+        env.extend(login_env::pane_defaults(|name| std::env::var_os(name)));
+    }
     if let Some(workspace_id) = pane.workspace_id {
         env.push(("DEX_WORKSPACE_ID".to_owned(), workspace_id));
     }
 
     let request = SpawnRequest {
         pane_id: pane.pane_id,
+        args: shell_args(cfg!(unix)),
         program,
-        args: Vec::new(),
         cwd,
         env,
         cols: pane.cols,
