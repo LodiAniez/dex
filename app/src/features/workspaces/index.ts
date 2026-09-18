@@ -6,6 +6,7 @@ export {
   focusPane,
   getWorkspaces,
   loadWorkspaces,
+  movePane,
   setLayout,
   splitPane,
   swapPanes,

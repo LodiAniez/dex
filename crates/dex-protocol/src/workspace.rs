@@ -197,6 +197,34 @@ pub struct SwapPanesArgs {
     pub b: String,
 }
 
+/// Where a pane dropped on another lands: beside it on one side, or in its
+/// place (the two trade places).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DropSide {
+    /// To the left of the target.
+    Left,
+    /// To the right of the target.
+    Right,
+    /// Above the target.
+    Top,
+    /// Below the target.
+    Bottom,
+    /// In the target's place; the target takes the moved pane's.
+    Center,
+}
+
+/// Args for `pane.move`: a pane dragged onto another of its workspace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MovePaneArgs {
+    /// The pane being moved.
+    pub pane: String,
+    /// The pane it was dropped on.
+    pub target: String,
+    /// Where on the target.
+    pub side: DropSide,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

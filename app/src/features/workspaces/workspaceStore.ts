@@ -141,6 +141,11 @@ export async function swapPanes(a: string, b: string): Promise<void> {
   publish(await request<WorkspaceList>("pane.swap", { a, b }));
 }
 
+/** Moves a pane dropped on another: beside it on `side`, or in its place. */
+export async function movePane(pane: string, target: string, side: "left" | "right" | "top" | "bottom" | "center"): Promise<void> {
+  publish(await request<WorkspaceList>("pane.move", { pane, target, side }));
+}
+
 /** Saves a rearranged tree (after a divider drag). */
 export async function setLayout(workspace: string, layout: Layout): Promise<void> {
   publish(await request<WorkspaceList>("workspace.set_layout", { workspace, layout }));

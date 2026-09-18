@@ -76,6 +76,7 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "pane.close" => encode(workspace::close_pane(state, args(req)?).await?),
         "pane.focus" => encode(workspace::focus_pane(state, args(req)?).await?),
         "pane.swap" => encode(workspace::swap_panes(state, args(req)?).await?),
+        "pane.move" => encode(workspace::move_pane(state, args(req)?).await?),
         "pane.label" => encode(workspace::label_pane(state, args(req)?).await?),
         "pane.send" => encode(workspace::send(state, args(req)?).await?),
         "pane.send_key" => encode(workspace::send_key(state, args(req)?).await?),

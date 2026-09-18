@@ -74,6 +74,8 @@ dex doctor            # the table above
 
 ## Using Dex
 
+**Moving panes.** Drag a pane by its header and drop it on another: on an edge to sit beside it there, taking half its space; in the middle to trade places. A highlight shows where it will land; Escape, or letting go anywhere else, puts it back. `Alt+Shift+Arrow` does the same from the keyboard, one step at a time.
+
 **Workspaces** live in the left sidebar. One per project, each with a name, a colour, and a root folder. They persist: close Dex and reopen it and your workspaces, panes and layout are back (the terminals restart; scrollback does not survive a restart in this version).
 
 **Panes** are splits within a workspace. A pane is one of:
@@ -113,7 +115,7 @@ App shortcuts stay off plain `Ctrl+<letter>`, which your shell owns (`Ctrl+C`, `
 | Split pane right / down       | `Ctrl+Shift+D` / `Ctrl+Shift+E`     |
 | Close pane                    | `Ctrl+Shift+W`                      |
 | Focus pane in a direction     | `Alt+←` `Alt+→` `Alt+↑` `Alt+↓`     |
-| Move pane in a direction      | `Alt+Shift+Arrow`                   |
+| Move pane in a direction      | `Alt+Shift+Arrow`, or drag its header onto another pane |
 | Toggle zoom on the pane       | `Ctrl+Shift+Enter`                  |
 | Cycle layout preset           | `Ctrl+Shift+Space`                  |
 | Toggle sidebar                | `Ctrl+Shift+B`                      |

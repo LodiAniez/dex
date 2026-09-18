@@ -74,6 +74,11 @@ pub fn clamp_ratio(ratio: f64) -> f64 {
 }
 
 fn split(dir: SplitDir, ratio: f64, a: Layout, b: Layout) -> Layout {
+    split_of(dir, ratio, a, b)
+}
+
+/// A split of `a` and `b`, `a` taking `ratio` of the space (clamped).
+pub fn split_of(dir: SplitDir, ratio: f64, a: Layout, b: Layout) -> Layout {
     Layout::Split {
         dir,
         ratio: clamp_ratio(ratio),

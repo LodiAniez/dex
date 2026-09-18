@@ -1,0 +1,41 @@
+/* ---- dragging a pane by its header onto another ---- */
+
+.pane {
+  position: relative;
+}
+
+.pane-header {
+  cursor: grab;
+}
+
+/* While a pane is lifted nothing is selected, and the whole window says so. */
+body.pane-dragging,
+body.pane-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.pane.lifted {
+  opacity: 0.45;
+}
+
+/* Where the dragged pane would land: the half it would take, or the whole pane for a swap. */
+.pane-drop-hint {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  background: rgba(79, 140, 255, 0.22);
+  border: 2px solid rgba(79, 140, 255, 0.85);
+  border-radius: 4px;
+  transition: inset 0.08s ease-out;
+}
+
+.pane-drop-hint.left { inset: 0 50% 0 0; }
+.pane-drop-hint.right { inset: 0 0 0 50%; }
+.pane-drop-hint.top { inset: 0 0 50% 0; }
+.pane-drop-hint.bottom { inset: 50% 0 0 0; }
+.pane-drop-hint.center { inset: 0; background: rgba(79, 140, 255, 0.12); border-style: dashed; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-drop-hint { transition: none; }
+}

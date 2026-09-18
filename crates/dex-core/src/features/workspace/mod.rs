@@ -6,12 +6,14 @@
 
 mod arrange;
 mod commands;
+pub(crate) mod docking;
 mod layout;
 mod logic;
 mod model;
 mod pane_commands;
 mod pane_content;
 mod pane_io;
+mod pane_move;
 mod store;
 mod targets;
 #[cfg(test)]
@@ -23,6 +25,8 @@ pub use arrange::{arrange, preset_in_use};
 pub use commands::{create, delete, list, recolor, rename, reorder, switch};
 #[cfg(test)]
 pub use layout::Preset;
+#[cfg(test)]
+pub use layout::leaves as leaves_of;
 pub use model::WorkspaceError;
 pub use pane_commands::{
     close_pane, create_pane, cycle_layout, focus_pane, label_pane, set_layout, split_pane,
@@ -30,5 +34,6 @@ pub use pane_commands::{
 };
 pub use pane_content::content as pane_content;
 pub use pane_io::{list_panes, send, send_key};
+pub use pane_move::move_pane;
 pub use store::{find_pane_workspace, pane_cwd, pane_label, workspace_name, workspace_root};
 pub use targets::{focused_pane, pane_id, workspace_id};
