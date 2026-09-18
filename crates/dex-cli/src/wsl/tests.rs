@@ -18,6 +18,8 @@ fn other_programs_machinery_is_not_offered_as_a_place_to_work() {
     assert_eq!(parse_distros(&printed), vec!["Ubuntu"]);
 }
 
+// Windows paths: only Windows joins them with backslashes, and only Windows has WSL.
+#[cfg(windows)]
 #[test]
 fn a_linux_path_is_reached_from_windows_through_wsl_localhost() {
     let path = under(
