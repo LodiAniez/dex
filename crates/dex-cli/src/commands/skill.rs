@@ -114,8 +114,9 @@ fn describe(state: State, target: &Path) -> String {
     }
 }
 
-/// Where this build's copy of the skill is. Beside `dex.exe` when installed;
-/// in a build tree, three levels up from `target/<profile>/dex.exe`.
+/// Where this build's copy of the skill is. Beside `dex.exe` when installed on
+/// Windows; in the app bundle's `Resources` on macOS; in a build tree, three
+/// levels up from `target/<profile>/dex.exe`.
 fn source() -> Result<PathBuf, ErrorBody> {
     let exe = std::env::current_exe()
         .map_err(|err| internal(format!("cannot find this dex.exe: {err}")))?;
@@ -129,15 +130,17 @@ fn source() -> Result<PathBuf, ErrorBody> {
                 "this build has no skills\\{NAME}\\{FILE} beside {}",
                 exe.display()
             ),
-            repair: "Reinstall Dex; the installer puts the skill beside dex.exe.".into(),
+            repair: "Reinstall Dex; it ships the skill alongside the dex command.".into(),
         })
 }
 
-/// The places the shipped skill may be, relative to the directory `dex.exe` is in.
+/// The places the shipped skill may be, relative to the directory `dex.exe` is
+/// in: beside it, a Mac bundle's `Contents/Resources`, then a build tree.
 pub(crate) fn source_candidates(exe_dir: &Path) -> Vec<PathBuf> {
     let tail: PathBuf = ["skills", NAME, FILE].iter().collect();
     vec![
         exe_dir.join(&tail),
+        exe_dir.join("..").join("Resources").join(&tail),
         exe_dir.join("..").join("..").join(&tail),
     ]
 }

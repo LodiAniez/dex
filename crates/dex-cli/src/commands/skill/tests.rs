@@ -22,13 +22,25 @@ fn the_shipped_copy_is_looked_for_beside_the_exe_then_in_a_build_tree() {
     );
     // target\release\dex.exe → three up is the repository, which has skills\.
     assert!(
-        candidates[1].ends_with(
+        candidates[2].ends_with(
             Path::new("..")
                 .join("..")
                 .join("skills")
                 .join(NAME)
                 .join(FILE)
         )
+    );
+}
+
+#[test]
+fn in_a_mac_app_bundle_the_skill_is_in_its_resources() {
+    // `dex` is in Dex.app/Contents/MacOS; a bundle keeps data in Contents/Resources.
+    let dir = Path::new("/Applications/Dex.app/Contents/MacOS");
+    let tail: PathBuf = ["skills", NAME, FILE].iter().collect();
+    assert!(
+        source_candidates(dir).contains(&dir.join("..").join("Resources").join(tail)),
+        "{:?}",
+        source_candidates(dir)
     );
 }
 

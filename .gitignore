@@ -3,3 +3,4 @@
 /app/dist
 /app/src-tauri/gen/schemas
 *.log
+/app/src-tauri/macos

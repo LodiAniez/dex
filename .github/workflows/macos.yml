@@ -1,0 +1,81 @@
+name: macos
+
+# Builds Dex for macOS: an unsigned .dmg for Apple Silicon and one for Intel
+# (#36). A published release gets both attached; a pull request that touches
+# the packaging builds them as workflow artifacts, to try before a release.
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - .github/workflows/macos.yml
+      - app/scripts/stage-macos-sidecars.mjs
+      - app/src-tauri/tauri.macos.conf.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: apple-silicon
+          - target: x86_64-apple-darwin
+            arch: intel
+    # An Apple Silicon runner builds both; Intel is cross-compiled.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Frontend install
+        working-directory: app
+        run: npm ci
+
+      # tauri.macos.conf.json stages dex and dex-mcp for the same target.
+      - name: Build
+        working-directory: app
+        run: npx tauri build --target ${{ matrix.target }}
+
+      - name: Name the image
+        id: dmg
+        run: |
+          version=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          built=$(ls target/${{ matrix.target }}/release/bundle/dmg/*.dmg)
+          named="Dex_${version}_macos_${{ matrix.arch }}.dmg"
+          mv "$built" "$named"
+          shasum -a 256 "$named"
+          echo "path=$named" >> "$GITHUB_OUTPUT"
+
+      # The bundle holds what it should, each piece runs, and it verifies.
+      - name: Check the bundle
+        run: |
+          app=target/${{ matrix.target }}/release/bundle/macos/Dex.app
+          ls -l "$app/Contents/MacOS" "$app/Contents/Resources/skills/dex-agentic/SKILL.md"
+          codesign --verify --deep --strict "$app"
+          lipo -archs "$app/Contents/MacOS/dex-app" "$app/Contents/MacOS/dex" "$app/Contents/MacOS/dex-mcp"
+          "$app/Contents/MacOS/dex" --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dmg.outputs.path }}
+          path: ${{ steps.dmg.outputs.path }}
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "${{ steps.dmg.outputs.path }}" --clobber
