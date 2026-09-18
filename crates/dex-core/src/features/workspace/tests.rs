@@ -10,6 +10,7 @@ use dex_protocol::workspace::{
 use super::{WorkspaceError, create, delete, list, logic, recolor, rename, reorder, store, switch};
 use crate::app::AppState;
 
+mod docking;
 mod panes;
 mod targets;
 

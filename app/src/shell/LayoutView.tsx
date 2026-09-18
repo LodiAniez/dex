@@ -8,6 +8,7 @@ import type { PaneView } from "../platform/generated/PaneView";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { showError } from "../platform/notices";
 import { paneTitle, runsShell } from "./paneKind";
+import { DropHint, PaneDragArea, usePaneDrag } from "./PaneDrag";
 
 type Side = "a" | "b";
 
@@ -16,7 +17,11 @@ export function WorkspaceLayout({ workspace, zoomed }: { workspace: WorkspaceVie
   const zoomedPane = zoomed ? workspace.panes.find((pane) => pane.id === zoomed) : undefined;
   if (zoomedPane) return <PaneBox pane={zoomedPane} workspace={workspace} zoomed />;
   if (!workspace.layout) return null;
-  return <Node layout={workspace.layout} path={[]} workspace={workspace} />;
+  return (
+    <PaneDragArea>
+      <Node layout={workspace.layout} path={[]} workspace={workspace} />
+    </PaneDragArea>
+  );
 }
 
 interface NodeProps {
@@ -100,15 +105,19 @@ function withRatio(layout: Layout, path: Side[], ratio: number): Layout {
 function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: WorkspaceView; zoomed: boolean }) {
   const active = workspace.active_pane === pane.id;
   const agent = agentInPane(useAgents(), pane.id);
+  const { drag, begin } = usePaneDrag();
+  const lifted = drag?.moving === pane.id && drag.side !== null;
+  const hint = drag?.target === pane.id ? drag.side : null;
   return (
     <div
-      className={`pane${active ? " active" : ""}`}
+      className={`pane${active ? " active" : ""}${lifted ? " lifted" : ""}`}
       data-pane-id={pane.id}
       onPointerDown={() => {
         if (!active) void focusPane(pane.id).catch(showError);
       }}
     >
-      <div className="pane-header">
+      {/* Drag by the header to move the pane; a zoomed pane has nowhere to go. */}
+      <div className="pane-header" title={zoomed ? undefined : "Drag to move this pane"} onPointerDown={zoomed ? undefined : (event) => begin(pane.id, event)}>
         {agent && <AgentBadge agent={agent} />}
         {pane.label && <span className="pane-label">{pane.label}</span>}
         <span className="pane-cwd" title={pane.cwd}>
@@ -125,6 +134,7 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
           {""}
         </button>
       </div>
+      {hint && <DropHint side={hint} />}
       {/* A non-terminal pane never mounts a terminal, so no shell is spawned. */}
       <PaneBody pane={pane} workspaceId={workspace.id} active={active} />
     </div>
