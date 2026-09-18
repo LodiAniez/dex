@@ -9,6 +9,8 @@ export interface SpawnOptions {
   paneId: string;
   workspaceId?: string;
   cwd?: string;
+  /** Where the shell runs: `windows` (the default) or `wsl:<distro>`. */
+  runtime?: string;
   cols: number;
   rows: number;
   onData: (bytes: Uint8Array) => void;
@@ -28,6 +30,7 @@ export async function spawnPty(options: SpawnOptions): Promise<void> {
       paneId: options.paneId,
       workspaceId: options.workspaceId ?? null,
       cwd: options.cwd ?? null,
+      runtime: options.runtime ?? null,
       cols: options.cols,
       rows: options.rows,
     },

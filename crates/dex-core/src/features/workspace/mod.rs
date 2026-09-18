@@ -1,7 +1,8 @@
 //! Workspaces, panes, and the pane layout tree.
 //! Tables: `workspace`, `pane`, `app_state`.
 //! Commands: `workspace.*` (`commands.rs`); `pane.*` tree edits (`pane_commands.rs`);
-//! `pane.list/send/send_key` (`pane_io.rs`); `pane.content` (`pane_content.rs`).
+//! `pane.list/send/send_key` (`pane_io.rs`); `pane.content` (`pane_content.rs`);
+//! `pane.runtimes` and where a pane's shell runs (`runtimes.rs`).
 //! Rules and tree operations are pure (`logic.rs`, `layout.rs`).
 
 mod arrange;
@@ -14,6 +15,7 @@ mod pane_commands;
 mod pane_content;
 mod pane_io;
 mod pane_move;
+mod runtimes;
 mod store;
 mod targets;
 #[cfg(test)]
@@ -35,5 +37,10 @@ pub use pane_commands::{
 pub use pane_content::content as pane_content;
 pub use pane_io::{list_panes, send, send_key};
 pub use pane_move::move_pane;
-pub use store::{find_pane_workspace, pane_cwd, pane_label, workspace_name, workspace_root};
+pub use runtimes::{checked_runtime, list_runtimes};
+#[cfg(test)]
+pub use store::set_pane_runtime;
+pub use store::{
+    find_pane_workspace, pane_cwd, pane_label, pane_runtime, workspace_name, workspace_root,
+};
 pub use targets::{focused_pane, pane_id, workspace_id};

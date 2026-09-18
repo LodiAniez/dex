@@ -253,6 +253,23 @@ fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
             ErrorCode::InvalidArgs,
             "Use a short label without spaces, like `server` or `tests`.",
         ),
+        WorkspaceError::InvalidRuntime(_) => (
+            ErrorCode::InvalidArgs,
+            "Use `windows`, or `wsl:<distro>` for a WSL distro; `wsl.exe --list` names them.",
+        ),
+        WorkspaceError::NoSuchDistro { installed, .. } if installed.is_empty() => (
+            ErrorCode::InvalidArgs,
+            "No WSL distro is installed. Install one (`wsl --install Ubuntu`), or run this on Windows.",
+        ),
+        WorkspaceError::NoSuchDistro { installed, .. } => {
+            return (
+                ErrorCode::InvalidArgs,
+                format!(
+                    "Use an installed distro ({}), or run this on Windows.",
+                    installed.join(", ")
+                ),
+            );
+        }
         WorkspaceError::InvalidKind(_) => (
             ErrorCode::InvalidArgs,
             "Use `terminal` for a shell, `activity` for the workspace's live event stream, `diff` for a repository's changes, or `markdown` for a file.",

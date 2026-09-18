@@ -53,12 +53,18 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
     let settings = state.config.get();
     let caller = caller(state, &args).await?;
     check_limits(state, &caller, &settings.agents).await?;
+    // Where the child runs: as asked, else where its caller does - an agent in
+    // WSL hires into WSL.
+    let runtime = match args.runtime.as_deref() {
+        Some(requested) => workspace::checked_runtime(requested).await?,
+        None => caller.runtime.clone(),
+    };
 
     // Step 2: the worktree, before anything else is created. A spawn that fell
     // back to the main checkout would put two agents in one working tree.
     let (repo_id, cwd, branch) = match (&args.repo, &args.worktree) {
         (Some(repo), Some(branch)) => {
-            let (repo_id, path) = repo::create_for_spawn(state, repo, branch).await?;
+            let (repo_id, path) = repo::create_for_spawn(state, repo, branch, &runtime).await?;
             (
                 Some(repo_id),
                 crate::platform::paths::normalize(&path),
@@ -82,8 +88,11 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         &caller.pane,
         caller.agent_id.as_deref(),
         args.direction.as_deref(),
-        cwd.clone(),
-        args.label.clone(),
+        super::placement::ChildPane {
+            cwd: cwd.clone(),
+            label: args.label.clone(),
+            runtime,
+        },
     )
     .await?;
     // The new pane takes focus in its workspace, which is how it is identified.
@@ -165,6 +174,8 @@ struct Caller {
     agent_id: Option<String>,
     label: String,
     depth: i64,
+    /// Where the caller's pane runs.
+    runtime: String,
 }
 
 async fn caller(state: &AppState, args: &SpawnArgs) -> Result<Caller, AgentError> {
@@ -191,6 +202,8 @@ async fn caller(state: &AppState, args: &SpawnArgs) -> Result<Caller, AgentError
                 };
                 let parent = store::find_live_in_pane(conn, &pane)?;
                 let cwd = workspace::pane_cwd(conn, &pane)?.unwrap_or_default();
+                let runtime =
+                    workspace::pane_runtime(conn, &pane)?.unwrap_or_else(|| "windows".to_owned());
                 Ok(Ok(Caller {
                     label: match &parent {
                         Some(agent) => super::identity::label_of(conn, &agent.id)?
@@ -202,6 +215,7 @@ async fn caller(state: &AppState, args: &SpawnArgs) -> Result<Caller, AgentError
                     pane,
                     workspace_id,
                     cwd,
+                    runtime,
                 }))
             },
         )

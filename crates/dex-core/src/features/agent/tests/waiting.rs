@@ -211,6 +211,7 @@ async fn another_agent_is_not_told_what_this_one_is_waiting_for() {
             cwd: None,
             label: None,
             kind: None,
+            runtime: None,
         },
     )
     .await

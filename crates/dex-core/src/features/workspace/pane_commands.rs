@@ -30,6 +30,8 @@ struct Located {
 struct NewPane {
     id: String,
     cwd: Option<String>,
+    /// Checked; the split pane's when `None`.
+    runtime: Option<String>,
     label: Option<String>,
     kind: &'static str,
     dir: SplitDir,
@@ -106,7 +108,7 @@ fn split_located(conn: &mut Connection, found: Located, new: NewPane) -> Outcome
         label: new.label.clone(),
         cwd: new.cwd.unwrap_or_else(|| found.pane.cwd.clone()),
         kind: new.kind.into(),
-        runtime: found.pane.runtime.clone(),
+        runtime: new.runtime.unwrap_or_else(|| found.pane.runtime.clone()),
     };
     let tx = conn.transaction()?;
     match store::insert_pane(&tx, &pane, new.now) {
@@ -122,8 +124,8 @@ fn split_located(conn: &mut Connection, found: Located, new: NewPane) -> Outcome
     load_list(conn).map(Ok)
 }
 
-/// `pane.split`: a new terminal pane beside `pane`, in its folder (or `cwd`)
-/// and runtime. The new pane takes focus.
+/// `pane.split`: a new terminal pane beside `pane`, in its folder and runtime
+/// (or `cwd` and `runtime`). The new pane takes focus.
 pub async fn split_pane(
     state: &AppState,
     args: SplitPaneArgs,
@@ -131,6 +133,7 @@ pub async fn split_pane(
     let new = NewPane {
         id: ids::new_id(),
         cwd: pane_target(kind_arg(args.kind.as_deref())?, args.cwd.as_deref())?,
+        runtime: super::runtimes::runtime_arg(args.runtime.as_deref()).await?,
         label: label_arg(args.label)?,
         kind: kind_arg(args.kind.as_deref())?,
         dir: split_dir(args.direction),
@@ -157,6 +160,7 @@ pub async fn create_pane(
     let new = NewPane {
         id: ids::new_id(),
         cwd: pane_target(kind_arg(args.kind.as_deref())?, args.cwd.as_deref())?,
+        runtime: super::runtimes::runtime_arg(args.runtime.as_deref()).await?,
         label: label_arg(args.label)?,
         kind: kind_arg(args.kind.as_deref())?,
         dir: SplitDir::Horizontal,

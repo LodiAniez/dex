@@ -27,6 +27,7 @@ use repairs::error_body;
 fn changes(cmd: &str) -> Option<&'static str> {
     match cmd {
         "workspace.list" | "pane.list" | "pane.send" | "pane.send_key" | "pane.content" => None,
+        "pane.runtimes" => None,
         "agent.list" | "agent.sweep" => None,
         "context.read" | "context.list" | "context.search" | "context.events" => None,
         // A digest advances the caller's cursor, which no client displays.
@@ -73,6 +74,7 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "pane.list" => encode(workspace::list_panes(state, args(req)?).await?),
         "pane.create" => encode(workspace::create_pane(state, args(req)?).await?),
         "pane.split" => encode(workspace::split_pane(state, args(req)?).await?),
+        "pane.runtimes" => encode(workspace::list_runtimes().await),
         "pane.close" => encode(workspace::close_pane(state, args(req)?).await?),
         "pane.focus" => encode(workspace::focus_pane(state, args(req)?).await?),
         "pane.swap" => encode(workspace::swap_panes(state, args(req)?).await?),

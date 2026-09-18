@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use clap::{Subcommand, ValueEnum};
-use dex_protocol::pane::{Created, PaneList, Sent};
+use dex_protocol::pane::{Created, PaneList, RuntimeList, Sent};
 use dex_protocol::workspace::WorkspaceList;
 use dex_protocol::{ErrorBody, ErrorCode};
 use serde_json::json;
@@ -31,6 +31,29 @@ pub enum KeyName {
     Down,
     Left,
     Right,
+}
+
+/// Where a new pane's shell runs. Neither flag: where the pane it splits from
+/// runs (for an agent: where the agent that spawns it runs).
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct RunsIn {
+    /// Run it inside this WSL distro (`dex pane runtimes` lists them).
+    #[arg(long, value_name = "DISTRO", conflicts_with = "windows")]
+    pub wsl: Option<String>,
+    /// Run it on Windows.
+    #[arg(long)]
+    pub windows: bool,
+}
+
+impl RunsIn {
+    /// The runtime to ask for, if one was chosen.
+    pub fn runtime(&self) -> Option<String> {
+        match (&self.wsl, self.windows) {
+            (Some(distro), _) => Some(format!("wsl:{distro}")),
+            (None, true) => Some("windows".to_owned()),
+            (None, false) => None,
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -60,7 +83,11 @@ pub enum PaneCommand {
         /// file at --path, rendered).
         #[arg(long)]
         kind: Option<String>,
+        #[command(flatten)]
+        runs_in: RunsIn,
     },
+    /// Where a pane's shell can run: Windows, and each installed WSL distro.
+    Runtimes,
     /// Split the current pane.
     Split {
         #[arg(long, value_enum, default_value = "right")]
@@ -76,6 +103,8 @@ pub enum PaneCommand {
         /// file at --path, rendered).
         #[arg(long)]
         kind: Option<String>,
+        #[command(flatten)]
+        runs_in: RunsIn,
     },
     /// Close a pane.
     Close {
@@ -121,18 +150,29 @@ pub fn run(command: PaneCommand, format: Format) -> Result<(), ErrorBody> {
                 .call("pane.list", json!({ "workspace": workspace, "pane": pane }))?;
             print_panes(&list, format);
         }
+        PaneCommand::Runtimes => {
+            let list: RuntimeList = client::connect()?.call("pane.runtimes", json!({}))?;
+            if format.json {
+                output::json(&list);
+            } else {
+                for runtime in &list.runtimes {
+                    println!("{runtime}");
+                }
+            }
+        }
         PaneCommand::Create {
             path,
             label,
             workspace,
             kind,
+            runs_in,
         } => {
             let context = std::env::var("DEX_PANE_ID")
                 .ok()
                 .filter(|id| !id.is_empty());
             let created: Created = client::connect()?.call(
                 "pane.create",
-                json!({ "workspace": workspace, "pane": context, "cwd": path.map(absolute), "label": label, "kind": kind }),
+                json!({ "workspace": workspace, "pane": context, "cwd": path.map(absolute), "label": label, "kind": kind, "runtime": runs_in.runtime() }),
             )?;
             print_pane(&created.pane, format);
         }
@@ -141,6 +181,7 @@ pub fn run(command: PaneCommand, format: Format) -> Result<(), ErrorBody> {
             path,
             label,
             kind,
+            runs_in,
         } => {
             let pane = current_pane()?;
             let direction = match direction {
@@ -149,7 +190,7 @@ pub fn run(command: PaneCommand, format: Format) -> Result<(), ErrorBody> {
             };
             let list: WorkspaceList = client::connect()?.call(
                 "pane.split",
-                json!({ "pane": pane, "direction": direction, "cwd": path.map(absolute), "label": label, "kind": kind }),
+                json!({ "pane": pane, "direction": direction, "cwd": path.map(absolute), "label": label, "kind": kind, "runtime": runs_in.runtime() }),
             )?;
             // The new pane takes focus in the split pane's workspace.
             let new = list
@@ -256,4 +297,24 @@ fn print_panes(list: &PaneList, format: Format) {
         })
         .collect();
     output::table(format, &["", "WORKSPACE", "LABEL", "CWD", "ID"], &rows);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RunsIn;
+
+    #[test]
+    fn the_flags_name_a_runtime_or_leave_it_to_the_pane_split_from() {
+        let wsl = RunsIn {
+            wsl: Some("Ubuntu".into()),
+            windows: false,
+        };
+        assert_eq!(wsl.runtime().as_deref(), Some("wsl:Ubuntu"));
+        let windows = RunsIn {
+            wsl: None,
+            windows: true,
+        };
+        assert_eq!(windows.runtime().as_deref(), Some("windows"));
+        assert_eq!(RunsIn::default().runtime(), None);
+    }
 }

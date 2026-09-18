@@ -72,6 +72,10 @@ pub fn claude_under(procs: &[Proc], shell_pid: u32) -> Presence {
     if shell.name.to_ascii_lowercase().starts_with("claude") {
         return Presence::There;
     }
+    // A WSL pane: its own process is `wsl.exe`, and what runs in it is hidden.
+    if shell.name.to_ascii_lowercase().starts_with("wsl") {
+        return Presence::CannotTell;
+    }
     let mut children: HashMap<u32, Vec<&Proc>> = HashMap::new();
     for proc in procs {
         children.entry(proc.parent).or_default().push(proc);

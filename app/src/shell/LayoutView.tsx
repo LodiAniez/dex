@@ -7,6 +7,7 @@ import type { Layout } from "../platform/generated/Layout";
 import type { PaneView } from "../platform/generated/PaneView";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { useShortcuts } from "../platform/config";
+import { distroOf, runtimeLabel } from "../platform/runtimes";
 import { showError } from "../platform/notices";
 import { paneTitle, runsShell } from "./paneKind";
 import { DropHint, PaneDragArea, usePaneDrag } from "./PaneDrag";
@@ -133,6 +134,11 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
         <span className="pane-cwd" title={pane.cwd}>
           {paneTitle(pane)}
         </span>
+        {distroOf(pane.runtime) && (
+          <span className="pane-badge" title={`This pane's shell runs inside ${runtimeLabel(pane.runtime)}`}>
+            {distroOf(pane.runtime)}
+          </span>
+        )}
         {zoomed && <span className="pane-badge">zoomed</span>}
         <button
           type="button"
@@ -171,7 +177,7 @@ function PaneBody({ pane, workspaceId, active }: { pane: PaneView; workspaceId: 
       return <MarkdownPane paneId={pane.id} />;
     default:
       return runsShell(pane.kind) ? (
-        <TerminalPane paneId={pane.id} workspaceId={workspaceId} cwd={pane.cwd} active={active} />
+        <TerminalPane paneId={pane.id} workspaceId={workspaceId} cwd={pane.cwd} runtime={pane.runtime} active={active} />
       ) : (
         <div className="pane-unknown">This version of Dex cannot show a “{pane.kind}” pane.</div>
       );

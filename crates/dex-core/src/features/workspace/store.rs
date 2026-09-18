@@ -218,6 +218,26 @@ pub fn pane_cwd(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<Str
     .optional()
 }
 
+/// Where a pane's shell runs: `windows` or `wsl:<distro>`. Part of the
+/// slice's public face.
+pub fn pane_runtime(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row("SELECT runtime FROM pane WHERE id = ?1", [pane_id], |row| {
+        row.get(0)
+    })
+    .optional()
+}
+
+/// For other slices' tests: a pane that runs somewhere else, without asking
+/// `wsl.exe` whether that distro exists.
+#[cfg(test)]
+pub fn set_pane_runtime(conn: &Connection, pane_id: &str, runtime: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE pane SET runtime = ?2 WHERE id = ?1",
+        [pane_id, runtime],
+    )
+    .map(|_| ())
+}
+
 /// A pane's label, if it has one. Part of the slice's public face.
 pub fn pane_label(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<String>> {
     conn.query_row("SELECT label FROM pane WHERE id = ?1", [pane_id], |row| {

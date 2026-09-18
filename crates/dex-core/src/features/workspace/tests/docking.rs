@@ -122,6 +122,7 @@ async fn the_move_is_stored_and_the_moved_pane_has_focus() {
             cwd: None,
             label: None,
             kind: None,
+            runtime: None,
         },
     )
     .await
