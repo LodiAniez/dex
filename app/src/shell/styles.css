@@ -61,6 +61,11 @@ body,
   padding-left: 80px;
 }
 
+/* Fullscreen hides them, so the bar starts where Windows' does. */
+.titlebar.mac.fullscreen .titlebar-title {
+  padding-left: 12px;
+}
+
 .titlebar-buttons {
   display: flex;
   height: 100%;

@@ -1,24 +1,22 @@
 //! PTY supervisor: spawns ConPTY children and owns their I/O (docs/prd.md §7.1).
 //!
 //! Each pane gets three named threads:
-//! - **reader** — blocking reads from the PTY into 64KB chunks (`portable-pty`
-//!   readers are blocking, so this is a thread, not an async task);
+//! - **reader** — blocking reads into 64KB chunks (`portable-pty` blocks);
 //! - **coalescer** — batches chunks (~8ms or 32KB) for the display, and applies
 //!   watermark flow control (see `reader.rs`);
 //! - **waiter** — waits for the child to exit, then closes the PTY.
 //!
-//! Shutdown path: the child exits (or `kill` makes it exit) → the waiter drops
-//! the master, closing the pseudoconsole → the reader sees EOF and ends → the
-//! coalescer flushes, reports `Exited`, and ends. Nothing needs joining.
+//! Shutdown: the child exits (or `kill` ends it); the waiter stores its code
+//! and drops the master; the reader ends at EOF (on Unix as the child exits);
+//! the coalescer flushes, waits for the code, reports `Exited`. Nothing joins.
 //!
-//! ConPTY behavior to know about: `portable-pty` creates the pseudoconsole
-//! with `PSEUDOCONSOLE_INHERIT_CURSOR`, so ConPTY's first output is a
-//! cursor-position query (`ESC[6n`) and it renders *nothing* until the
-//! terminal answers. xterm.js answers automatically in the app; anything else
-//! driving a pane (tests, a future headless consumer) must answer it too, or
-//! the pane looks dead.
+//! ConPTY's first output is a cursor-position query (`ESC[6n`, from
+//! `PSEUDOCONSOLE_INHERIT_CURSOR`), and it renders nothing until answered.
+//! xterm.js answers; any other driver (tests, a headless consumer) must too.
 
 mod reader;
+#[cfg(any(unix, test))]
+mod reap;
 mod relay;
 mod session_env;
 mod shell;
@@ -230,12 +228,12 @@ impl PtySupervisor {
         spawn_named(format!("pty-waiter-{id}"), move || {
             let code = child.wait().ok().map(|status| status.exit_code());
             watch::disarm(&watches, &id);
-            exit_code.set(code);
-            // Take the pane out under the lock, but drop it (closing the
-            // pseudoconsole) after releasing it: ClosePseudoConsole can block
-            // until the reader drains, and the reader may be paused by flow
-            // control — holding the lock here would stall every other pane.
+            // Out of the map before the code is out, so nothing reaches a pane
+            // already reported gone. Dropped (closing the pseudoconsole) after
+            // the lock: ClosePseudoConsole can block until the reader drains,
+            // which flow control may be pausing - that would stall every pane.
             let pane = panes.lock().ok().and_then(|mut map| map.remove(&id));
+            exit_code.set(code);
             drop(pane);
             tracing::debug!(pane = %id, ?code, "pty child exited");
         })?;
@@ -277,15 +275,19 @@ impl PtySupervisor {
         self.lock().get(pane_id).map(|pane| pane.flow.last_output())
     }
 
-    /// The process id of a pane's shell: the root of whatever runs in the pane.
-    /// `None` if the pane has no live process.
+    /// The pid of a pane's shell, the root of all that runs in it, if alive.
     pub fn shell_pid(&self, pane_id: &str) -> Option<u32> {
         self.lock().get(pane_id).and_then(|pane| pane.pid)
     }
 
-    /// Starts keeping a pane's output instead of sending it to its window, for
-    /// a move between windows. Returns the bytes that window has been sent
-    /// since it attached, so it can wait for all of them before serializing.
+    /// How many panes have a live process, for "quit and end them all?".
+    pub fn live(&self) -> usize {
+        self.lock().len()
+    }
+
+    /// Keeps a pane's output instead of sending it to its window, for a move
+    /// between windows. Returns the bytes that window has been sent since it
+    /// attached, so it can wait for all of them before serializing.
     pub fn hold(&self, pane_id: &str) -> Result<u64, PtyError> {
         Ok(self.relay(pane_id)?.hold())
     }
@@ -316,11 +318,19 @@ impl PtySupervisor {
     }
 
     /// Kills a pane's process. Its final output and `Exited` still arrive.
+    /// On macOS and Linux everything under the shell goes too (`reap.rs`).
     pub fn kill(&self, pane_id: &str) -> Result<(), PtyError> {
         let mut panes = self.lock();
         let pane = panes
             .get_mut(pane_id)
             .ok_or_else(|| PtyError::NoSuchPane(pane_id.to_owned()))?;
+        #[cfg(unix)]
+        if let Some(pid) = pane.pid {
+            spawn_named(format!("pty-reap-{pane_id}"), move || {
+                reap::end_tree(pid, reap::CLOSE_GRACE);
+            })?;
+            return Ok(());
+        }
         match pane.killer.kill() {
             // portable-pty 0.9.0's cloned Windows killer has its check inverted:
             // it returns `last_os_error()` when TerminateProcess *succeeds*,
@@ -329,6 +339,12 @@ impl PtySupervisor {
             Err(err) if err.raw_os_error() == Some(0) => Ok(()),
             result => result.map_err(PtyError::from),
         }
+    }
+
+    /// Ends every pane's processes as the app quits (Windows' job already does).
+    pub fn end_all(&self) {
+        #[cfg(unix)]
+        reap::end_all(self.lock().values().filter_map(|pane| pane.pid).collect());
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Pane>> {

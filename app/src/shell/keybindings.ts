@@ -37,10 +37,14 @@ export const IS_MAC = typeof navigator !== "undefined" && isMacUserAgent(navigat
  * A shipped binding as this platform presses it. The table is written for
  * Windows; on a Mac every `Ctrl` in it is `Cmd` - the Mac's own convention, and
  * a key that never reaches a terminal program, where Windows has to keep its
- * app keys off plain `Ctrl+<letter>` because the shell owns those.
+ * app keys off plain `Ctrl+<letter>` because the shell owns those. An `Alt`
+ * binding gains `Cmd` too: on a Mac, Option+Arrow is how a shell and Claude
+ * Code jump by word, so pane focus is Cmd+Option+Arrow there.
  */
 export function forPlatform(binding: string, mac: boolean = IS_MAC): string {
-  return mac ? binding.replace(/\bCtrl\b/g, "Cmd") : binding;
+  if (!mac) return binding;
+  if (/\bCtrl\b/.test(binding)) return binding.replace(/\bCtrl\b/g, "Cmd");
+  return /\bAlt\b/.test(binding) ? `Cmd+${binding}` : binding;
 }
 
 /**
@@ -112,6 +116,11 @@ export const DEFAULT_BINDINGS: Record<string, string> = {
     [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`switch-workspace-${n}`, `Ctrl+${n}`]),
   ),
 };
+
+/** A tooltip naming its key, if the action has one: "Close pane (Cmd+Shift+W)". */
+export function titled(text: string, binding: string | undefined): string {
+  return binding ? `${text} (${binding})` : text;
+}
 
 /** Bindings in canonical form, to the action each runs. */
 export type Keymap = ReadonlyMap<string, AppAction>;
@@ -237,6 +246,7 @@ export function buildKeymap(overrides: Record<string, string> = {}, mac: boolean
     }
     bindings.set(action, parsed.binding);
   }
+  problems.push(...takenKeys(bindings, mac));
 
   const keymap = new Map<string, AppAction>();
   for (const [action, shipped] of Object.entries(DEFAULT_BINDINGS)) {
@@ -251,6 +261,30 @@ export function buildKeymap(overrides: Record<string, string> = {}, mac: boolean
     keymap.set(binding, ACTIONS[action]);
   }
   return { keymap, problems };
+}
+
+/**
+ * Overrides that take a key already in use: the later wins, as it always has,
+ * but an action silently left with no key would look like a broken shortcut.
+ */
+function takenKeys(bindings: Map<string, string>, mac: boolean): string[] {
+  const problems: string[] = [];
+  const claimed = new Map<string, string>();
+  for (const [action, binding] of bindings) {
+    const earlier = claimed.get(binding);
+    if (earlier !== undefined) {
+      problems.push(`keys.${earlier} and keys.${action} are both ${binding}; keys.${action} wins`);
+    }
+    claimed.set(binding, action);
+    for (const [other, shipped] of Object.entries(DEFAULT_BINDINGS)) {
+      if (other === action || bindings.has(other)) continue;
+      const parsed = parseBinding(forPlatform(shipped, mac));
+      if ("binding" in parsed && parsed.binding === binding) {
+        problems.push(`keys.${action} takes ${binding} from ${other}, which now has no key`);
+      }
+    }
+  }
+  return problems;
 }
 
 /** The bindings Dex ships with, for when the config has not been read yet. */

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window. Decorations are off, so the custom title bar needs the window controls; the sidebar needs the folder picker and delete confirmation.",
+  "description": "Main window. On Windows decorations are off, so the custom title bar needs the window controls (macOS keeps its own, and the bar reads whether it is fullscreen); the sidebar needs the folder picker and delete confirmation.",
   "windows": ["main"],
   "permissions": [
     "core:default",

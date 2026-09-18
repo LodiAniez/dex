@@ -2,7 +2,8 @@ import { useState } from "react";
 import { showError } from "../../platform/notices";
 import { WorkspaceItem } from "./WorkspaceItem";
 import { reorderWorkspaces, switchWorkspace, useWorkspaces } from "./workspaceStore";
-import { forPlatform } from "../../shell/keybindings";
+import { useShortcuts } from "../../platform/config";
+import { titled } from "../../shell/keybindings";
 
 /** The sidebar's workspace rows. Drag a row to reorder. */
 export function WorkspaceList() {
@@ -49,6 +50,7 @@ export function WorkspaceList() {
 /** The collapsed sidebar: one color dot per workspace. */
 export function WorkspaceDots() {
   const list = useWorkspaces();
+  const shortcuts = useShortcuts();
   if (!list) return null;
   return (
     <div className="workspace-dots">
@@ -57,7 +59,7 @@ export function WorkspaceDots() {
           key={workspace.id}
           type="button"
           className={`dot-button${workspace.id === list.active ? " active" : ""}`}
-          title={index < 9 ? `${workspace.name} (${forPlatform(`Ctrl+${index + 1}`)})` : workspace.name}
+          title={titled(workspace.name, shortcuts.get(`switch-workspace-${index + 1}`))}
           onClick={() => void switchWorkspace(workspace.id).catch(showError)}
         >
           <span

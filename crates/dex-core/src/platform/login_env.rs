@@ -57,9 +57,12 @@ pub fn pane_defaults(var: impl Fn(&str) -> Option<OsString>) -> Vec<(String, Str
     added
 }
 
-/// A pane's `PATH` on macOS and Linux: the folder Dex runs from first, so an
-/// agent finds `dex` by name - inside an app bundle no installer puts it on
-/// `PATH` - then `path`, the owner's login `PATH` if there is one.
+/// The `PATH` a pane's shell starts with on macOS and Linux: the folder Dex
+/// runs from, so an agent finds `dex` by name inside an app bundle no
+/// installer puts on `PATH`, then `path`, the owner's login `PATH`. The login
+/// shell's profile runs after this (`path_helper`, Homebrew, and so on) and
+/// may move Dex's folder later, so another `dex` on the owner's `PATH` would
+/// be found first; Dex's own folder is always on it.
 pub fn pane_path(dex_dir: &Path, path: Option<&str>) -> String {
     let dir = dex_dir.to_string_lossy();
     match path.filter(|path| !path.is_empty()) {
@@ -70,8 +73,10 @@ pub fn pane_path(dex_dir: &Path, path: Option<&str>) -> String {
 
 #[cfg(unix)]
 mod unix {
+    use std::io::Read;
     use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant};
+    use std::sync::mpsc;
+    use std::time::Duration;
 
     use super::{MARKER, read_marked};
 
@@ -81,31 +86,38 @@ mod unix {
 
     pub(super) fn ask_login_shell() -> Option<String> {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_owned());
-        // Interactive as well as login: many people set PATH in .zshrc.
-        let mut child = Command::new(shell)
+        // Interactive as well as login: many people set PATH in .zshrc. It
+        // stays in Dex's process group, so an interactive shell never finds
+        // itself in a background group of a terminal.
+        let mut child = Command::new(&shell)
             .args(["-ilc", &format!("printf '{MARKER}%s\\n' \"$PATH\"")])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
             .ok()?;
-        let deadline = Instant::now() + ASK_WAIT;
-        loop {
-            match child.try_wait() {
-                Ok(Some(_)) => break,
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(25))
-                }
-                _ => {
-                    let _ = child.kill();
-                    tracing::warn!(
-                        "the login shell did not say its PATH in time; tools keep the app's PATH"
-                    );
-                    return None;
-                }
-            }
+        // Read as it comes: a profile that prints more than a pipe holds would
+        // otherwise block the shell and look like a timeout.
+        let mut stdout = child.stdout.take()?;
+        let (sent, printed) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut text = Vec::new();
+            let _ = stdout.read_to_end(&mut text);
+            let _ = sent.send(text);
+        });
+        let Ok(text) = printed.recv_timeout(ASK_WAIT) else {
+            let _ = child.kill();
+            let _ = child.wait();
+            tracing::warn!("{shell} did not say its PATH in time; tools keep the app's PATH");
+            return None;
+        };
+        let _ = child.wait();
+        let path = read_marked(&String::from_utf8_lossy(&text));
+        if path.is_none() {
+            tracing::warn!(
+                "{shell} did not print its PATH (an unusual shell?); tools keep the app's PATH"
+            );
         }
-        let output = child.wait_with_output().ok()?;
-        read_marked(&String::from_utf8_lossy(&output.stdout))
+        path
     }
 }

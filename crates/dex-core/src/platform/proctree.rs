@@ -167,7 +167,7 @@ pub fn parse_ps(text: &str) -> Vec<Proc> {
 #[cfg(not(windows))]
 pub fn snapshot() -> io::Result<Vec<Proc>> {
     let output = Command::new("ps")
-        .args(["-A", "-o", "pid=,ppid=,args="])
+        .args(["-A", "-ww", "-o", "pid=,ppid=,args="])
         .output()?;
     if !output.status.success() {
         return Err(io::Error::other("the process table could not be read"));

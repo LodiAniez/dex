@@ -129,7 +129,7 @@ Names are for reading. Agents still message each other by **label**, which is wh
 
 App shortcuts stay off plain `Ctrl+<letter>`, which your shell owns (`Ctrl+C`, `Ctrl+D`, `Ctrl+W`…), following Windows Terminal.
 
-On macOS every `Ctrl` in this table is `Cmd`, as Mac apps expect. `Alt` is the Option key. A binding under `[keys]` is taken as written, and can name `Cmd` on either platform.
+On macOS every `Ctrl` in this table is `Cmd`, as Mac apps expect, and every `Alt` binding is `Cmd+Option`: Option+Arrow on its own stays with the shell and Claude Code, which use it to jump by word. A binding under `[keys]` is taken as written, and can name `Cmd` on either platform. One that takes another action's key is reported.
 
 | Action                        | Keys                                |
 |-------------------------------|-------------------------------------|
