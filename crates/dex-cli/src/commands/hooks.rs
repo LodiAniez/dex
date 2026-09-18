@@ -211,9 +211,11 @@ struct Malformed(&'static str);
 /// Whether a hook entry is Dex's: `dex`/`dex.exe` run with `event` first.
 fn is_dex_hook(hook: &Value) -> bool {
     let command = hook.get("command").and_then(Value::as_str).unwrap_or("");
-    let program = Path::new(command)
-        .file_name()
-        .and_then(|name| name.to_str())
+    // Split on both separators: a Windows path is written with `\`, which a
+    // Unix `Path` does not treat as one.
+    let program = command
+        .rsplit(['/', '\\'])
+        .next()
         .unwrap_or("")
         .to_ascii_lowercase();
     let first_arg = hook
@@ -326,9 +328,11 @@ fn settings_path(requested: Option<PathBuf>) -> Result<PathBuf, ErrorBody> {
     if let Some(path) = requested {
         return Ok(path);
     }
-    std::env::var_os("USERPROFILE")
-        .map(|home| PathBuf::from(home).join(".claude").join("settings.json"))
-        .ok_or_else(|| file_error("USERPROFILE is not set".into()))
+    dex_cli::paths::home_dir()
+        .map(|home| home.join(".claude").join("settings.json"))
+        .ok_or_else(|| {
+            file_error("no home folder: USERPROFILE (Windows) or HOME is not set".into())
+        })
 }
 
 /// The settings document; a missing file is an empty one.

@@ -6,7 +6,12 @@ on:
 
 jobs:
   check:
-    runs-on: windows-latest
+    # Windows is where Dex has always run; macOS (Apple Silicon) since the port (#36).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 

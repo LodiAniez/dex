@@ -142,17 +142,14 @@ pub(crate) fn source_candidates(exe_dir: &Path) -> Vec<PathBuf> {
     ]
 }
 
-/// `%USERPROFILE%\.claude\skills\dex-agentic`.
+/// `~/.claude/skills/dex-agentic`.
 fn target_dir() -> Result<PathBuf, ErrorBody> {
-    let home = std::env::var_os("USERPROFILE").ok_or_else(|| ErrorBody {
+    let home = dex_cli::paths::home_dir().ok_or_else(|| ErrorBody {
         code: ErrorCode::Internal,
-        message: "USERPROFILE is not set".into(),
+        message: "no home folder: USERPROFILE (Windows) or HOME is not set".into(),
         repair: "Run this from an ordinary user session.".into(),
     })?;
-    Ok(PathBuf::from(home)
-        .join(".claude")
-        .join("skills")
-        .join(NAME))
+    Ok(home.join(".claude").join("skills").join(NAME))
 }
 
 /// Compares the installed file with the shipped one, byte for byte.

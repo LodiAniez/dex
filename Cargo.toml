@@ -28,6 +28,8 @@ hmac = "=0.13.0"
 # Config hot reload (PRD §13). Default features only: the macOS backends are
 # inert on Windows, and `mio`/`crossbeam-channel` would add runtimes we do not need.
 notify = "=8.2.0"
+# Signals on macOS and Linux without `unsafe`; already in the tree through portable-pty.
+nix = { version = "=0.28.0", default-features = false, features = ["signal"] }
 portable-pty = "=0.9.0"
 rusqlite = { version = "=0.40.2", features = ["bundled"] }
 serde = { version = "=1.0.229", features = ["derive"] }

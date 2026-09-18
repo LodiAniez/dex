@@ -13,16 +13,15 @@
 
 #[cfg(test)]
 mod tests;
+mod watch;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 
-use super::bus::Bus;
 use super::paths;
 use super::pty::FlowLimits;
 
@@ -356,37 +355,6 @@ impl ConfigHandle {
                 self.path.display()
             )],
         }
-    }
-
-    /// Reloads whenever the file changes, announcing `config` on the bus.
-    ///
-    /// Watches the **directory**, not the file: editors save by writing a temp
-    /// file and renaming it over the target, which destroys a watch on the file
-    /// itself and would make the first save the last one ever noticed.
-    pub fn watch(&self, bus: Bus) -> notify::Result<RecommendedWatcher> {
-        let Some(dir) = self.path.parent().map(Path::to_path_buf) else {
-            return Err(notify::Error::generic("config path has no directory"));
-        };
-        let handle = self.clone();
-        let mut last = Instant::now() - SETTLE;
-        let mut watcher =
-            notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-                let Ok(event) = event else { return };
-                if !event.paths.iter().any(|p| p == handle.path.as_path()) {
-                    return;
-                }
-                if last.elapsed() < SETTLE {
-                    return;
-                }
-                last = Instant::now();
-                for problem in handle.reload() {
-                    tracing::warn!("{problem}");
-                }
-                tracing::info!("configuration reloaded");
-                bus.publish("config");
-            })?;
-        watcher.watch(&dir, RecursiveMode::NonRecursive)?;
-        Ok(watcher)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Arc<Config>> {

@@ -134,13 +134,52 @@ pub fn parse(json: &str) -> Result<Vec<Proc>, serde_json::Error> {
         .collect())
 }
 
+#[cfg(windows)]
 const SCRIPT: &str = "Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ p = $_.ProcessId; pp = $_.ParentProcessId; n = $_.Name; c = $_.CommandLine } } | ConvertTo-Json -Compress";
 
+/// Reads `ps -A -o pid=,ppid=,args=`. A process's name is its first word
+/// without the directory - and without the `-` a login shell is shown with -
+/// which is what `claude_under` looks at; lines `ps` could not fill in are skipped.
+pub fn parse_ps(text: &str) -> Vec<Proc> {
+    text.lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            let pid = words.next()?.parse().ok()?;
+            let parent = words.next()?.parse().ok()?;
+            let command = words.collect::<Vec<_>>().join(" ");
+            let first = command.split_whitespace().next()?;
+            let name = first
+                .rsplit('/')
+                .next()
+                .unwrap_or(first)
+                .trim_start_matches('-');
+            Some(Proc {
+                pid,
+                parent,
+                name: name.to_owned(),
+                command,
+            })
+        })
+        .collect()
+}
+
 /// The process table, now. Blocking: call it off the async runtime.
+#[cfg(not(windows))]
+pub fn snapshot() -> io::Result<Vec<Proc>> {
+    let output = Command::new("ps")
+        .args(["-A", "-ww", "-o", "pid=,ppid=,args="])
+        .output()?;
+    if !output.status.success() {
+        return Err(io::Error::other("the process table could not be read"));
+    }
+    Ok(parse_ps(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// The process table, now. Blocking: call it off the async runtime.
+#[cfg(windows)]
 pub fn snapshot() -> io::Result<Vec<Proc>> {
     let mut command = Command::new("powershell.exe");
     command.args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT]);
-    #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         // No console window flashing up over the owner's work.

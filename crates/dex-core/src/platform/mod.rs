@@ -9,6 +9,7 @@ pub mod config;
 pub mod db;
 pub mod ids;
 pub mod job;
+pub mod login_env;
 pub mod paths;
 pub mod pipe;
 pub mod proc;

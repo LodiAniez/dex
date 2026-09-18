@@ -19,6 +19,8 @@
 //! the pane looks dead.
 
 mod reader;
+#[cfg(any(unix, test))]
+mod reap;
 mod relay;
 mod session_env;
 mod shell;
@@ -40,7 +42,7 @@ use thiserror::Error;
 use reader::Flow;
 use relay::Relay;
 use session_env::forget_claude_session;
-pub use shell::resolve_shell;
+pub use shell::{resolve_shell, shell_args};
 pub use watch::Answer;
 
 /// How many reader chunks may queue before the reader blocks. Small on
@@ -194,7 +196,7 @@ impl PtySupervisor {
         let killer = child.clone_killer();
         let pid = child.process_id();
         let flow = Arc::new(Flow::default());
-        let exit_code = Arc::new(Mutex::new(None));
+        let exit_code = Arc::new(reader::ExitSlot::default());
         let (chunks_tx, chunks_rx) = sync_channel(CHUNK_QUEUE);
         let id = request.pane_id.clone();
 
@@ -230,14 +232,12 @@ impl PtySupervisor {
         spawn_named(format!("pty-waiter-{id}"), move || {
             let code = child.wait().ok().map(|status| status.exit_code());
             watch::disarm(&watches, &id);
-            if let Ok(mut slot) = exit_code.lock() {
-                *slot = code;
-            }
-            // Take the pane out under the lock, but drop it (closing the
-            // pseudoconsole) after releasing it: ClosePseudoConsole can block
-            // until the reader drains, and the reader may be paused by flow
-            // control — holding the lock here would stall every other pane.
+            // Out of the map before the code is out, so nothing reaches a pane
+            // already reported gone. Dropped (closing the pseudoconsole) after
+            // the lock: ClosePseudoConsole can block until the reader drains,
+            // which flow control may be pausing - that would stall every pane.
             let pane = panes.lock().ok().and_then(|mut map| map.remove(&id));
+            exit_code.set(code);
             drop(pane);
             tracing::debug!(pane = %id, ?code, "pty child exited");
         })?;
@@ -318,11 +318,19 @@ impl PtySupervisor {
     }
 
     /// Kills a pane's process. Its final output and `Exited` still arrive.
+    /// On macOS and Linux everything under the shell goes too (`reap.rs`).
     pub fn kill(&self, pane_id: &str) -> Result<(), PtyError> {
         let mut panes = self.lock();
         let pane = panes
             .get_mut(pane_id)
             .ok_or_else(|| PtyError::NoSuchPane(pane_id.to_owned()))?;
+        #[cfg(unix)]
+        if let Some(pid) = pane.pid {
+            spawn_named(format!("pty-reap-{pane_id}"), move || {
+                reap::end_tree(pid, reap::CLOSE_GRACE);
+            })?;
+            return Ok(());
+        }
         match pane.killer.kill() {
             // portable-pty 0.9.0's cloned Windows killer has its check inverted:
             // it returns `last_os_error()` when TerminateProcess *succeeds*,
@@ -331,6 +339,12 @@ impl PtySupervisor {
             Err(err) if err.raw_os_error() == Some(0) => Ok(()),
             result => result.map_err(PtyError::from),
         }
+    }
+
+    /// Ends every pane's processes as the app quits (Windows' job already does).
+    pub fn end_all(&self) {
+        #[cfg(unix)]
+        reap::end_all(self.lock().values().filter_map(|pane| pane.pid).collect());
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Pane>> {

@@ -42,9 +42,31 @@ impl Token {
         Ok(Self { bytes })
     }
 
-    /// Writes the token as hex, replacing any previous token.
+    /// Writes the token as hex, replacing any previous token. On macOS and
+    /// Linux the file is readable by its owner only; on Windows the profile
+    /// folder it lives in already is.
     pub fn write(&self, path: &Path) -> io::Result<()> {
-        fs::write(path, to_hex(&self.bytes))
+        #[cfg(unix)]
+        {
+            // Created owner-only, never widened for a moment, and renamed into
+            // place: a symlink planted at `path` is replaced, not written through.
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let temp = path.with_extension("new");
+            let _ = fs::remove_file(&temp);
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&temp)?;
+            file.write_all(to_hex(&self.bytes).as_bytes())?;
+            file.sync_all()?;
+            fs::rename(&temp, path)
+        }
+        #[cfg(not(unix))]
+        {
+            fs::write(path, to_hex(&self.bytes))
+        }
     }
 
     /// Reads a token written by `write`.
@@ -144,5 +166,29 @@ mod tests {
     #[test]
     fn nonces_are_fresh() {
         assert_ne!(nonce().unwrap(), nonce().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_token_file_is_owner_only_and_replaces_a_planted_symlink() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = dir.path().join("elsewhere");
+        fs::write(&elsewhere, "not a token").unwrap();
+        let path = dir.path().join("token");
+        std::os::unix::fs::symlink(&elsewhere, &path).unwrap();
+
+        let token = Token::generate().unwrap();
+        token.write(&path).unwrap();
+        assert_eq!(fs::read_to_string(&elsewhere).unwrap(), "not a token");
+        assert!(
+            !fs::symlink_metadata(&path)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(Token::read(&path).unwrap().bytes, token.bytes);
     }
 }

@@ -1,12 +1,12 @@
-//! The ways into the daemon: the UI's `dex_request` command and the named
-//! pipe for the CLI and MCP server. Both send the same request envelope and
+//! The ways into the daemon: the UI's `dex_request` command and the local
+//! socket (a named pipe on Windows) for the CLI and MCP server. Both send the same request envelope and
 //! both go through `router::dispatch`, so every command has exactly one
 //! implementation and everyone gets the same repair strings.
 
 use dex_core::app::AppState;
 use dex_core::platform::auth::Token;
 use dex_core::platform::bus::RecvError;
-use dex_core::platform::pipe::{self, NamedPipeServer};
+use dex_core::platform::pipe::{self, Server};
 use dex_core::router;
 use dex_protocol::{Request, Response};
 use tauri::{AppHandle, Emitter, State};
@@ -24,7 +24,7 @@ pub async fn dex_request(state: State<'_, AppState>, request: Request) -> Result
 }
 
 /// Serves the named pipe until the app exits.
-pub async fn serve_pipe(server: NamedPipeServer, name: String, token: Token, state: AppState) {
+pub async fn serve_pipe(server: Server, name: String, token: Token, state: AppState) {
     pipe::serve(server, name, token, move |request: Request| {
         let state = state.clone();
         async move { router::dispatch(&state, request).await }

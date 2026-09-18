@@ -1,4 +1,5 @@
-//! PTY supervisor tests against real ConPTY children.
+//! PTY supervisor tests against real children: ConPTY and cmd.exe on
+//! Windows, a Unix PTY and /bin/sh elsewhere.
 
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
@@ -15,6 +16,19 @@ fn collecting_sink() -> (OutputSink, Receiver<PtyOutput>) {
         let _ = tx.send(out);
     });
     (sink, rx)
+}
+
+/// A pane running `windows` under cmd.exe, or `unix` under /bin/sh.
+fn sh(pane_id: &str, windows: &str, unix: &str) -> SpawnRequest {
+    if cfg!(windows) {
+        cmd(pane_id, windows)
+    } else {
+        SpawnRequest {
+            program: PathBuf::from("/bin/sh"),
+            args: vec!["-c".into(), unix.into()],
+            ..cmd(pane_id, "")
+        }
+    }
 }
 
 fn cmd(pane_id: &str, script: &str) -> SpawnRequest {
@@ -95,7 +109,14 @@ fn child_output_reaches_the_sink_and_exit_is_reported() {
     let supervisor = PtySupervisor::new(FlowLimits::default());
     let (sink, rx) = collecting_sink();
     supervisor
-        .spawn(cmd("p1", "echo hello-from-dex & exit /b 3"), sink)
+        .spawn(
+            sh(
+                "p1",
+                "echo hello-from-dex & exit /b 3",
+                "echo hello-from-dex; exit 3",
+            ),
+            sink,
+        )
         .unwrap();
 
     let seen = drain(&rx, &supervisor, "p1", true, Duration::from_secs(15));
@@ -121,10 +142,10 @@ fn spawning_a_duplicate_pane_id_is_rejected() {
     let supervisor = PtySupervisor::new(FlowLimits::default());
     let (sink, rx) = collecting_sink();
     supervisor
-        .spawn(cmd("dup", "ping -n 30 127.0.0.1 >nul"), sink)
+        .spawn(sh("dup", "ping -n 30 127.0.0.1 >nul", "sleep 30"), sink)
         .unwrap();
     let (sink2, _rx2) = collecting_sink();
-    let second = supervisor.spawn(cmd("dup", "echo no"), sink2);
+    let second = supervisor.spawn(sh("dup", "echo no", "echo no"), sink2);
     assert!(
         matches!(second, Err(PtyError::AlreadyExists(_))),
         "{second:?}"
@@ -150,9 +171,10 @@ fn output_pauses_while_the_display_is_not_acknowledging() {
     let (sink, rx) = collecting_sink();
     supervisor
         .spawn(
-            cmd(
+            sh(
                 "slow",
                 "for /L %i in (1,1,50000) do @echo flow control line %i",
+                "seq 1 50000 | sed 's/^/flow control line /'",
             ),
             sink,
         )
@@ -193,9 +215,10 @@ fn an_unresponsive_display_cannot_wedge_the_child() {
     let (sink, rx) = collecting_sink();
     supervisor
         .spawn(
-            cmd(
+            sh(
                 "stuck",
                 "for /L %i in (1,1,20000) do @echo discarded line %i",
+                "seq 1 20000 | sed 's/^/discarded line /'",
             ),
             sink,
         )
@@ -217,6 +240,7 @@ fn an_unresponsive_display_cannot_wedge_the_child() {
 /// Backend half of the M1 throughput gate: `type` a 50MB file through ConPTY
 /// with instant acknowledgement.
 /// Run with `cargo test -p dex-core --release -- --ignored --nocapture`.
+#[cfg(windows)]
 #[test]
 #[ignore = "benchmark; takes tens of seconds"]
 fn throughput_type_50mb_file() {
@@ -309,4 +333,24 @@ fn what_dex_sets_for_a_pane_is_set_after_the_forgetting() {
         built.get_env("CLAUDE_CODE_SESSION_ID").is_some(),
         "a caller that sets one on purpose is obeyed"
     );
+}
+
+#[test]
+fn the_exit_report_waits_for_the_code_the_waiter_is_about_to_store() {
+    // On macOS and Linux the output ends the moment the child exits, which can
+    // be before the waiter has its status; the report must not say "no code".
+    let slot = Arc::new(reader::ExitSlot::default());
+    let waiter = slot.clone();
+    let setter = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(50));
+        waiter.set(Some(3));
+    });
+    assert_eq!(slot.wait(Duration::from_secs(5)), Some(3));
+    setter.join().unwrap();
+}
+
+#[test]
+fn an_exit_report_with_no_waiter_answer_gives_up_rather_than_hang() {
+    let slot = reader::ExitSlot::default();
+    assert_eq!(slot.wait(Duration::from_millis(20)), None);
 }
