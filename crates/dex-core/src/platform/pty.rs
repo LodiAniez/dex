@@ -228,12 +228,12 @@ impl PtySupervisor {
         spawn_named(format!("pty-waiter-{id}"), move || {
             let code = child.wait().ok().map(|status| status.exit_code());
             watch::disarm(&watches, &id);
-            exit_code.set(code);
-            // Take the pane out under the lock, but drop it (closing the
-            // pseudoconsole) after releasing it: ClosePseudoConsole can block
-            // until the reader drains, and the reader may be paused by flow
-            // control — holding the lock here would stall every other pane.
+            // Out of the map before the code is out, so nothing reaches a pane
+            // already reported gone. Dropped (closing the pseudoconsole) after
+            // the lock: ClosePseudoConsole can block until the reader drains,
+            // which flow control may be pausing - that would stall every pane.
             let pane = panes.lock().ok().and_then(|mut map| map.remove(&id));
+            exit_code.set(code);
             drop(pane);
             tracing::debug!(pane = %id, ?code, "pty child exited");
         })?;
