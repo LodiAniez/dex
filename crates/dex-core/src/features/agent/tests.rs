@@ -19,6 +19,7 @@ mod orphans;
 mod placement;
 mod presence;
 mod prompting;
+mod resumes;
 mod sessions;
 mod spawn;
 mod stopping;

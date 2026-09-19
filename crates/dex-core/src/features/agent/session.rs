@@ -12,7 +12,7 @@ pub const CARRY_ON_MS: i64 = 60_000;
 /// What an agent ended by `/resume` says: it left for another conversation,
 /// and a `resume` start moments later may be it carrying on. An agent that
 /// quit is not - `claude --resume` in a new process is someone new.
-pub const LEFT_BY_RESUME: &str = "left for another conversation (/resume)";
+pub const LEFT_BY_RESUME: &str = "switched conversations with /resume";
 
 /// What a SessionEnd leaves in the ended agent's status detail.
 pub fn end_detail(end_reason: Option<&str>) -> Option<&'static str> {
@@ -23,11 +23,6 @@ pub fn end_detail(end_reason: Option<&str>) -> Option<&'static str> {
 /// way (its status detail): a `resume` only one that left by `/resume`.
 pub fn ended_for(source: Option<&str>, detail: Option<&str>) -> bool {
     source != Some("resume") || detail == Some(LEFT_BY_RESUME)
-}
-
-/// Whether a start is a `/resume`, which may come before its own end.
-pub fn is_resume(source: Option<&str>) -> bool {
-    source == Some("resume")
 }
 
 /// How far a start's stamp may seem to come before its end's: hooks are stamped

@@ -136,6 +136,14 @@ const SIBLING_TASK_CHARS: usize = 120;
 /// important first.
 fn the_rest(orientation: &Orientation) -> Vec<String> {
     let mut lines = Vec::new();
+    // First: messages waiting are this agent's own business.
+    if orientation.unread > 0 {
+        lines.push(format!(
+            "{} unread {} waiting, readable with message_inbox.",
+            orientation.unread,
+            plural(orientation.unread, "message", "messages"),
+        ));
+    }
     for checkout in &orientation.repos {
         let branch = checkout.branch.as_deref().unwrap_or("a detached HEAD");
         // Where: the repo's own checkout may be elsewhere, on another branch.
@@ -148,14 +156,6 @@ fn the_rest(orientation: &Orientation) -> Vec<String> {
         });
     }
     lines.push(HOW_THE_OWNER_HEARS.to_owned());
-    // Before the lists: messages waiting are this agent's own business.
-    if orientation.unread > 0 {
-        lines.push(format!(
-            "{} unread {} waiting, readable with message_inbox.",
-            orientation.unread,
-            plural(orientation.unread, "message", "messages"),
-        ));
-    }
     if !orientation.siblings.is_empty() {
         lines.push("Other agents here:".into());
         for sibling in &orientation.siblings {
