@@ -1,7 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { DexError } from "../platform/daemon";
-import { type RestartChoice, restartChoices, runtimeLabel, terminalChoices, useTerminal } from "../platform/runtimes";
+import { agentInPane, useAgents } from "../features/agents";
+import type { TerminalView } from "../platform/generated/TerminalView";
+import {
+  type RestartChoice,
+  restartChoices,
+  runtimeLabel,
+  stillToRestart,
+  terminalChoices,
+  useTerminal,
+} from "../platform/runtimes";
 import { canRestartIn, restartIn } from "../platform/terminalRegistry";
 import "./setup.css";
 import { type Check, type DoctorReport, type Step, failures, headline, stepFor, stepLabel } from "./setup";
@@ -134,19 +143,33 @@ function TerminalChoice({ report, onChosen }: { report: DoctorReport; onChosen: 
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   // After a choice: running panes to restart in it, or not, as the owner ticks.
-  const [offer, setOffer] = useState<{ runtime: string; choices: RestartChoice[] } | null>(null);
+  const [offer, setOffer] = useState<{ runtime: string; choices: RestartChoice[]; others: number } | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const agents = useAgents();
+  const offerRef = useRef<HTMLDivElement>(null);
+  // The question is the next thing to answer: take the keyboard to it.
+  useEffect(() => {
+    if (offer) offerRef.current?.focus();
+  }, [offer]);
   const choices = view ? terminalChoices(view) : [];
   if (!view || choices.length === 0) return null;
+  const agentIn = (pane: string) => {
+    const agent = agentInPane(agents, pane);
+    return agent ? (agent.label ?? "an agent") : null;
+  };
+  const offered = (running: TerminalView["running_elsewhere"], runtime: string) =>
+    restartChoices(running, (pane) => canRestartIn(pane, runtime), agentIn);
   const pick = async (runtime: string) => {
     setBusy(true);
     setProblem(null);
     setOffer(null);
     try {
       const answer = await choose(runtime);
-      const restartable = restartChoices(answer.running_elsewhere, (pane) => canRestartIn(pane, runtime));
-      if (restartable.length > 0) {
-        setOffer({ runtime, choices: restartable });
+      const restartable = offered(answer.running_elsewhere, runtime);
+      // Panes elsewhere this window cannot restart: shown in another window.
+      const others = answer.running_elsewhere.length - restartable.length;
+      if (restartable.length > 0 || others > 0) {
+        setOffer({ runtime, choices: restartable, others });
         setTicked(new Set(restartable.filter((choice) => choice.ticked).map((choice) => choice.pane)));
       }
       await onChosen();
@@ -157,10 +180,21 @@ function TerminalChoice({ report, onChosen }: { report: DoctorReport; onChosen: 
       setBusy(false);
     }
   };
-  const restart = () => {
+  // Asked again at the click: the list may be minutes old.
+  const restart = async () => {
     if (!offer) return;
-    for (const pane of ticked) restartIn(pane, offer.runtime);
-    setOffer(null);
+    setBusy(true);
+    try {
+      const now = await choose(offer.runtime);
+      const { restart: panes, skipped } = stillToRestart(ticked, offer.choices, offered(now.running_elsewhere, offer.runtime));
+      for (const pane of panes) restartIn(pane, offer.runtime);
+      setProblem(skipped.length > 0 ? `Left as they were - something started in them since: ${skipped.join(", ")}.` : null);
+      setOffer(null);
+    } catch (err) {
+      setProblem(err instanceof DexError ? `${err.message}. ${err.repair}` : String(err));
+    } finally {
+      setBusy(false);
+    }
   };
   const toggle = (pane: string) =>
     setTicked((now) => {
@@ -195,7 +229,13 @@ function TerminalChoice({ report, onChosen }: { report: DoctorReport; onChosen: 
         </select>
       </div>
       {offer && (
-        <div className="setup-restart" role="group" aria-label={`Restart panes in ${runtimeLabel(offer.runtime)}`}>
+        <div
+          className="setup-restart"
+          role="group"
+          tabIndex={-1}
+          ref={offerRef}
+          aria-label={`Restart panes in ${runtimeLabel(offer.runtime)}`}
+        >
           <p className="setup-restart-head">
             Restart these in {runtimeLabel(offer.runtime)}? Each starts again in its folder, with its scrollback kept;
             whatever runs in it ends.
@@ -211,11 +251,22 @@ function TerminalChoice({ report, onChosen }: { report: DoctorReport; onChosen: 
               </li>
             ))}
           </ul>
+          {offer.others > 0 && (
+            <p className="setup-restart-head">
+              {offer.others === 1 ? "1 pane in another window keeps its" : `${offer.others} panes in other windows keep their`}{" "}
+              shell until Dex restarts.
+            </p>
+          )}
           <div className="setup-restart-actions">
             <button type="button" className="setup-button" onClick={() => setOffer(null)}>
               Not now
             </button>
-            <button type="button" className="setup-button primary" disabled={ticked.size === 0} onClick={restart}>
+            <button
+              type="button"
+              className="setup-button primary"
+              disabled={ticked.size === 0 || busy}
+              onClick={() => void restart()}
+            >
               Restart {ticked.size === 1 ? "1 pane" : `${ticked.size} panes`}
             </button>
           </div>

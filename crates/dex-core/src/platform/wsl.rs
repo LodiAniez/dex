@@ -291,6 +291,24 @@ pub fn linux_path(distro: &str, windows: &str) -> Result<String, String> {
     }
 }
 
+/// What `git --version` says in `distro`: `Ok(None)` when git is not
+/// installed there, an error when the distro could not be asked (it did not
+/// answer in time, say) - which says nothing about git. Blocking.
+pub fn git_version(distro: &str) -> Result<Option<String>, String> {
+    let out = run(&["-d", distro, "--exec", "git", "--version"])
+        .ok_or_else(|| format!("{distro} did not answer"))?;
+    let printed = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    if out.status.success() && !printed.is_empty() {
+        return Ok(Some(printed));
+    }
+    let said = String::from_utf8_lossy(&out.stderr).to_ascii_lowercase();
+    // `wsl.exe --exec` of a program the distro does not have.
+    if said.contains("no such file") || said.contains("not found") {
+        return Ok(None);
+    }
+    Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
+}
+
 /// Runs `git` inside `distro`, in `dir` (a Linux path). Its stdout, or its
 /// stderr for `proc::translate`. Blocking.
 pub fn git(distro: &str, dir: &str, args: &[&str]) -> Result<String, String> {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distroOf, restartChoices, runtimeLabel, switchNow, terminalChoices } from "./runtimes";
+import { distroOf, restartChoices, runtimeLabel, stillToRestart, switchNow, terminalChoices } from "./runtimes";
 
 describe("runtimeLabel", () => {
   it("names a terminal the way the owner thinks of it", () => {
@@ -82,5 +82,32 @@ describe("restartChoices", () => {
 
   it("offers only panes this window can restart", () => {
     expect(restartChoices([pane("a", false), pane("b", false)], (id) => id === "b").map((c) => c.pane)).toEqual(["b"]);
+  });
+});
+
+describe("restartChoices with agents", () => {
+  const pane = { pane: "a", workspace: "api", label: null, cwd: "C:/src/api", runtime: "windows", busy: false };
+
+  it("treats a pane with a live agent as busy and names the agent", () => {
+    const [choice] = restartChoices([pane], () => true, () => "porter");
+    expect(choice.busy).toBe(true);
+    expect(choice.ticked).toBe(false);
+    expect(choice.detail).toContain("agent porter runs here");
+  });
+});
+
+describe("stillToRestart", () => {
+  const choice = (pane: string, busy: boolean) => ({ pane, title: pane, detail: "", busy, ticked: !busy });
+
+  it("restarts what is still plain, and what the owner ticked though busy", () => {
+    const offered = [choice("a", false), choice("b", true)];
+    const now = [choice("a", false), choice("b", true)];
+    expect(stillToRestart(new Set(["a", "b"]), offered, now)).toEqual({ restart: ["a", "b"], skipped: [] });
+  });
+
+  it("skips a pane something started in since it was offered, and one that has gone", () => {
+    const offered = [choice("a", false), choice("c", false)];
+    const now = [choice("a", true)];
+    expect(stillToRestart(new Set(["a", "c"]), offered, now)).toEqual({ restart: [], skipped: ["a"] });
   });
 });

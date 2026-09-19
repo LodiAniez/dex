@@ -69,3 +69,34 @@ async fn a_pane_records_where_its_shell_really_started() {
         .unwrap();
     assert_eq!(runtime.as_deref(), Some("wsl:Ubuntu"));
 }
+
+#[tokio::test]
+async fn a_shell_start_is_announced_only_when_it_moved_the_pane() {
+    let (_dir, state) = AppState::for_tests();
+    let list = create(&state, CreateWorkspaceArgs::default())
+        .await
+        .unwrap();
+    let pane = list.workspaces[0].panes[0].id.clone();
+    let mut changes = state.bus.subscribe();
+    let started = |runtime: &str| PaneStartedArgs {
+        pane: pane.clone(),
+        runtime: runtime.into(),
+    };
+    // Where it already runs: nothing new to say.
+    record_started(&state, started("windows")).await.unwrap();
+    assert!(changes.try_recv().is_err());
+    record_started(&state, started("wsl:Ubuntu")).await.unwrap();
+    assert_eq!(changes.try_recv().map(|c| c.topic), Ok("workspaces"));
+    // A pane since closed, or a runtime that is not one, changes nothing.
+    record_started(
+        &state,
+        PaneStartedArgs {
+            pane: "gone".into(),
+            runtime: "windows".into(),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(changes.try_recv().is_err());
+    assert!(record_started(&state, started("linux")).await.is_err());
+}

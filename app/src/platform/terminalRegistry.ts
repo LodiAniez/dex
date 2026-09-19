@@ -34,7 +34,7 @@ interface Entry {
   workspaceId?: string;
   cwd?: string;
   runtime?: string;
-  /** Closed by `syncRuntime`, to start again in its new runtime on exit. */
+  /** Closed by `restartIn`, to start again in its new runtime on exit. */
   switching: boolean;
   term: Terminal;
   fit: FitAddon;
@@ -142,7 +142,10 @@ function startShell(entry: Entry): void {
     rows: entry.term.rows,
     onData: (bytes) => writeOutput(entry, bytes),
     onEvent: (event) => handleEvent(entry, event),
-  }).catch((err) => entry.term.write(`\r\n\x1b[31mCould not start a shell: ${err}\x1b[0m\r\n`));
+  }).catch((err) => {
+    entry.dead = true; // No shell: shown as exited, not waiting on one that never came.
+    entry.term.write(`\r\n\x1b[31mCould not start a shell: ${err}\x1b[0m\r\n`);
+  });
 }
 
 /**
@@ -169,10 +172,12 @@ export function canRestartIn(paneId: string, runtime: string): boolean {
 export function restartIn(paneId: string, runtime: string): boolean {
   const entry = entries.get(paneId);
   if (!entry || !switchNow(entry, runtime)) return false;
+  const previous = entry.runtime;
   entry.runtime = runtime;
   entry.switching = true;
   void killPty(paneId).catch(() => {
     entry.switching = false;
+    entry.runtime = previous; // Still running where it was.
   });
   return true;
 }
@@ -249,9 +254,8 @@ export async function handOff(paneId: string): Promise<string> {
  * whatever was held while it moved. `content` null keeps this window's own
  * screen, for a pane whose other window went without handing anything back.
  */
-// No runtime here: a taken-over pane's shell is already running (`spawned` is
-// set below), so nothing ever starts one from this path. Anything that did
-// would need the pane's runtime, or it would start the shell on Windows.
+// No runtime here: a taken-over pane's shell is already running (`spawned` below);
+// anything that started one from this path would need the pane's runtime.
 export async function takeOver(paneId: string, content: string | null, cwd?: string, workspaceId?: string): Promise<void> {
   openTerminal(paneId, cwd, workspaceId);
   const entry = entries.get(paneId);

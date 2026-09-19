@@ -48,21 +48,52 @@ export interface RestartChoice {
  * The panes to offer to restart after a terminal is chosen: those running
  * elsewhere that this window can restart (not ones shown in another window).
  * Plain shells start ticked; a pane where something may be running does not,
- * and says so - restarting it would end that.
+ * and says so - restarting it would end that. A pane with a live agent is
+ * busy whatever the process table says, and names the agent.
  */
 export function restartChoices(
   running: readonly RunningPane[],
   canRestart: (pane: string) => boolean,
+  agentIn: (pane: string) => string | null = () => null,
 ): RestartChoice[] {
   return running
     .filter((pane) => canRestart(pane.pane))
-    .map((pane) => ({
-      pane: pane.pane,
-      title: pane.label ?? pane.cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? pane.cwd,
-      detail: `${pane.workspace} · ${runtimeLabel(pane.runtime)}${pane.busy ? " · something may be running in it" : ""}`,
-      busy: pane.busy,
-      ticked: !pane.busy,
-    }));
+    .map((pane) => {
+      const agent = agentIn(pane.pane);
+      const busy = pane.busy || agent !== null;
+      const why = agent !== null ? ` · agent ${agent} runs here` : busy ? " · something may be running in it" : "";
+      return {
+        pane: pane.pane,
+        title: pane.label ?? pane.cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? pane.cwd,
+        detail: `${pane.workspace} · ${runtimeLabel(pane.runtime)}${why}`,
+        busy,
+        ticked: !busy,
+      };
+    });
+}
+
+/**
+ * Of the panes the owner ticked, the ones to restart now, asked again at the
+ * moment of the click: one no longer running elsewhere is left, and one that
+ * was plain when offered but is busy now is skipped - something started in it
+ * since. A pane offered as busy and ticked anyway is the owner's decision.
+ */
+export function stillToRestart(
+  ticked: ReadonlySet<string>,
+  offered: readonly RestartChoice[],
+  now: readonly RestartChoice[],
+): { restart: string[]; skipped: string[] } {
+  const current = new Map(now.map((choice) => [choice.pane, choice]));
+  const restart: string[] = [];
+  const skipped: string[] = [];
+  for (const choice of offered) {
+    if (!ticked.has(choice.pane)) continue;
+    const fresh = current.get(choice.pane);
+    if (!fresh) continue;
+    if (fresh.busy && !choice.busy) skipped.push(choice.title);
+    else restart.push(choice.pane);
+  }
+  return { restart, skipped };
 }
 
 /**

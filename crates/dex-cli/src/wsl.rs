@@ -225,17 +225,42 @@ fn login_shell(distro: &str) -> String {
 /// of an interactive login shell - where nvm, Homebrew and `~/.local/bin` are
 /// added - which prints it and nothing else Dex reads. With the owner's real
 /// home even in a test: that is where their Claude Code is.
-pub fn login_path(distro: &str) -> Option<String> {
-    static ASKED: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+///
+/// A shell that prints no marker - one that does not take `-lic` (tcsh), a
+/// profile that `exec`s another program, a profile slower than the time limit -
+/// is asked again as bash, interactive then not. The error says why none did.
+pub fn login_path(distro: &str) -> Result<String, String> {
+    type Asked = Mutex<HashMap<String, Result<String, String>>>;
+    static ASKED: OnceLock<Asked> = OnceLock::new();
     let asked = ASKED.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(known) = asked.lock().ok().and_then(|map| map.get(distro).cloned()) {
         return known;
     }
-    let shell = login_shell(distro);
     let script = format!(r#"printf '{MARKER}%s\n' "$PATH""#);
-    let path = wsl(&["-d", distro, "--exec", &shell, "-lic", &script])
-        .ok()
-        .and_then(|out| read_marked(&String::from_utf8_lossy(&out.stdout)));
+    let shell = login_shell(distro);
+    let mut why = String::new();
+    let mut path = Err(String::new());
+    for (program, flags) in [
+        (shell.as_str(), "-lic"),
+        ("/bin/bash", "-lic"),
+        ("/bin/bash", "-lc"),
+    ] {
+        match wsl(&["-d", distro, "--exec", program, flags, &script]) {
+            Ok(out) => match read_marked(&String::from_utf8_lossy(&out.stdout)) {
+                Some(found) => {
+                    path = Ok(found);
+                    break;
+                }
+                None => why = format!("{program} {flags} printed no PATH"),
+            },
+            Err(err) => why = format!("{program} {flags}: {err}"),
+        }
+    }
+    if path.is_err() {
+        path = Err(format!(
+            "could not read your terminal's PATH in {distro} ({why})"
+        ));
+    }
     if let Ok(mut map) = asked.lock() {
         map.insert(distro.to_owned(), path.clone());
     }
@@ -243,9 +268,15 @@ pub fn login_path(distro: &str) -> Option<String> {
 }
 
 /// The environment a program in the distro runs with: the owner's terminal
-/// `PATH`, and in a test the stand-in home, whose `~/.local/bin` comes first.
-pub fn login_env(path: Option<&str>, test_home: Option<&str>) -> Vec<String> {
-    let path = path.unwrap_or("/usr/local/bin:/usr/bin:/bin");
+/// `PATH` - or, when that could not be read, the system's with the owner's
+/// `~/.local/bin` (`home`), where a Claude Code installed per user is - and in
+/// a test the stand-in home, whose `~/.local/bin` comes first.
+pub fn login_env(path: Option<&str>, home: Option<&str>, test_home: Option<&str>) -> Vec<String> {
+    let fallback = match home {
+        Some(home) => format!("{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"),
+        None => "/usr/local/bin:/usr/bin:/bin".to_owned(),
+    };
+    let path = path.unwrap_or(&fallback);
     match test_home {
         Some(home) => vec![
             format!("PATH={home}/.local/bin:{path}"),
@@ -259,7 +290,17 @@ pub fn login_env(path: Option<&str>, test_home: Option<&str>) -> Vec<String> {
 /// Claude Code installed per user, `dex` in `~/.local/bin` - but without an
 /// interactive shell, whose greetings would land in what is read back.
 pub fn run_login(distro: &str, program: &str, args: &[&str]) -> io::Result<Output> {
-    let env = login_env(login_path(distro).as_deref(), test_home().as_deref());
+    let path = login_path(distro).ok();
+    // The real home, for the fallback: that is where the owner's Claude Code is.
+    let home = match &path {
+        Some(_) => None,
+        None => printed(
+            wsl(&["-d", distro, "--exec", "printenv", "HOME"]),
+            "finding the home folder",
+        )
+        .ok(),
+    };
+    let env = login_env(path.as_deref(), home.as_deref(), test_home().as_deref());
     let mut all = vec!["-d", distro, "--exec", "env"];
     all.extend(env.iter().map(String::as_str));
     all.push(program);

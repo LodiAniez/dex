@@ -14,6 +14,12 @@ fn a_claude_folder_is_the_windows_one_only_when_it_leads_there() {
     assert!(!links_to_windows("/home/me/.claude", windows));
     // Some other folder on a Windows drive is not Windows Dex's.
     assert!(!links_to_windows("/mnt/d/shared/.claude", windows));
+    // Windows drives ignore case, so the link may be spelled differently.
+    assert!(links_to_windows("/mnt/c/users/me/.claude", windows));
+    assert!(links_to_windows(
+        "/mnt/c/USERS/ME/.claude/projects",
+        windows
+    ));
     // Unknown: any Windows drive is taken to be it, and refused.
     assert!(links_to_windows("/mnt/d/shared/.claude", None));
 }
