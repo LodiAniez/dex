@@ -178,7 +178,7 @@ spawn_permission_mode = "auto"   # what spawned agents run with
 spawn_chrome = false         # true lets spawned agents connect to Claude in Chrome
 
 [digest]
-full_chars = 2000            # budget for an agent's opening briefing (its task brief is always given whole)
+full_chars = 2000            # budget for an agent's opening briefing (its task brief comes on top, whole)
 delta_chars = 800            # budget for "what changed since your last turn"
 
 [ui]
@@ -209,7 +209,7 @@ Agents do not always use it. An agent that ends its turn by asking you something
 
 Hooks cannot tell Dex everything: Claude Code quit with Ctrl+C, crashed or killed says nothing on its way out. So Dex also looks: **an agent whose pane no longer runs Claude Code is dead.** Every fifteen seconds it checks that each started agent still has a Claude Code process in its pane, looks again two seconds later to be sure, and ends the ones that do not - they leave the agent list, walk out of the office, and stop counting toward `agents.max_concurrent`. The workspace log says why, so a lead learns its agent crashed. A pane Dex made for a spawned agent closes with it; a pane you opened stays, and running `claude` in it again starts a new agent. Panes running inside WSL are not checked.
 
-Two of them also carry information *into* the agent: on `SessionStart`, a full digest of the workspace - who the agent is (its label and id), its task in full however long the brief, and where each of the workspace's repos is checked out and on which branch; on `UserPromptSubmit` and `PostToolBatch`, a short delta of what other agents have done since the agent last looked. Nothing is injected when nothing changed.
+Two of them also carry information *into* the agent: on `SessionStart`, a full digest of the workspace - who the agent is (its label and id), its whole task (a brief is outside the digest's budget; `agent spawn` refuses one over 8,000 characters, past which Claude Code would not show it whole), and where each of the workspace's repos is checked out and on which branch; on `UserPromptSubmit` and `PostToolBatch`, a short delta of what other agents have done since the agent last looked. Nothing is injected when nothing changed.
 
 ### The MCP server
 

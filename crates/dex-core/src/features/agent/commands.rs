@@ -7,8 +7,9 @@ use dex_protocol::agent::{
 use rusqlite::Connection;
 
 use super::identity;
-use super::logic::{self, HookInput, HookKind, SessionStart};
+use super::logic::{self, HookInput, HookKind};
 use super::model::{Agent, AgentError};
+use super::session;
 use super::store;
 use crate::app::AppState;
 use crate::features::{context, workspace};
@@ -30,8 +31,8 @@ pub async fn event(state: &AppState, args: AgentEventArgs) -> Result<EventOutcom
     if input.from_subagent {
         return Ok(IGNORED);
     }
-    // /clear: the session ends, the agent does not (a SessionStart follows).
-    if kind == HookKind::SessionEnd && !logic::ends_the_agent(input.end_reason.as_deref()) {
+    // /clear, /resume: the session ends, the agent does not (a SessionStart follows).
+    if kind == HookKind::SessionEnd && !session::ends_the_agent(input.end_reason.as_deref()) {
         return Ok(IGNORED);
     }
     let now = clock::now_millis();
@@ -84,17 +85,28 @@ impl Hook<'_> {
 
 fn session_start(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<()> {
     let pane = &hook.args.pane;
-    if logic::session_start(hook.input.source.as_deref()) == SessionStart::Continues {
-        // /clear or compaction: the same agent carries on, maybe under a new
-        // session id, and its status does not change.
-        if let Some(agent) = store::find_live_in_pane(conn, pane)? {
-            return store::update_session(conn, &agent.id, hook.session(), hook.mode(), hook.now);
-        }
-        // Its SessionEnd may have come first and ended it: the pane's agent
-        // that ended moments ago is the one carrying on, not someone new.
-        let just_ended = store::find_latest_in_pane(conn, pane)?
-            .filter(|agent| logic::carries_on(agent.ended_at, hook.args.stamp));
-        if let Some(agent) = revive(conn, hook, just_ended)? {
+    let source = hook.input.source.as_deref();
+    // /clear, /resume or compaction: the same agent carries on, maybe under a
+    // new session id, and its status does not change.
+    if session::keeps_live_agent(source)
+        && let Some(agent) = store::find_live_in_pane(conn, pane)?
+    {
+        return store::update_session(conn, &agent.id, hook.session(), hook.mode(), hook.now);
+    }
+    // Its SessionEnd may have come first and ended it: the pane's agent that
+    // ended moments ago is the one carrying on, not someone new. Timed by the
+    // ending hook's own stamp (its status_at), on the same clock as this one.
+    if session::revives_just_ended(source) {
+        let just_ended = store::find_latest_in_pane(conn, pane)?.filter(|agent| {
+            agent.status == AgentStatus::Dead
+                && hook.args.agent.as_ref().is_none_or(|id| *id == agent.id)
+                && session::carries_on(agent.status_at, hook.args.stamp)
+        });
+        if let Some(mut agent) = just_ended {
+            store::revive(conn, &agent.id, hook.args.stamp)?;
+            agent.status = AgentStatus::Unknown;
+            agent.status_at = hook.args.stamp;
+            agent.ended_at = None;
             store::update_session(conn, &agent.id, hook.session(), hook.mode(), hook.now)?;
             return apply(conn, &agent, hook);
         }

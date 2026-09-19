@@ -76,40 +76,6 @@ pub fn read_input(input: &Value) -> HookInput {
     }
 }
 
-/// How a SessionStart relates to the agent already in the pane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionStart {
-    /// `startup`, `resume`, `fork`: a session begins; register or rebind an agent.
-    Begins,
-    /// `clear`, `compact`: the same agent carries on, maybe under a new session id.
-    Continues,
-}
-
-/// Whether a SessionEnd is the agent ending. `/clear` ends the session, not
-/// the agent: Claude Code sends SessionEnd, then at once a SessionStart with a
-/// new session id, and the same agent - its id, its children - carries on.
-pub fn ends_the_agent(end_reason: Option<&str>) -> bool {
-    end_reason != Some("clear")
-}
-
-/// How soon after its agent ended a `clear` or `compact` SessionStart is still
-/// that agent carrying on, when its SessionEnd arrived first and said otherwise.
-pub const CARRY_ON_MS: i64 = 60_000;
-
-/// Whether a session carried on at `stamp` is the pane's agent that ended at
-/// `ended_at`: only moments later. Long after, whoever is there is someone new.
-pub fn carries_on(ended_at: Option<i64>, stamp: i64) -> bool {
-    ended_at.is_some_and(|ended| stamp > ended && stamp - ended <= CARRY_ON_MS)
-}
-
-/// Classifies a SessionStart by its `source`.
-pub fn session_start(source: Option<&str>) -> SessionStart {
-    match source {
-        Some("clear") | Some("compact") => SessionStart::Continues,
-        _ => SessionStart::Begins,
-    }
-}
-
 /// The status a hook moves an agent to (PRD §9.2).
 pub fn status_after(kind: HookKind) -> AgentStatus {
     match kind {
@@ -292,15 +258,6 @@ mod tests {
                 .as_deref(),
             Some("overloaded")
         );
-    }
-
-    #[test]
-    fn clear_and_compact_continue_everything_else_begins() {
-        assert_eq!(session_start(Some("clear")), SessionStart::Continues);
-        assert_eq!(session_start(Some("compact")), SessionStart::Continues);
-        assert_eq!(session_start(Some("startup")), SessionStart::Begins);
-        assert_eq!(session_start(Some("resume")), SessionStart::Begins);
-        assert_eq!(session_start(None), SessionStart::Begins);
     }
 
     #[test]

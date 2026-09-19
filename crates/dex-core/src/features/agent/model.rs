@@ -66,6 +66,11 @@ pub enum AgentError {
     /// `agent.spawn` with nothing for the new agent to do.
     #[error("a spawned agent needs a task brief")]
     EmptyBrief,
+    /// Too long to reach the agent whole: Claude Code shows only so much at startup.
+    #[error(
+        "the task brief is {chars} characters, and the most a spawned agent can be given is {max}"
+    )]
+    BriefTooLong { chars: usize, max: usize },
     /// `--worktree` without `--repo`: there is no repository to branch.
     #[error("a worktree needs a repository")]
     WorktreeWithoutRepo,

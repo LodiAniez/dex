@@ -3,6 +3,15 @@
 use super::*;
 use crate::platform::config::DigestSettings;
 
+/// A digest's length without its task line: the task is outside the budget.
+fn budgeted(text: &str) -> usize {
+    text.lines()
+        .filter(|line| !line.starts_with("This agent's task: "))
+        .map(|line| line.len() + 1)
+        .sum::<usize>()
+        .saturating_sub(1)
+}
+
 /// The budgets Dex ships with; the owner may set others.
 fn caps() -> DigestSettings {
     DigestSettings::default()
@@ -120,7 +129,7 @@ fn a_full_digest_says_how_the_owner_hears_a_question_as_a_fact_not_an_order() {
     // An agent another agent started is not sent to the owner with what its lead can answer.
     assert!(text.contains("started by another agent"), "{text}");
     // Kept when the keys overflow: it is part of the orientation.
-    assert!(text.len() <= caps().full_chars);
+    assert!(budgeted(&text) <= caps().full_chars);
     let lower = text.to_lowercase();
     for order in ["you must", "you should", "always ", "never "] {
         assert!(!lower.contains(order), "{order:?} in {text}");
@@ -146,7 +155,7 @@ fn a_full_digest_keeps_the_orientation_when_keys_overflow() {
         ..Default::default()
     };
     let text = full(&orientation, caps().full_chars);
-    assert!(text.len() <= caps().full_chars);
+    assert!(budgeted(&text) <= caps().full_chars);
     assert!(text.contains("Workspace: api"), "{text}");
     assert!(text.contains("port the auth module"));
     // What was left out is named for what it is: lines of this digest, not updates.
@@ -198,7 +207,7 @@ fn a_brief_longer_than_the_budget_is_delivered_whole() {
 }
 
 #[test]
-fn the_rest_of_the_digest_fits_in_what_the_brief_leaves() {
+fn everything_but_the_brief_keeps_to_the_budget() {
     let brief = "x".repeat(1_500);
     let orientation = Orientation {
         workspace: "api".into(),
@@ -207,7 +216,11 @@ fn the_rest_of_the_digest_fits_in_what_the_brief_leaves() {
         ..Default::default()
     };
     let text = full(&orientation, caps().full_chars);
-    assert!(text.len() <= caps().full_chars, "{} > cap", text.len());
+    assert!(
+        budgeted(&text) <= caps().full_chars,
+        "{} > cap",
+        budgeted(&text)
+    );
     assert!(text.contains(&brief));
     assert!(
         text.contains("more lines of workspace context left out"),
@@ -236,4 +249,49 @@ fn an_agent_is_told_who_it_is() {
         ..named
     };
     assert!(full(&unnamed, caps().full_chars).contains("This agent's id is 0c23-agent."));
+}
+
+#[test]
+fn a_long_brief_leaves_the_rest_its_whole_budget() {
+    // The brief is outside the budget: an agent with a long one still learns
+    // its repos, whom to ask, and its messages.
+    let orientation = Orientation {
+        workspace: "api".into(),
+        repos: vec![WorkspaceCheckout {
+            repo: "api".into(),
+            path: Some("C:/src/api".into()),
+            branch: Some("main".into()),
+        }],
+        task_brief: Some("y".repeat(3_000)),
+        unread: 1,
+        ..Default::default()
+    };
+    let text = full(&orientation, caps().full_chars);
+    assert!(text.contains("Repo api is on main"), "{text}");
+    assert!(text.contains("has that agent to ask first"), "{text}");
+    assert!(text.contains("1 unread message waiting"), "{text}");
+}
+
+#[test]
+fn a_digest_never_passes_what_claude_code_shows_whole() {
+    // Past 10,000 characters Claude Code shows the agent a file path and a
+    // preview instead: a brief that long is cut, and says where the rest is.
+    let brief = "z".repeat(20_000);
+    let orientation = Orientation {
+        workspace: "api".into(),
+        task_brief: Some(brief),
+        ..Default::default()
+    };
+    let text = full(&orientation, caps().full_chars);
+    assert!(
+        text.chars().count() <= CEILING,
+        "{} chars",
+        text.chars().count()
+    );
+    assert!(
+        text.contains("The brief continues"),
+        "{}",
+        &text[text.len() - 200..]
+    );
+    assert!(text.contains("agents_list"));
 }

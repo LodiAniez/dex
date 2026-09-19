@@ -44,8 +44,9 @@ pub struct WorkspaceCheckout {
 pub struct Orientation {
     pub workspace: String,
     pub me: Option<Me>,
-    /// The workspace's repos as `(name, branch)`, so an agent knows which
-    /// checkout it is in before it touches anything (PRD §10.3).
+    /// The workspace's repos, where each is checked out and on which branch,
+    /// so an agent knows which checkout it is in before it touches anything
+    /// (PRD §10.3).
     pub repos: Vec<WorkspaceCheckout>,
     pub task_brief: Option<String>,
     pub siblings: Vec<Sibling>,
@@ -65,6 +66,15 @@ pub struct Change {
     pub created_at: i64,
 }
 
+/// The most any digest may be, in characters. Claude Code shows an agent a
+/// hook's context only up to 10,000 characters; past that it saves the text to
+/// a file and shows a path and a short preview instead, which nobody reads.
+pub const CEILING: usize = 9_500;
+
+/// Where a brief cut to fit the ceiling goes on: the agent's own row.
+const BRIEF_CONTINUES: &str =
+    " […] The brief continues; this agent's row in agents_list has it whole.";
+
 /// The heading every digest sits under, so an agent can recognise it.
 const HEADING: &str = "## Workspace context";
 
@@ -77,23 +87,19 @@ const HOW_THE_OWNER_HEARS: &str = "The owner sees at once when an agent asks the
 /// An agent's orientation when its session starts.
 ///
 /// Never cut: where it is, who it is, and above all its task, which nothing
-/// else can tell it (issue #55) - a brief longer than the budget is still
-/// delivered whole. The rest fits in what they leave, most important first.
+/// else can tell it (issue #55). The task sits outside the budget - a long one
+/// does not crowd out the rest, which gets the whole budget, most important
+/// first. Only Claude Code's own ceiling can cut the task, and then it says
+/// where the rest of it is.
 pub fn full(orientation: &Orientation, cap: usize) -> String {
     let mut text = HEADING.to_owned();
-    let mut always = vec![format!("Workspace: {}", orientation.workspace)];
+    text.push_str(&format!("\nWorkspace: {}", orientation.workspace));
     if let Some(me) = &orientation.me {
-        always.push(match &me.label {
+        text.push('\n');
+        text.push_str(&match &me.label {
             Some(label) => format!("This agent is {label} (agent id {}).", me.id),
             None => format!("This agent's id is {}.", me.id),
         });
-    }
-    if let Some(task) = &orientation.task_brief {
-        always.push(format!("This agent's task: {task}"));
-    }
-    for line in &always {
-        text.push('\n');
-        text.push_str(line);
     }
 
     let mut lines = Vec::new();
@@ -133,12 +139,34 @@ pub fn full(orientation: &Orientation, cap: usize) -> String {
             plural(orientation.unread, "message", "messages"),
         ));
     }
-    let room = cap.saturating_sub(text.len());
-    for line in pack(&lines, room, left_out) {
+    let rest = pack(&lines, cap.saturating_sub(text.len()), left_out);
+    if let Some(task) = &orientation.task_brief {
+        let others: usize = text.chars().count()
+            + rest
+                .iter()
+                .map(|line| line.chars().count() + 1)
+                .sum::<usize>();
+        text.push('\n');
+        text.push_str(&task_line(task, CEILING.saturating_sub(others + 1)));
+    }
+    for line in rest {
         text.push('\n');
         text.push_str(&line);
     }
     text
+}
+
+/// The task line, whole if it fits in `room` characters; cut to fit, saying
+/// where the rest is, if not.
+fn task_line(task: &str, room: usize) -> String {
+    let line = format!("This agent's task: {task}");
+    if line.chars().count() <= room {
+        return line;
+    }
+    let keep = room.saturating_sub(BRIEF_CONTINUES.chars().count());
+    let mut cut: String = line.chars().take(keep).collect();
+    cut.push_str(BRIEF_CONTINUES);
+    cut
 }
 
 /// What changed since an agent last looked, or `None` when nothing did.
@@ -227,7 +255,8 @@ fn earlier(dropped: usize) -> String {
 /// What a full digest left out: the rest of its own lines.
 fn left_out(dropped: usize) -> String {
     format!(
-        "[… {dropped} more lines of workspace context left out; agents_list and context_search have them …]"
+        "[… {dropped} more {} of workspace context left out; agents_list and context_search have them …]",
+        plural(dropped, "line", "lines"),
     )
 }
 

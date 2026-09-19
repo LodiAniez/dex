@@ -13,6 +13,7 @@ use crate::app::AppState;
 use crate::features::workspace::{self, WorkspaceError};
 
 mod asking;
+mod briefs;
 mod launch;
 mod orphans;
 mod placement;
