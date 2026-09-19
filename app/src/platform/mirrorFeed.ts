@@ -9,7 +9,9 @@
 export type MirrorMessage =
   | { kind: "screen"; content: string; cols: number; rows: number }
   | { kind: "data"; text: string }
-  | { kind: "resize"; cols: number; rows: number };
+  | { kind: "resize"; cols: number; rows: number }
+  /** The pane left: it moved to another window or closed. A mirror asks again. */
+  | { kind: "end" };
 
 type Pending = { kind: "data"; text: string } | { kind: "resize"; cols: number; rows: number };
 
@@ -20,6 +22,8 @@ export class MirrorFeed {
   private backlog: Pending[] | null = [];
   private backlogSize = 0;
   private stopped = false;
+  /** The latest size among output dropped from the backlog: still the pane's size. */
+  private droppedSize: { cols: number; rows: number } | null = null;
 
   constructor(private readonly send: (message: MirrorMessage) => void) {}
 
@@ -27,6 +31,7 @@ export class MirrorFeed {
   start(content: string, cols: number, rows: number): void {
     if (this.stopped || this.backlog === null) return;
     this.send({ kind: "screen", content, cols, rows });
+    if (this.droppedSize) this.send({ kind: "resize", ...this.droppedSize });
     const waiting = this.backlog;
     this.backlog = null;
     for (const message of waiting) this.send(message);
@@ -59,6 +64,13 @@ export class MirrorFeed {
     this.backlog = null;
   }
 
+  /** The pane is leaving this window: the mirror is told, once, and then nothing more. */
+  end(): void {
+    if (this.stopped) return;
+    this.send({ kind: "end" });
+    this.stop();
+  }
+
   /** Keeps the newest output within the limit, dropping the oldest. */
   private trim(): void {
     const backlog = this.backlog;
@@ -66,6 +78,7 @@ export class MirrorFeed {
     while (this.backlogSize > MirrorFeed.MAX_BACKLOG && backlog.length > 0) {
       const first = backlog[0];
       if (first.kind !== "data") {
+        this.droppedSize = { cols: first.cols, rows: first.rows };
         backlog.shift();
         continue;
       }

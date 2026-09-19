@@ -64,3 +64,31 @@ describe("a mirror feed", () => {
     expect(backlog.endsWith("0123456789")).toBe(true);
   });
 });
+
+describe("a mirror feed ending", () => {
+  it("tells the mirror it ended, once, and sends nothing after", () => {
+    const { sent, feed: f } = feed();
+    f.start("S", 80, 24);
+    f.end();
+    f.end();
+    f.data("late");
+    expect(sent).toEqual([{ kind: "screen", content: "S", cols: 80, rows: 24 }, { kind: "end" }]);
+  });
+
+  it("says so even before the screen came", () => {
+    const { sent, feed: f } = feed();
+    f.data("x");
+    f.end();
+    expect(sent).toEqual([{ kind: "end" }]);
+  });
+});
+
+describe("a mirror feed's backlog", () => {
+  it("keeps the latest size when old output is dropped, so the mirror lays out as the pane does", () => {
+    const { sent, feed: f } = feed();
+    f.resize(100, 40);
+    for (let i = 0; i < 30000; i++) f.data("0123456789");
+    f.start("S", 80, 24);
+    expect(sent[1]).toEqual({ kind: "resize", cols: 100, rows: 40 });
+  });
+});

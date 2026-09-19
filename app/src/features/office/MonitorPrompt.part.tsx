@@ -37,7 +37,8 @@ export function MonitorPrompt({ employee, inputRef }: { employee: Employee; inpu
         aria-label={`Prompt for ${employee.persona.name}`}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter") {
+          // Not mid-composition (an IME's Enter picks the word, it does not send).
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
             event.preventDefault();
             void send();
           }

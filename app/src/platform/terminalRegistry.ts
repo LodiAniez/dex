@@ -122,7 +122,7 @@ function startShell(entry: Entry): void {
     onEvent: (event) => handleEvent(entry, event),
   }).catch((err) => {
     entry.dead = true; // No shell: shown as exited, not waiting on one that never came.
-    entry.term.write(`\r\n\x1b[31mCould not start a shell: ${err}\x1b[0m\r\n`);
+    show(entry, `\r\n\x1b[31mCould not start a shell: ${err}\x1b[0m\r\n`);
   });
 }
 
@@ -161,7 +161,7 @@ export function restartIn(paneId: string, runtime: string): boolean {
       if (!entry.switching || entries.get(paneId) !== entry) return;
       entry.switching = false;
       entry.runtime = previous; // Still running where it was.
-      entry.term.write(`\r\n\x1b[31mCould not restart in ${runtimeLabel(runtime)}: ${err}\x1b[0m\r\n`);
+      show(entry, `\r\n\x1b[31mCould not restart in ${runtimeLabel(runtime)}: ${err}\x1b[0m\r\n`);
     }, KILL_GRACE_MS);
   });
   return true;
@@ -205,7 +205,8 @@ export function disposeTerminal(paneId: string): void {
   // A switch under way must not start a shell for a pane that is gone.
   entry.switching = false;
   if (!entry.dead) void killPty(paneId).catch(() => {});
-  for (const mirror of entry.mirrors) mirror.stop();
+  for (const mirror of entry.mirrors) mirror.end();
+  entry.mirrors.clear();
   entry.term.dispose();
   entry.element.remove();
   entries.delete(paneId);
@@ -230,6 +231,8 @@ export async function handOff(paneId: string): Promise<string> {
   await new Promise<void>((resolve) => entry.term.write("", resolve));
   flushAck(entry);
   entry.away = true;
+  for (const mirror of entry.mirrors) mirror.end();
+  entry.mirrors.clear();
   detachTerminal(paneId);
   return entry.serialize.serialize();
 }
@@ -356,18 +359,26 @@ function handleEvent(entry: Entry, event: PtyEvent): void {
   if (event.type === "dropped") {
     // Bytes were discarded mid-stream, so the terminal state is unknown: reset it (PRD §7.1).
     entry.term.reset();
-    entry.term.write("\x1b[2m[… output dropped while the display was unresponsive …]\x1b[0m\r\n");
+    // ESC c: a mirror resets as the terminal just did.
+    for (const mirror of entry.mirrors) mirror.data("\x1bc");
+    show(entry, "\x1b[2m[… output dropped while the display was unresponsive …]\x1b[0m\r\n");
     return;
   }
   // Closed to start again in another terminal (`restartIn`): no exit to report.
   if (entry.switching && entries.get(entry.paneId) === entry) {
     entry.switching = false;
-    entry.term.write(`\r\n\x1b[2m[now in ${runtimeLabel(entry.runtime ?? "windows")}]\x1b[0m\r\n`);
+    show(entry, `\r\n\x1b[2m[now in ${runtimeLabel(entry.runtime ?? "windows")}]\x1b[0m\r\n`);
     startShell(entry);
     return;
   }
   // Keep the pane and its scrollback: output after a crash is often exactly what the user wants.
   entry.dead = true;
   const code = event.code === null ? "unknown" : String(event.code);
-  entry.term.write(`\r\n\x1b[2m[process exited with code ${code}]\x1b[0m\r\n`);
+  show(entry, `\r\n\x1b[2m[process exited with code ${code}]\x1b[0m\r\n`);
+}
+
+/** Writes a notice of Dex's own into the pane, and into anything mirroring it. */
+function show(entry: Entry, text: string): void {
+  entry.term.write(text);
+  for (const mirror of entry.mirrors) mirror.data(text);
 }

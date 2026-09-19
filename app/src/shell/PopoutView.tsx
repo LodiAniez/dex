@@ -34,8 +34,12 @@ export function PopoutView({ paneId, title }: { paneId: string; title: string })
     let cancelled = false;
     const stops: (() => void)[] = [];
     void (async () => {
-      // The office's monitor asks this window for a copy of its pane.
-      stops.push(await serveMirrors());
+      // The office's monitor asks this window for a copy of its pane. Started
+      // after this effect was cleaned up (React runs it twice in development),
+      // it stops at once rather than serve every copy twice.
+      const serving = await serveMirrors();
+      if (cancelled) serving();
+      else stops.push(serving);
       stops.push(
         await listen<Screen>(STATE, (event) => {
           if (event.payload.paneId !== paneId || cancelled) return;

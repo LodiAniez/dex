@@ -30,10 +30,11 @@
   cursor: default;
 }
 
-/* Over the whole window: while it is open, nothing behind it answers. */
+/* Over everything but the title bar, whose window buttons stay the window's:
+   while it is open, nothing else answers. */
 .monitor-scrim {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-height, 32px) 0 0 0;
   z-index: 50;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -83,11 +84,6 @@
   place-items: center;
   overflow: hidden;
   cursor: text;
-}
-
-.monitor-term .xterm-viewport {
-  /* The copy follows the agent; there is nothing of the owner's to scroll to. */
-  overflow-y: hidden !important;
 }
 
 .monitor-waking,
