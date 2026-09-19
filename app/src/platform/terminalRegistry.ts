@@ -27,6 +27,8 @@ import { loadWebgl } from "./webglRenderer";
 const ACK_BATCH_BYTES = 64 * 1024;
 /** ...or after this long, so a small trailing amount is never left unacknowledged. */
 const ACK_FLUSH_MS = 50;
+/** How long a restart whose kill failed waits for the shell's exit anyway (`restartIn`). */
+const KILL_GRACE_MS = 1000;
 /** PRD §7.1: ConPTY repaints on every resize, so only send the settled size. */
 const RESIZE_DEBOUNCE_MS = 100;
 
@@ -176,10 +178,16 @@ export function restartIn(paneId: string, runtime: string): boolean {
   const previous = entry.runtime;
   entry.runtime = runtime;
   entry.switching = true;
+  // A shell that ended on its own a moment before cannot be killed, but its
+  // exit is on its way and the restart goes ahead on it (`handleEvent`). Only
+  // a shell still there after the grace, in a pane still open, failed to end.
   void killPty(paneId).catch((err) => {
-    entry.switching = false;
-    entry.runtime = previous; // Still running where it was.
-    entry.term.write(`\r\n\x1b[31mCould not restart in ${runtimeLabel(runtime)}: ${err}\x1b[0m\r\n`);
+    setTimeout(() => {
+      if (!entry.switching || entries.get(paneId) !== entry) return;
+      entry.switching = false;
+      entry.runtime = previous; // Still running where it was.
+      entry.term.write(`\r\n\x1b[31mCould not restart in ${runtimeLabel(runtime)}: ${err}\x1b[0m\r\n`);
+    }, KILL_GRACE_MS);
   });
   return true;
 }

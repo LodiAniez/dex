@@ -355,6 +355,7 @@ fn an_exit_report_with_no_waiter_answer_gives_up_rather_than_hang() {
     assert_eq!(slot.wait(Duration::from_millis(20)), None);
 }
 
+#[cfg(windows)]
 #[test]
 fn a_kill_succeeds_whatever_error_the_thread_last_saw() {
     // A failed Windows call before the kill leaves its error on the thread,

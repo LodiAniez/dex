@@ -52,6 +52,10 @@ describe("switchNow", () => {
     expect(switchNow(running, "windows")).toBe(false);
   });
 
+  it("does not start a second restart while one is on its way", () => {
+    expect(switchNow({ ...running, switching: true }, "wsl:Ubuntu")).toBe(false);
+  });
+
   it("leaves a shell not started yet, an exited one, and one shown in another window", () => {
     expect(switchNow({ ...running, spawned: false }, "wsl:Ubuntu")).toBe(false);
     expect(switchNow({ ...running, dead: true }, "wsl:Ubuntu")).toBe(false);
