@@ -1,11 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { terminalChoices, useTerminal } from "../platform/runtimes";
 import "./setup.css";
 import { type DoctorReport, distroToSetUp } from "./setup";
 import { IS_MAC } from "./keybindings";
 import { TerminalChoice } from "./TerminalChoice";
 
-export interface SettingsProps {
+export interface SettingsPanelProps {
   /** The last setup checks; null until they have run. */
   report: DoctorReport | null;
   /** Re-runs the checks; the parent owns the report. */
@@ -20,15 +20,17 @@ export interface SettingsProps {
  * terminal it opens (PowerShell or a WSL distro). Everything else is in
  * `config.toml`, which Dex only reads.
  */
-export function Settings({ report, onRecheck, onOpenSetup, onClose }: SettingsProps) {
+export function SettingsPanel({ report, onRecheck, onOpenSetup, onClose }: SettingsPanelProps) {
   const terminal = useTerminal(report);
-  const { view } = terminal;
+  const { view, error } = terminal;
+  // While a restart offer waits, nothing here may lead away from it.
+  const [offerPending, setOfferPending] = useState(false);
 
   // Take the keyboard on open, so Escape closes the panel and not xterm's.
   const panel = useRef<HTMLElement>(null);
   useEffect(() => panel.current?.focus(), []);
 
-  const distro = view ? distroToSetUp(report, view.terminal) : null;
+  const distro = view && !offerPending ? distroToSetUp(report, view.terminal) : null;
   return (
     <div className="setup-backdrop" onMouseDown={onClose}>
       <section
@@ -36,6 +38,7 @@ export function Settings({ report, onRecheck, onOpenSetup, onClose }: SettingsPr
         tabIndex={-1}
         className="setup settings"
         role="dialog"
+        aria-modal="true"
         aria-label="Settings"
         onMouseDown={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
@@ -45,26 +48,28 @@ export function Settings({ report, onRecheck, onOpenSetup, onClose }: SettingsPr
         <header className="setup-head">
           <h2>Settings</h2>
         </header>
-        {view && terminalChoices(view).length === 0 ? (
+        {view === null ? (
+          <p className="setup-sub">{error ? `Dex could not read its terminal: ${error}` : "Loading..."}</p>
+        ) : terminalChoices(view).length === 0 ? (
           <p className="setup-sub">
             {IS_MAC
               ? "Dex runs its panes and agents in your login shell."
               : "Dex runs its panes and agents in PowerShell. Install WSL to be able to choose a Linux distro instead."}
           </p>
         ) : (
-          <TerminalChoice terminal={terminal} onChosen={onRecheck} />
+          <TerminalChoice terminal={terminal} onChosen={onRecheck} onOfferChange={setOfferPending} />
         )}
         {distro && (
           <div className="setup-check settings-setup">
             <span className="setup-detail">
-              {distro} is not set up for agents yet.
-              <span className="setup-explain">
-                Agents there need Dex's hooks, MCP server and skill, installed from the setup panel.
-              </span>
+              {distro.distro} is not ready for agents yet.
+              <span className="setup-explain">{distro.detail}</span>
             </span>
-            <button type="button" className="setup-button" onClick={onOpenSetup}>
-              Open setup
-            </button>
+            {distro.fixable && (
+              <button type="button" className="setup-button" onClick={onOpenSetup}>
+                Open setup
+              </button>
+            )}
           </div>
         )}
         <footer className="setup-foot">

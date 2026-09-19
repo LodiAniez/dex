@@ -378,9 +378,11 @@ body,
   cursor: pointer;
 }
 
-.settings-open:hover {
+.settings-open:hover,
+.settings-open:focus-visible {
   border-color: #4a515e;
   color: #e6e9ef;
+  outline: none;
 }
 
 /* ---- Activity popup: the same stream, over whatever view is up ---- */

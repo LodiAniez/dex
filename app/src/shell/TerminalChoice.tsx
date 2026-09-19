@@ -14,7 +14,7 @@ import { canRestartIn, restartIn } from "../platform/terminalRegistry";
 import "./setup.css";
 
 /** The chosen terminal and a way to choose, as `useTerminal` gives them. */
-export type Terminal = ReturnType<typeof useTerminal>;
+export type TerminalPick = ReturnType<typeof useTerminal>;
 
 /**
  * Which terminal Dex opens, where there is a choice (WSL installed). Everything
@@ -23,7 +23,16 @@ export type Terminal = ReturnType<typeof useTerminal>;
  * not (`workspace/switching.rs` in dex-core). A WSL distro also needs setting up for
  * agents, which the checks below then say.
  */
-export function TerminalChoice({ terminal, onChosen }: { terminal: Terminal; onChosen: () => Promise<void> }) {
+export function TerminalChoice({
+  terminal,
+  onChosen,
+  onOfferChange,
+}: {
+  terminal: TerminalPick;
+  onChosen: () => Promise<void>;
+  /** Whether a restart offer is waiting on the owner: nothing should take them away from it. */
+  onOfferChange?: (pending: boolean) => void;
+}) {
   const { view, choose } = terminal;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -35,7 +44,10 @@ export function TerminalChoice({ terminal, onChosen }: { terminal: Terminal; onC
   // The question is the next thing to answer: take the keyboard to it.
   useEffect(() => {
     if (offer) offerRef.current?.focus();
-  }, [offer]);
+    onOfferChange?.(offer !== null);
+  }, [offer, onOfferChange]);
+  // The latest pick: a slower re-check from an earlier one must not report under it.
+  const picks = useRef(0);
   const choices = view ? terminalChoices(view) : [];
   if (!view || choices.length === 0) return null;
   const agentIn = (pane: string) => {
@@ -48,9 +60,11 @@ export function TerminalChoice({ terminal, onChosen }: { terminal: Terminal; onC
     setBusy(true);
     setProblem(null);
     setOffer(null);
-    const failed = (err: unknown) =>
+    const mine = ++picks.current;
+    const failed = (err: unknown) => {
       // What happened, and the daemon's repair for it.
-      setProblem(err instanceof DexError ? `${err.message}. ${err.repair}` : String(err));
+      if (picks.current === mine) setProblem(err instanceof DexError ? `${err.message}. ${err.repair}` : String(err));
+    };
     try {
       const answer = await choose(runtime);
       const restartable = offered(answer.running_elsewhere, runtime);

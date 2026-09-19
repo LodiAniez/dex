@@ -11,7 +11,7 @@ interface StepOutcome {
   output: string;
 }
 
-export interface SetupProps {
+export interface SetupPanelProps {
   report: DoctorReport;
   /** Re-runs the checks; the parent owns the report. */
   onRecheck: () => Promise<void>;
@@ -23,7 +23,7 @@ export interface SetupProps {
  * each failure Dex can fix itself. Every button runs the same CLI command a
  * person would type, so this can never drift from the documented setup.
  */
-export function Setup({ report, onRecheck, onClose }: SetupProps) {
+export function SetupPanel({ report, onRecheck, onClose }: SetupPanelProps) {
   const [running, setRunning] = useState<Step | null>(null);
   const terminal = useTerminal(report);
   const [outcome, setOutcome] = useState<{ step: Step; result: StepOutcome } | null>(null);
@@ -55,6 +55,7 @@ export function Setup({ report, onRecheck, onClose }: SetupProps) {
         tabIndex={-1}
         className="setup"
         role="dialog"
+        aria-modal="true"
         aria-label="Set up Dex"
         onMouseDown={(event) => event.stopPropagation()}
         onKeyDown={(event) => {

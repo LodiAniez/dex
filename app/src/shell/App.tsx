@@ -25,7 +25,7 @@ import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
 import { neighborPane } from "./paneGeometry";
 import { bringForward, forgetDetached, getDetached, isDetached, watchPopouts } from "./popouts";
-import { useSetupDialogs } from "./SetupDialogs";
+import { useSetupDialogs } from "./useSetupDialogs";
 import { Sidebar } from "./Sidebar";
 import { chooseMode, modeOfAction, nextMode, rememberMode, showsPanes, storedMode, whenPanesHidden, type ViewMode } from "./viewMode";
 import { TitleBar } from "./TitleBar";
