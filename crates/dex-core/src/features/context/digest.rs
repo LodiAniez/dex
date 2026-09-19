@@ -22,13 +22,31 @@ pub struct Sibling {
     pub task: Option<String>,
 }
 
+/// The agent a digest is for, so it knows who it is: its own row in
+/// `agents_list`, and the name others use for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Me {
+    pub id: String,
+    pub label: Option<String>,
+}
+
+/// One of the workspace's repos, where this workspace has it checked out -
+/// its worktree, which may be on another branch than the repo's own checkout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceCheckout {
+    pub repo: String,
+    pub path: Option<String>,
+    pub branch: Option<String>,
+}
+
 /// What a full digest is built from.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Orientation {
     pub workspace: String,
+    pub me: Option<Me>,
     /// The workspace's repos as `(name, branch)`, so an agent knows which
     /// checkout it is in before it touches anything (PRD §10.3).
-    pub repos: Vec<(String, Option<String>)>,
+    pub repos: Vec<WorkspaceCheckout>,
     pub task_brief: Option<String>,
     pub siblings: Vec<Sibling>,
     /// Entry keys, most recently updated first.
@@ -57,14 +75,38 @@ const HEADING: &str = "## Workspace context";
 const HOW_THE_OWNER_HEARS: &str = "The owner sees at once when an agent asks them something with the AskUserQuestion tool; a question that only ends a reply is easy for them to miss. An agent started by another agent has that agent to ask first.";
 
 /// An agent's orientation when its session starts.
+///
+/// Never cut: where it is, who it is, and above all its task, which nothing
+/// else can tell it (issue #55) - a brief longer than the budget is still
+/// delivered whole. The rest fits in what they leave, most important first.
 pub fn full(orientation: &Orientation, cap: usize) -> String {
-    let mut lines = vec![format!("Workspace: {}", orientation.workspace)];
-    for (repo, branch) in &orientation.repos {
-        let branch = branch.as_deref().unwrap_or("a detached HEAD");
-        lines.push(format!("Repo {repo} is on {branch}."));
+    let mut text = HEADING.to_owned();
+    let mut always = vec![format!("Workspace: {}", orientation.workspace)];
+    if let Some(me) = &orientation.me {
+        always.push(match &me.label {
+            Some(label) => format!("This agent is {label} (agent id {}).", me.id),
+            None => format!("This agent's id is {}.", me.id),
+        });
     }
     if let Some(task) = &orientation.task_brief {
-        lines.push(format!("This agent's task: {task}"));
+        always.push(format!("This agent's task: {task}"));
+    }
+    for line in &always {
+        text.push('\n');
+        text.push_str(line);
+    }
+
+    let mut lines = Vec::new();
+    for checkout in &orientation.repos {
+        let branch = checkout.branch.as_deref().unwrap_or("a detached HEAD");
+        // Where: the repo's own checkout may be elsewhere, on another branch.
+        lines.push(match &checkout.path {
+            Some(path) => format!(
+                "Repo {} is on {branch}, checked out at {path}.",
+                checkout.repo
+            ),
+            None => format!("Repo {} is on {branch}.", checkout.repo),
+        });
     }
     lines.push(HOW_THE_OWNER_HEARS.to_owned());
     if !orientation.siblings.is_empty() {
@@ -91,8 +133,12 @@ pub fn full(orientation: &Orientation, cap: usize) -> String {
             plural(orientation.unread, "message", "messages"),
         ));
     }
-    // Keeps the head: the workspace and task matter more than the last key.
-    fit(&lines, cap, Keep::Head).unwrap_or_else(|| HEADING.to_owned())
+    let room = cap.saturating_sub(text.len());
+    for line in pack(&lines, room, left_out) {
+        text.push('\n');
+        text.push_str(&line);
+    }
+    text
 }
 
 /// What changed since an agent last looked, or `None` when nothing did.
@@ -116,7 +162,7 @@ pub fn delta(changes: &[Change], now: i64, cap: usize) -> Option<String> {
         })
         .collect();
     // Keeps the head: `changes` is newest first, so the oldest is dropped.
-    fit(&lines, cap, Keep::Head)
+    fit(&lines, cap)
 }
 
 /// Collapses repeated writes to one key into the latest, so a busy agent does
@@ -139,42 +185,50 @@ fn collapse(changes: &[Change]) -> Vec<&Change> {
     kept
 }
 
-/// Which end of the list survives truncation.
-enum Keep {
-    Head,
-}
-
 /// Joins lines under the heading within `cap` characters, noting any dropped.
-fn fit(lines: &[String], cap: usize, keep: Keep) -> Option<String> {
+fn fit(lines: &[String], cap: usize) -> Option<String> {
     if lines.is_empty() {
         return None;
     }
-    let Keep::Head = keep;
     let mut text = HEADING.to_owned();
-    let mut used = 0;
-    for line in lines {
-        if text.len() + 1 + line.len() > cap.saturating_sub(marker_len(lines.len())) {
-            break;
-        }
+    for line in pack(lines, cap.saturating_sub(text.len()), earlier) {
         text.push('\n');
-        text.push_str(line);
-        used += 1;
+        text.push_str(&line);
     }
-    let dropped = lines.len() - used;
-    if dropped > 0 {
-        text.push('\n');
-        text.push_str(&omission(dropped));
-    }
-    (used > 0 || dropped > 0).then_some(text)
+    Some(text)
 }
 
-fn omission(dropped: usize) -> String {
+/// The lines, in order, that fit in `room` characters (each with its line
+/// break), and then - if any did not - a note of how many were left out, room
+/// for which is kept.
+fn pack(lines: &[String], room: usize, omission: fn(usize) -> String) -> Vec<String> {
+    let reserve = omission(lines.len()).len() + 1;
+    let mut used = 0;
+    let mut kept = Vec::new();
+    for line in lines {
+        if used + 1 + line.len() > room.saturating_sub(reserve) {
+            break;
+        }
+        used += 1 + line.len();
+        kept.push(line.clone());
+    }
+    let dropped = lines.len() - kept.len();
+    if dropped > 0 {
+        kept.push(omission(dropped));
+    }
+    kept
+}
+
+/// What a delta left out: older updates.
+fn earlier(dropped: usize) -> String {
     format!("[… {dropped} earlier updates omitted; context_search finds them …]")
 }
 
-/// Room reserved so the omission note itself always fits.
-fn marker_len(total: usize) -> usize {
-    omission(total).len() + 1
+/// What a full digest left out: the rest of its own lines.
+fn left_out(dropped: usize) -> String {
+    format!(
+        "[… {dropped} more lines of workspace context left out; agents_list and context_search have them …]"
+    )
 }
 
 fn plural<'a>(n: usize, one: &'a str, many: &'a str) -> &'a str {
@@ -201,163 +255,4 @@ pub fn ago(now: i64, then: i64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::platform::config::DigestSettings;
-
-    /// The budgets Dex ships with; the owner may set others.
-    fn caps() -> DigestSettings {
-        DigestSettings::default()
-    }
-
-    fn change(author: &str, body: &str, key: Option<&str>, at: i64) -> Change {
-        Change {
-            author: author.into(),
-            kind: if key.is_some() { "write" } else { "note" }.into(),
-            key: key.map(str::to_owned),
-            body: body.into(),
-            created_at: at,
-        }
-    }
-
-    #[test]
-    fn an_empty_delta_is_nothing_at_all() {
-        assert_eq!(delta(&[], 0, caps().delta_chars), None);
-    }
-
-    #[test]
-    fn a_delta_lists_what_others_did_with_relative_times() {
-        let now = 1_000_000;
-        let changes = [change(
-            "backend",
-            "noted the schema moved",
-            None,
-            now - 600_000,
-        )];
-        let text = delta(&changes, now, caps().delta_chars).unwrap();
-        assert!(text.starts_with(HEADING));
-        assert!(text.contains("backend noted the schema moved"));
-        assert!(text.contains("10 minutes ago"), "{text}");
-    }
-
-    #[test]
-    fn a_delta_never_exceeds_its_budget_and_says_what_it_dropped() {
-        let now = 0;
-        let changes: Vec<Change> = (0..500)
-            .map(|i| change("agent", &format!("did thing number {i}"), None, 0))
-            .collect();
-        let text = delta(&changes, now, caps().delta_chars).unwrap();
-        assert!(
-            text.len() <= caps().delta_chars,
-            "{} characters exceeds the {} cap",
-            text.len(),
-            caps().delta_chars
-        );
-        assert!(text.contains("earlier updates omitted"), "{text}");
-        assert!(
-            text.contains("did thing number 0"),
-            "the newest survives: {text}"
-        );
-    }
-
-    #[test]
-    fn repeated_writes_to_one_key_collapse_to_the_latest() {
-        let now = 0;
-        let changes = [
-            change("a", "wrote notes (v3)", Some("notes"), 0),
-            change("a", "wrote notes (v2)", Some("notes"), -1),
-            change("a", "wrote notes (v1)", Some("notes"), -2),
-            change("a", "wrote other (v1)", Some("other"), -3),
-        ];
-        let text = delta(&changes, now, caps().delta_chars).unwrap();
-        assert_eq!(text.matches("wrote notes").count(), 1, "{text}");
-        assert!(text.contains("wrote notes (v3)"), "the latest wins: {text}");
-        assert!(text.contains("wrote other"));
-    }
-
-    #[test]
-    fn a_full_digest_orients_without_instructing() {
-        let orientation = Orientation {
-            workspace: "api".into(),
-            repos: vec![("api".into(), Some("main".into()))],
-            task_brief: Some("port the auth module".into()),
-            siblings: vec![Sibling {
-                label: "frontend".into(),
-                status: "running".into(),
-                task: Some("rebuild the login form".into()),
-            }],
-            entries: vec!["auth/jwt".into(), "db/pool".into()],
-            unread: 2,
-        };
-        let text = full(&orientation, caps().full_chars);
-        assert!(text.contains("Workspace: api"));
-        assert!(text.contains("Repo api is on main."));
-        assert!(text.contains("frontend (running) — rebuild the login form"));
-        assert!(text.contains("- auth/jwt"));
-        assert!(text.contains("2 unread messages waiting"));
-        assert!(text.len() <= caps().full_chars);
-    }
-
-    #[test]
-    fn a_full_digest_says_how_the_owner_hears_a_question_as_a_fact_not_an_order() {
-        // An agent that ended its turn "Reply yes and I'll overwrite the file"
-        // sat unanswered: to Claude Code, and so to Dex, its turn was over. The
-        // dialog tool is the one way of asking that Dex hears about for certain.
-        let orientation = Orientation {
-            workspace: "api".into(),
-            task_brief: Some("port the auth module".into()),
-            entries: (0..500).map(|i| format!("namespace/key-{i}")).collect(),
-            ..Default::default()
-        };
-        let text = full(&orientation, caps().full_chars);
-        assert!(text.contains("AskUserQuestion"), "{text}");
-        // An agent another agent started is not sent to the owner with what its lead can answer.
-        assert!(text.contains("started by another agent"), "{text}");
-        // Kept when the keys overflow: it is part of the orientation.
-        assert!(text.len() <= caps().full_chars);
-        let lower = text.to_lowercase();
-        for order in ["you must", "you should", "always ", "never "] {
-            assert!(!lower.contains(order), "{order:?} in {text}");
-        }
-    }
-
-    #[test]
-    fn one_unread_message_reads_as_one() {
-        let orientation = Orientation {
-            workspace: "api".into(),
-            unread: 1,
-            ..Default::default()
-        };
-        assert!(full(&orientation, caps().full_chars).contains("1 unread message waiting"));
-    }
-
-    #[test]
-    fn a_full_digest_keeps_the_orientation_when_keys_overflow() {
-        let orientation = Orientation {
-            workspace: "api".into(),
-            task_brief: Some("port the auth module".into()),
-            entries: (0..500).map(|i| format!("namespace/key-{i}")).collect(),
-            ..Default::default()
-        };
-        let text = full(&orientation, caps().full_chars);
-        assert!(text.len() <= caps().full_chars);
-        assert!(text.contains("Workspace: api"), "{text}");
-        assert!(text.contains("port the auth module"));
-        assert!(text.contains("earlier updates omitted"));
-    }
-
-    #[test]
-    fn relative_times_stay_coarse() {
-        let now = 10_000_000;
-        assert_eq!(ago(now, now), "just now");
-        assert_eq!(ago(now, now - 30_000), "just now");
-        assert_eq!(ago(now, now - 60_000), "1 minute ago");
-        assert_eq!(ago(now, now - 900_000), "15 minutes ago");
-        assert_eq!(ago(now, now - 7_200_000), "2 hours ago");
-        assert_eq!(
-            ago(now, now + 5_000),
-            "just now",
-            "clock skew is not negative"
-        );
-    }
-}
+mod tests;

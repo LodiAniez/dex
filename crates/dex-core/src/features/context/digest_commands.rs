@@ -6,7 +6,7 @@
 use dex_protocol::context::{Digest, DigestArgs};
 
 use super::commands::scope;
-use super::digest::{self, Change, Orientation, Sibling};
+use super::digest::{self, Change, Me, Orientation, Sibling, WorkspaceCheckout};
 use super::model::ContextError;
 use super::store;
 use crate::app::AppState;
@@ -49,15 +49,26 @@ pub async fn digest(state: &AppState, args: DigestArgs) -> Result<Digest, Contex
                             .unwrap_or_else(|| "this workspace".into()),
                         repos: repo::workspace_repos(conn, &scope.workspace_id)?
                             .into_iter()
-                            .map(|(name, worktree, branch)| {
-                                // The branch recorded when the worktree was made
+                            .map(|(name, checkout, branch)| {
+                                // The branch recorded when the repo was linked
                                 // can be stale; what is checked out now wins.
-                                let live = worktree
+                                let live = checkout
                                     .as_deref()
                                     .and_then(|path| repo::branch_at(Path::new(path)));
-                                (name, live.or(branch))
+                                WorkspaceCheckout {
+                                    repo: name,
+                                    path: checkout,
+                                    branch: live.or(branch),
+                                }
                             })
                             .collect(),
+                        me: match me {
+                            Some(id) => Some(Me {
+                                id: id.to_owned(),
+                                label: agent::label_of(conn, id)?,
+                            }),
+                            None => None,
+                        },
                         task_brief: match me {
                             Some(id) => agent::brief_of(conn, id)?,
                             None => None,

@@ -30,6 +30,10 @@ pub async fn event(state: &AppState, args: AgentEventArgs) -> Result<EventOutcom
     if input.from_subagent {
         return Ok(IGNORED);
     }
+    // /clear: the session ends, the agent does not (a SessionStart follows).
+    if kind == HookKind::SessionEnd && !logic::ends_the_agent(input.end_reason.as_deref()) {
+        return Ok(IGNORED);
+    }
     let now = clock::now_millis();
     state
         .db
@@ -85,6 +89,14 @@ fn session_start(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<()> {
         // session id, and its status does not change.
         if let Some(agent) = store::find_live_in_pane(conn, pane)? {
             return store::update_session(conn, &agent.id, hook.session(), hook.mode(), hook.now);
+        }
+        // Its SessionEnd may have come first and ended it: the pane's agent
+        // that ended moments ago is the one carrying on, not someone new.
+        let just_ended = store::find_latest_in_pane(conn, pane)?
+            .filter(|agent| logic::carries_on(agent.ended_at, hook.args.stamp));
+        if let Some(agent) = revive(conn, hook, just_ended)? {
+            store::update_session(conn, &agent.id, hook.session(), hook.mode(), hook.now)?;
+            return apply(conn, &agent, hook);
         }
     }
     let existing = match hook.session() {

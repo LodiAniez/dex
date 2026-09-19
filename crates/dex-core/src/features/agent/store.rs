@@ -131,6 +131,11 @@ pub fn find_by_session(
     )
 }
 
+/// The newest agent in a pane, ended or not.
+pub fn find_latest_in_pane(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<Agent>> {
+    find_one(conn, "pane_id = ?1", [pane_id])
+}
+
 /// The newest agent in a pane that has not ended.
 pub fn find_live_in_pane(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<Agent>> {
     find_one(conn, "pane_id = ?1 AND status != 'dead'", [pane_id])

@@ -48,6 +48,8 @@ pub struct HookInput {
     pub permission_mode: Option<String>,
     /// StopFailure: the failure type, e.g. `rate_limit`.
     pub failure: Option<String>,
+    /// SessionEnd: why, e.g. `clear`, `logout`, `prompt_input_exit`.
+    pub end_reason: Option<String>,
     /// Set when the hook fired inside one of Claude Code's own subagents.
     pub from_subagent: bool,
 }
@@ -67,6 +69,7 @@ pub fn read_input(input: &Value) -> HookInput {
         permission_mode: text("permission_mode"),
         // Not yet captured from a real StopFailure; these are the likely names.
         failure: ["error", "error_type", "reason"].into_iter().find_map(text),
+        end_reason: text("reason"),
         // Hooks also fire inside Claude Code's subagents, carrying the parent's
         // session_id plus an agent_id (PRD §9.1).
         from_subagent: input.get("agent_id").is_some_and(|id| !id.is_null()),
@@ -80,6 +83,23 @@ pub enum SessionStart {
     Begins,
     /// `clear`, `compact`: the same agent carries on, maybe under a new session id.
     Continues,
+}
+
+/// Whether a SessionEnd is the agent ending. `/clear` ends the session, not
+/// the agent: Claude Code sends SessionEnd, then at once a SessionStart with a
+/// new session id, and the same agent - its id, its children - carries on.
+pub fn ends_the_agent(end_reason: Option<&str>) -> bool {
+    end_reason != Some("clear")
+}
+
+/// How soon after its agent ended a `clear` or `compact` SessionStart is still
+/// that agent carrying on, when its SessionEnd arrived first and said otherwise.
+pub const CARRY_ON_MS: i64 = 60_000;
+
+/// Whether a session carried on at `stamp` is the pane's agent that ended at
+/// `ended_at`: only moments later. Long after, whoever is there is someone new.
+pub fn carries_on(ended_at: Option<i64>, stamp: i64) -> bool {
+    ended_at.is_some_and(|ended| stamp > ended && stamp - ended <= CARRY_ON_MS)
 }
 
 /// Classifies a SessionStart by its `source`.
