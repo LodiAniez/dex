@@ -1,0 +1,221 @@
+/* ---- The monitor: an agent's screen, opened large ---- */
+
+/* Its way in: Expand, beside the work panel's small screen. */
+.office-panel-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.office-panel-expand {
+  padding: 1px 8px;
+  border: 1px solid var(--office-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--office-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.office-panel-expand:hover:not(:disabled),
+.office-panel-expand:focus-visible {
+  border-color: #4a515e;
+  color: var(--office-text);
+  outline: none;
+}
+
+.office-panel-expand:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Over the whole window: while it is open, nothing behind it answers. */
+.monitor-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 10, 14, 0.72);
+}
+
+.monitor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(1100px, 100%);
+  max-height: 100%;
+  outline: none;
+  font-family: "IBM Plex Sans", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+
+.monitor-bezel {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 16px 16px 0;
+  background: linear-gradient(180deg, #2b303c, #1b1f28);
+  border: 1px solid #353b49;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.monitor-glass {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: min(64vh, 640px);
+  padding: 10px 12px;
+  background: #07090d;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px #000, inset 0 0 40px rgba(79, 140, 255, 0.05);
+}
+
+.monitor-screen {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  cursor: text;
+}
+
+.monitor-term .xterm-viewport {
+  /* The copy follows the agent; there is nothing of the owner's to scroll to. */
+  overflow-y: hidden !important;
+}
+
+.monitor-waking,
+.monitor-nosignal {
+  color: #6b7386;
+  font-family: "JetBrains Mono", "Cascadia Mono", Consolas, Menlo, monospace;
+  font-size: 13px;
+}
+
+.monitor-waking {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+/* The prompt line: the last line of the same terminal, not a form field. */
+.monitor-prompt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #161b24;
+  font-family: "JetBrains Mono", "Cascadia Mono", Consolas, Menlo, monospace;
+  font-size: 13px;
+}
+
+.monitor-prompt-mark {
+  color: #d85a30;
+  font-weight: 700;
+}
+
+.monitor-prompt-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #e8eaf0;
+  caret-color: #d85a30;
+  font: inherit;
+}
+
+.monitor-prompt-hint {
+  flex: none;
+  color: #6b7386;
+  font-size: 11px;
+}
+
+.monitor-prompt.is-off .monitor-prompt-mark,
+.monitor-prompt.is-off .monitor-prompt-input {
+  opacity: 0.4;
+}
+
+.monitor-prompt.is-off .monitor-prompt-hint {
+  color: #c79a5a;
+}
+
+.monitor-chin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  padding: 0 6px;
+}
+
+.monitor-brand {
+  color: #8a93a6;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.monitor-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3a404c;
+}
+.monitor-led.is-running { background: #f5a524; box-shadow: 0 0 8px #f5a524aa; }
+.monitor-led.is-waiting { background: #4f8cff; box-shadow: 0 0 10px #4f8cffcc; animation: monitor-blink 1.4s ease-in-out infinite; }
+.monitor-led.is-idle { background: #5fbf7f; box-shadow: 0 0 6px #5fbf7f88; }
+
+@keyframes monitor-blink {
+  50% { opacity: 0.35; }
+}
+
+.monitor-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: #8a93a6;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.monitor-close:hover,
+.monitor-close:focus-visible {
+  border-color: #4a515e;
+  color: #e8eaf0;
+  outline: none;
+}
+
+.monitor-neck {
+  width: 96px;
+  height: 40px;
+  background: linear-gradient(90deg, #1b1f28, #2b303c 50%, #1b1f28);
+}
+
+.monitor-foot {
+  width: 260px;
+  height: 12px;
+  background: linear-gradient(180deg, #2b303c, #1b1f28);
+  border: 1px solid #353b49;
+  border-radius: 8px 8px 4px 4px;
+}
+
+/* A short window keeps the screen and drops the stand. */
+@media (max-height: 560px) {
+  .monitor-neck,
+  .monitor-foot {
+    display: none;
+  }
+}

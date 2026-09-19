@@ -17,10 +17,10 @@
 import { joinWrapped, type BufferRow } from "./bufferText";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import type { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { ackPty, attachPty, holdPty, killPty, resizePty, spawnPty, writePty, type PtyEvent } from "./pty";
 import { runtimeLabel, switchNow } from "./runtimes";
+import { type Entry, entries } from "./terminalEntries";
 import { loadWebgl } from "./webglRenderer";
 
 /** Acknowledge rendered output in batches of this size... */
@@ -32,35 +32,6 @@ const KILL_GRACE_MS = 1000;
 /** PRD §7.1: ConPTY repaints on every resize, so only send the settled size. */
 const RESIZE_DEBOUNCE_MS = 100;
 
-interface Entry {
-  paneId: string;
-  workspaceId?: string;
-  cwd?: string;
-  runtime?: string;
-  /** Closed by `restartIn`, to start again in its new runtime on exit. */
-  switching: boolean;
-  term: Terminal;
-  fit: FitAddon;
-  serialize: SerializeAddon;
-  webgl: WebglAddon | null;
-  element: HTMLDivElement;
-  spawned: boolean;
-  dead: boolean;
-  pendingAck: number;
-  ackTimer: number | null;
-  resizeTimer: number | null;
-  /** Input typed while a write was in flight; sent as the next write. */
-  pendingInput: string;
-  writing: boolean;
-  /** Output bytes this window has been sent since it took the pane: what a hand-off waits for. */
-  received: number;
-  /** In another window: this one neither sends input nor resizes the PTY. */
-  away: boolean;
-  /** Just taken back from another window: the PTY is still at that window's size. */
-  resizeOnShow: boolean;
-}
-
-const entries = new Map<string, Entry>();
 let parkingHost: HTMLDivElement | null = null;
 let shortcutFilter: ((event: KeyboardEvent) => boolean) | null = null;
 
@@ -109,11 +80,15 @@ export function openTerminal(paneId: string, cwd?: string, workspaceId?: string,
     paneId, workspaceId, cwd, runtime, term, fit, serialize, element,
     webgl: null, spawned: false, dead: false, pendingAck: 0, ackTimer: null, resizeTimer: null,
     pendingInput: "", writing: false, received: 0, away: false, resizeOnShow: false, switching: false,
+    mirrors: new Set(), decoder: new TextDecoder(),
   };
   entries.set(paneId, entry);
 
   term.onData((data) => sendInput(entry, data));
-  term.onResize(({ cols, rows }) => scheduleResize(entry, cols, rows));
+  term.onResize(({ cols, rows }) => {
+    for (const mirror of entry.mirrors) mirror.resize(cols, rows);
+    scheduleResize(entry, cols, rows);
+  });
 }
 
 /** Shows the pane's terminal inside `host`, loading a renderer and starting the PTY on first show. */
@@ -230,6 +205,7 @@ export function disposeTerminal(paneId: string): void {
   // A switch under way must not start a shell for a pane that is gone.
   entry.switching = false;
   if (!entry.dead) void killPty(paneId).catch(() => {});
+  for (const mirror of entry.mirrors) mirror.stop();
   entry.term.dispose();
   entry.element.remove();
   entries.delete(paneId);
@@ -343,6 +319,10 @@ async function flushInput(entry: Entry): Promise<void> {
 /** Writes PTY output and acknowledges it once xterm.js has actually processed it (flow control). */
 function writeOutput(entry: Entry, bytes: Uint8Array): void {
   entry.received += bytes.length;
+  if (entry.mirrors.size > 0) {
+    const text = entry.decoder.decode(bytes, { stream: true });
+    for (const mirror of entry.mirrors) mirror.data(text);
+  }
   entry.term.write(bytes, () => {
     entry.pendingAck += bytes.length;
     if (entry.pendingAck >= ACK_BATCH_BYTES) {

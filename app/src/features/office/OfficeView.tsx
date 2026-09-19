@@ -16,6 +16,7 @@ import { AnnounceDialog } from "./Announce";
 import { headcount, hrNote } from "./floor";
 import { HireDialog } from "./HireDialog";
 import { MapFloor } from "./MapFloor";
+import { MonitorDialog } from "./MonitorDialog";
 import { useOffice, useScreen, type Employee } from "./officeStore";
 import { knownAs } from "./persona";
 import { CHAT_LINES } from "./ActivityBox";
@@ -45,6 +46,8 @@ export function OfficeView({ workspaceId, onGoToPane }: Props) {
   const [hiring, setHiring] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
   const [refused, setRefused] = useState(false);
+  // Whose screen is open on the monitor: one at a time.
+  const [monitorId, setMonitorId] = useState<string | null>(null);
 
   // The same events the activity pane shows, retold by name for the map.
   useEffect(() => watchActivity(workspaceId), [workspaceId]);
@@ -66,6 +69,8 @@ export function OfficeView({ workspaceId, onGoToPane }: Props) {
   const picked = office.employees.find((employee) => employee.agent.id === pickedId);
   // Only whoever's panel is open has their screen read.
   const screen = useScreen(picked?.agent.pane_id, PANEL_SCREEN_LINES);
+  // And whoever is on the monitor, likewise: it closes if they leave.
+  const monitored = office.employees.find((employee) => employee.agent.id === monitorId);
 
   const pick = (employee: Employee) => setPickedId(employee.agent.id);
   const hire = () => {
@@ -109,9 +114,11 @@ export function OfficeView({ workspaceId, onGoToPane }: Props) {
           who={who}
           screen={screen}
           onGoToPane={onGoToPane}
+          onExpand={() => setMonitorId(picked.agent.id)}
           onClose={() => setPickedId(null)}
         />
       )}
+      {monitored && <MonitorDialog employee={monitored} onClose={() => setMonitorId(null)} />}
       {announcing && <AnnounceDialog staff={office.employees} onClose={() => setAnnouncing(false)} />}
       {hiring && workspace && (
         <HireDialog workspace={workspace} onClose={() => setHiring(false)} onFreeze={() => setRefused(true)} />
