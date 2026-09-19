@@ -86,6 +86,12 @@
   cursor: text;
 }
 
+/* The copy's scrollbar shows only when the pointer is on the screen: it sits at
+   the edge of the agent's terminal, which is often narrower than the glass. */
+.monitor-screen:not(:hover) .monitor-term .scrollbar {
+  opacity: 0 !important;
+}
+
 .monitor-waking,
 .monitor-nosignal {
   color: #6b7386;

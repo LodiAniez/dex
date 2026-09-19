@@ -191,6 +191,8 @@ body,
 /* ---- Panes ---- */
 
 .pane {
+  /* xterm's scrollbars sit at z-index 10-11: kept inside the pane, not over the office above it. */
+  isolation: isolate;
   flex: 1;
   display: flex;
   flex-direction: column;
