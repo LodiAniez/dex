@@ -160,9 +160,27 @@ pub fn layout_or_default(layout_json: &str, pane_ids: &[String]) -> Option<Layou
     })
 }
 
+/// Where a pane split off `source` starts when no folder is given: the
+/// source's folder - for a markdown pane, whose `cwd` is its file, the
+/// folder the file is in, since no shell can start in a file.
+pub fn split_cwd(source_kind: &str, source_cwd: &str) -> String {
+    match std::path::Path::new(source_cwd).parent() {
+        Some(folder) if source_kind == "markdown" => folder.to_string_lossy().into_owned(),
+        _ => source_cwd.to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_split_starts_in_the_folder_of_the_pane_it_came_from() {
+        assert_eq!(split_cwd("terminal", "C:/src/app"), "C:/src/app");
+        assert_eq!(split_cwd("diff", "C:/src/app"), "C:/src/app");
+        // A markdown pane's cwd is its file: the folder it is in.
+        assert_eq!(split_cwd("markdown", "C:/src/app/notes.md"), "C:/src/app");
+    }
 
     fn ids(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
