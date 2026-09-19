@@ -184,12 +184,19 @@ features/agents/
 └─ types.ts          # generated or hand-mirrored from dex-protocol
 ```
 
-**One component per component file.** A `.tsx` file declares exactly one component, the one it is named for. The parts that component is built from - a row, a bubble, an icon - each go in a part file of their own beside it, named `PartName.part.tsx`, and each part file too declares one component. Parts are the component's own: nothing outside imports them, and a slice's `index.ts` never exports one. A part a second component needs has become a component, and loses its `.part`. Hooks and pure helpers are not components; they may share the file.
+**One component per component file.** A `.tsx` file declares exactly one component, and is named for it: `SetupPanel.tsx` declares `SetupPanel`.
+
+- **A component** is a top-level PascalCase function, or a `const` bound to an arrow function, `memo`, `forwardRef` or `lazy`, that returns JSX, exported or not. A lowercase helper returning JSX is a component by another name, and so is a component declared inside another. A context (`createContext`) is not a component; its provider wrapper is.
+- **Parts.** The pieces a component is built from - a row, a bubble, an icon - each go in a part file beside it, `PartName.part.tsx`, which also declares exactly one component. `.part.tsx` is a deliberate suffix of its own (§1.5): it says "not for use elsewhere".
+- **Parts are the owner's.** A part is exported only for its owner and the owner's other parts, which may use each other (a tree that renders itself, as `LayoutView`'s does). A slice's `index.ts` never exports one. A part any other component needs has become a component, and loses its `.part`.
+- **Helpers.** Hooks and small private helpers may share the file. Anything with a rule in it goes in a `.ts` beside the component, with a test, as for any logic (CLAUDE.md: logic that needs a DOM is logic in the wrong place).
+- **Not covered:** entry points (`main.tsx`) and test files.
 
 ```
 shell/
-├─ SetupPanel.tsx        # Setup, and nothing else
-└─ CheckRow.part.tsx     # CheckRow, used only by SetupPanel.tsx
+├─ SetupPanel.tsx        # SetupPanel, and nothing else
+├─ CheckRow.part.tsx     # CheckRow, used only by SetupPanel
+└─ setup.ts              # the rules the panel follows, tested in setup.test.ts
 ```
 
 **Generate TypeScript types from the Rust protocol crate** rather than hand-maintaining them. Use `ts-rs` or `specta`. Hand-mirrored wire types drift within about two weeks, and the failure is silent — a renamed field becomes `undefined` at runtime rather than a compile error.
