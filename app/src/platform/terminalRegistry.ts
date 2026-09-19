@@ -17,15 +17,18 @@
 import { joinWrapped, type BufferRow } from "./bufferText";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { WebglAddon } from "@xterm/addon-webgl";
+import type { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { ackPty, attachPty, holdPty, killPty, resizePty, spawnPty, writePty, type PtyEvent } from "./pty";
 import { runtimeLabel, switchNow } from "./runtimes";
+import { loadWebgl } from "./webglRenderer";
 
 /** Acknowledge rendered output in batches of this size... */
 const ACK_BATCH_BYTES = 64 * 1024;
 /** ...or after this long, so a small trailing amount is never left unacknowledged. */
 const ACK_FLUSH_MS = 50;
+/** How long a restart whose kill failed waits for the shell's exit anyway (`restartIn`). */
+const KILL_GRACE_MS = 1000;
 /** PRD §7.1: ConPTY repaints on every resize, so only send the settled size. */
 const RESIZE_DEBOUNCE_MS = 100;
 
@@ -175,9 +178,16 @@ export function restartIn(paneId: string, runtime: string): boolean {
   const previous = entry.runtime;
   entry.runtime = runtime;
   entry.switching = true;
-  void killPty(paneId).catch(() => {
-    entry.switching = false;
-    entry.runtime = previous; // Still running where it was.
+  // A shell that ended on its own a moment before cannot be killed, but its
+  // exit is on its way and the restart goes ahead on it (`handleEvent`). Only
+  // a shell still there after the grace, in a pane still open, failed to end.
+  void killPty(paneId).catch((err) => {
+    setTimeout(() => {
+      if (!entry.switching || entries.get(paneId) !== entry) return;
+      entry.switching = false;
+      entry.runtime = previous; // Still running where it was.
+      entry.term.write(`\r\n\x1b[31mCould not restart in ${runtimeLabel(runtime)}: ${err}\x1b[0m\r\n`);
+    }, KILL_GRACE_MS);
   });
   return true;
 }
@@ -299,23 +309,6 @@ export function readScreen(paneId: string): string | undefined {
     rows.push({ text: line?.translateToString(false) ?? "", wrapped: line?.isWrapped ?? false });
   }
   return joinWrapped(rows).join("\n");
-}
-
-function loadWebgl(entry: Entry): void {
-  if (entry.webgl) return;
-  try {
-    const webgl = new WebglAddon();
-    // Context loss is handled like a detach: drop the addon; the next attach loads a new one.
-    webgl.onContextLoss(() => {
-      webgl.dispose();
-      if (entry.webgl === webgl) entry.webgl = null;
-    });
-    entry.term.loadAddon(webgl);
-    entry.webgl = webgl;
-  } catch (err) {
-    // No WebGL: xterm.js keeps rendering with its DOM renderer, just slower.
-    console.warn(`WebGL renderer unavailable for pane ${entry.paneId}`, err);
-  }
 }
 
 /**

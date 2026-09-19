@@ -28,9 +28,10 @@ export function runtimeLabel(runtime: string): string {
  * another terminal. Whether it should is the owner's call.
  */
 export function switchNow(
-  shell: { spawned: boolean; dead: boolean; away: boolean; runtime?: string },
+  shell: { spawned: boolean; dead: boolean; away: boolean; runtime?: string; switching?: boolean },
   next: string,
 ): boolean {
+  if (shell.switching) return false; // One restart at a time: a second kill finds the shell already ending.
   return shell.spawned && !shell.dead && !shell.away && shell.runtime !== undefined && shell.runtime !== next;
 }
 
