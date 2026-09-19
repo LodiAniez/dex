@@ -36,12 +36,15 @@ export function MonitorDialog({ employee, onClose }: { employee: Employee; onClo
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing) return;
-      // Another dialog open over it (the palette, settings) takes its own Escape,
-      // wherever the keyboard has got to.
-      const above = [...document.querySelectorAll('[aria-modal="true"]')].some((other) => other !== dialog.current);
+      // Another dialog open over it (the palette, the activity, settings) takes
+      // its own Escape, wherever the keyboard has got to.
+      const another = [...document.querySelectorAll('[aria-modal="true"]')].some((other) => other !== dialog.current);
+      // On it, or somewhere around it (the page, the office) after a click
+      // or a closed popup left the keyboard there.
       const focused = document.activeElement;
-      const ours = focused === null || focused === document.body || dialog.current?.contains(focused);
-      if (above || !ours) return;
+      const monitor = dialog.current;
+      const ours = !focused || !monitor || monitor.contains(focused) || focused.contains(monitor);
+      if (another || !ours) return;
       event.preventDefault();
       event.stopPropagation();
       close.current();

@@ -45,3 +45,14 @@ export function promptLine(
   const why = whyNoPrompt(agent);
   return why === null ? { live: true, hint: "Enter sends it as your turn" } : { live: false, hint: `Cannot prompt: ${why}` };
 }
+
+/**
+ * Whether the monitor's screen keeps a key (and ignores it: it takes no input).
+ * Tab goes on to the monitor's controls, and Ctrl+C or Cmd+C with something
+ * selected to the browser's copy, which xterm fills with the selection.
+ */
+export function screenTakes(key: { key: string; ctrlKey: boolean; metaKey: boolean }, hasSelection: boolean): boolean {
+  if (key.key === "Tab") return false;
+  const copying = (key.ctrlKey || key.metaKey) && key.key.toLowerCase() === "c";
+  return !(copying && hasSelection);
+}

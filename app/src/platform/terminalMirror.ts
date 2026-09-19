@@ -98,7 +98,7 @@ export function mirrorTerminal(paneId: string, send: (message: MirrorMessage) =>
 
 /** In a pane's own window: answers requests to mirror the pane it holds. */
 export async function serveMirrors(): Promise<() => void> {
-  const running = new Map<string, () => void>();
+  const running = new Map<string, (ending: boolean) => void>();
   const starting = await listen<Start>(START, (event) => {
     const { id, paneId, to } = event.payload;
     if (running.has(id)) return;
@@ -127,21 +127,23 @@ export async function serveMirrors(): Promise<() => void> {
       deliver(message);
     });
     if (!stop) return;
-    // At once, before the screen: the asker waits for that, however slow.
+    // At once: once answered, the asker waits for the screen, however slow.
     deliver({ kind: "hello" });
-    running.set(id, () => {
+    running.set(id, (ending) => {
       flush();
+      if (ending) deliver({ kind: "end" });
       stop();
     });
   });
   const stopping = await listen<{ id: string }>(STOP, (event) => {
-    running.get(event.payload.id)?.();
+    running.get(event.payload.id)?.(false);
     running.delete(event.payload.id);
   });
   return () => {
     starting();
     stopping();
-    for (const stop of running.values()) stop();
+    // This window is going: whoever watches looks for the pane again.
+    for (const stop of running.values()) stop(true);
     running.clear();
   };
 }

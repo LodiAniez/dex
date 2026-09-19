@@ -25,7 +25,16 @@ export class MirrorFeed {
   /** The latest size among output dropped from the backlog: still the pane's size. */
   private droppedSize: { cols: number; rows: number } | null = null;
 
-  constructor(private readonly send: (message: MirrorMessage) => void) {}
+  constructor(private readonly deliver: (message: MirrorMessage) => void) {}
+
+  /** A mirror that fails must not take the pane's own output down with it. */
+  private send(message: MirrorMessage): void {
+    try {
+      this.deliver(message);
+    } catch (err) {
+      console.warn("mirror: dropped a message", err);
+    }
+  }
 
   /** The screen as it was: sent first, then whatever was printed meanwhile. */
   start(content: string, cols: number, rows: number): void {

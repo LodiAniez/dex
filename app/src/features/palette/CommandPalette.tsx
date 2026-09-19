@@ -89,6 +89,7 @@ export function CommandPalette({ onRun, onClose }: CommandPaletteProps) {
       <div
         className="palette"
         role="dialog"
+        aria-modal="true"
         aria-label="Command palette"
         onMouseDown={(event) => event.stopPropagation()}
       >

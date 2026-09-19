@@ -16,6 +16,7 @@ export function ActivityPopup({ workspaceId, workspaceName, onClose }: { workspa
         ref={box}
         className="activity-popup"
         role="dialog"
+        aria-modal="true"
         aria-label={`Activity in ${workspaceName}`}
         tabIndex={-1}
         onKeyDown={(event) => {

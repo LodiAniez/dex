@@ -19,9 +19,9 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { Terminal } from "@xterm/xterm";
 import { ackPty, attachPty, holdPty, killPty, resizePty, spawnPty, writePty, type PtyEvent } from "./pty";
-import { runtimeLabel, switchNow } from "./runtimes";
 import { endAll } from "./mirrorFeed";
-import { type Entry, entries } from "./terminalEntries";
+import { runtimeLabel, switchNow } from "./runtimes";
+import { type Entry, entries, retire } from "./terminalEntries";
 import { loadWebgl } from "./webglRenderer";
 
 /** Acknowledge rendered output in batches of this size... */
@@ -206,9 +206,7 @@ export function disposeTerminal(paneId: string): void {
   // A switch under way must not start a shell for a pane that is gone.
   entry.switching = false;
   if (!entry.dead) void killPty(paneId).catch(() => {});
-  // Gone from the map before its mirrors hear: one that looks again must not find it.
-  entries.delete(paneId);
-  endAll(entry.mirrors);
+  retire(paneId);
   entry.term.dispose();
   entry.element.remove();
 }

@@ -1,7 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
 import { mirrorTerminal } from "../../platform/terminalMirror";
-import { fitFont } from "./monitor";
+import { fitFont, screenTakes } from "./monitor";
 
 /** A monospace character's width and height per pixel of font size, with room to spare. */
 const CELL = { width: 0.6, height: 1.2 };
@@ -38,14 +38,8 @@ export function MonitorScreen({ paneId, onClick }: { paneId: string; onClick: ()
     term.open(hostElement);
     // Not a stop for Tab: the prompt line and the close button are the monitor's.
     term.textarea?.setAttribute("tabindex", "-1");
-    // xterm takes every key its textarea gets, even with input off: Tab must
-    // reach the monitor, and Ctrl+C with a selection the browser, whose copy
-    // xterm then fills with the selection.
-    term.attachCustomKeyEventHandler((event) => {
-      if (event.key === "Tab") return false;
-      const copying = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c";
-      return !(copying && term.hasSelection());
-    });
+    // xterm takes every key its textarea gets, even with input off.
+    term.attachCustomKeyEventHandler((event) => screenTakes(event, term.hasSelection()));
     let grid = { cols: term.cols, rows: term.rows };
     let frame = 0;
     // The estimate can be a pixel out once xterm rounds its cells: after each

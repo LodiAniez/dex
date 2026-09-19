@@ -47,8 +47,9 @@ export class MirrorLink {
   /** An answer from another window. */
   heard(id: string, message: Wire): void {
     if (this.stopped || id !== this.asked) return;
-    if (message.kind === "hello") this.greeted = true;
-    else this.fromPane(message);
+    // Any answer is a hello: the screen can be on the wire before it.
+    this.greeted = true;
+    if (message.kind !== "hello") this.fromPane(message);
   }
 
   /**

@@ -130,3 +130,34 @@ describe("a mirror link to a pane in another window", () => {
     expect(w.log).toEqual(["ask r1", "cancel r1"]);
   });
 });
+
+describe("a mirror link, further", () => {
+  it("counts any answer to its question as a hello: the screen can come first", () => {
+    const w = world();
+    w.link.start();
+    w.link.ready();
+    w.link.heard("r1", screen);
+    w.link.tick();
+    expect(w.log).toEqual(["ask r1"]);
+  });
+
+  it("follows a pane that leaves the other window, asking afresh and waiting for a new hello", () => {
+    const w = world();
+    w.link.start();
+    w.link.ready();
+    w.link.heard("r1", hello);
+    w.link.heard("r1", { kind: "end" });
+    w.link.heard("r1", screen);
+    w.link.tick();
+    expect(w.log).toEqual(["ask r1", "cancel r1", "ask r2", "cancel r2", "ask r3"]);
+    expect(w.sent).toEqual([{ kind: "end" }]);
+  });
+
+  it("re-attaches once, not for ever, when a pane still here says it ended", () => {
+    const w = world();
+    w.setHere(true);
+    w.link.start();
+    w.fromPane({ kind: "end" });
+    expect(w.log).toEqual(["here 1", "unhere 1", "here 2"]);
+  });
+});

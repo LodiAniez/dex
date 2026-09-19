@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitFont, monitorLed, promptLine } from "./monitor";
+import { fitFont, monitorLed, promptLine, screenTakes } from "./monitor";
 
 describe("the monitor's font", () => {
   // A monospace cell is about 0.6 of the font size wide and 1.2 tall.
@@ -58,5 +58,23 @@ describe("the monitor's prompt line", () => {
 
   it("takes nothing more while a prompt is on its way", () => {
     expect(promptLine(ready, true)).toEqual({ live: false, hint: "Sending..." });
+  });
+});
+
+describe("keys on the monitor's screen", () => {
+  const key = (k: string, mods: { ctrlKey?: boolean; metaKey?: boolean } = {}) => ({ key: k, ctrlKey: false, metaKey: false, ...mods });
+
+  it("lets Tab through to the monitor's own controls", () => {
+    expect(screenTakes(key("Tab"), false)).toBe(false);
+  });
+
+  it("lets Ctrl+C or Cmd+C through to the browser's copy when something is selected", () => {
+    expect(screenTakes(key("c", { ctrlKey: true }), true)).toBe(false);
+    expect(screenTakes(key("C", { metaKey: true }), true)).toBe(false);
+  });
+
+  it("keeps everything else, which it ignores: the screen takes no input", () => {
+    expect(screenTakes(key("c", { ctrlKey: true }), false)).toBe(true);
+    expect(screenTakes(key("a"), true)).toBe(true);
   });
 });

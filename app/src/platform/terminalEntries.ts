@@ -7,7 +7,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { SerializeAddon } from "@xterm/addon-serialize";
 import type { WebglAddon } from "@xterm/addon-webgl";
 import type { Terminal } from "@xterm/xterm";
-import type { MirrorFeed } from "./mirrorFeed";
+import { type MirrorFeed, endAll } from "./mirrorFeed";
 
 export interface Entry {
   paneId: string;
@@ -42,3 +42,15 @@ export interface Entry {
 }
 
 export const entries = new Map<string, Entry>();
+
+/**
+ * Takes the pane's terminal off the map, then ends its mirrors - in that
+ * order: a mirror told the pane ended looks for it again, and must not find it.
+ */
+export function retire(paneId: string): Entry | undefined {
+  const entry = entries.get(paneId);
+  if (!entry) return undefined;
+  entries.delete(paneId);
+  endAll(entry.mirrors);
+  return entry;
+}
