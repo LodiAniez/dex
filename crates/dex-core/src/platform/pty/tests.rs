@@ -354,3 +354,27 @@ fn an_exit_report_with_no_waiter_answer_gives_up_rather_than_hang() {
     let slot = reader::ExitSlot::default();
     assert_eq!(slot.wait(Duration::from_millis(20)), None);
 }
+
+#[test]
+fn a_kill_succeeds_whatever_error_the_thread_last_saw() {
+    // A failed Windows call before the kill leaves its error on the thread,
+    // which portable-pty's killer hands back when TerminateProcess succeeds.
+    let supervisor = PtySupervisor::new(FlowLimits::default());
+    let (sink, rx) = collecting_sink();
+    supervisor
+        .spawn(sh("stale", "ping -n 30 127.0.0.1 >nul", "sleep 30"), sink)
+        .unwrap();
+    let _ = std::fs::metadata(std::env::temp_dir().join("dex-no-such-file"));
+
+    let killed = supervisor.kill("stale");
+    assert!(
+        killed.is_ok(),
+        "the kill worked, and must say so: {killed:?}"
+    );
+    let seen = drain(&rx, &supervisor, "stale", true, Duration::from_secs(15));
+    assert!(
+        seen.exited(),
+        "killed child must report exit: {:?}",
+        seen.events
+    );
+}

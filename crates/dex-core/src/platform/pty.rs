@@ -331,13 +331,15 @@ impl PtySupervisor {
             })?;
             return Ok(());
         }
+        // portable-pty 0.9.0's cloned Windows killer has its check inverted:
+        // it returns `last_os_error()` when TerminateProcess *succeeds* - an
+        // error left on the thread by whatever failed before, often not 0 -
+        // and Ok when it fails. Read the other way round.
         match pane.killer.kill() {
-            // portable-pty 0.9.0's cloned Windows killer has its check inverted:
-            // it returns `last_os_error()` when TerminateProcess *succeeds*,
-            // which is always OS error 0. Treat that as the success it is.
-            // (A genuine failure comes back as Ok and cannot be detected.)
-            Err(err) if err.raw_os_error() == Some(0) => Ok(()),
-            result => result.map_err(PtyError::from),
+            Err(_) => Ok(()),
+            Ok(()) => Err(PtyError::from(std::io::Error::other(
+                "Windows could not end the pane's process",
+            ))),
         }
     }
 

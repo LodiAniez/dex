@@ -17,10 +17,11 @@
 import { joinWrapped, type BufferRow } from "./bufferText";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { WebglAddon } from "@xterm/addon-webgl";
+import type { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { ackPty, attachPty, holdPty, killPty, resizePty, spawnPty, writePty, type PtyEvent } from "./pty";
 import { runtimeLabel, switchNow } from "./runtimes";
+import { loadWebgl } from "./webglRenderer";
 
 /** Acknowledge rendered output in batches of this size... */
 const ACK_BATCH_BYTES = 64 * 1024;
@@ -175,9 +176,10 @@ export function restartIn(paneId: string, runtime: string): boolean {
   const previous = entry.runtime;
   entry.runtime = runtime;
   entry.switching = true;
-  void killPty(paneId).catch(() => {
+  void killPty(paneId).catch((err) => {
     entry.switching = false;
     entry.runtime = previous; // Still running where it was.
+    entry.term.write(`\r\n\x1b[31mCould not restart in ${runtimeLabel(runtime)}: ${err}\x1b[0m\r\n`);
   });
   return true;
 }
@@ -299,23 +301,6 @@ export function readScreen(paneId: string): string | undefined {
     rows.push({ text: line?.translateToString(false) ?? "", wrapped: line?.isWrapped ?? false });
   }
   return joinWrapped(rows).join("\n");
-}
-
-function loadWebgl(entry: Entry): void {
-  if (entry.webgl) return;
-  try {
-    const webgl = new WebglAddon();
-    // Context loss is handled like a detach: drop the addon; the next attach loads a new one.
-    webgl.onContextLoss(() => {
-      webgl.dispose();
-      if (entry.webgl === webgl) entry.webgl = null;
-    });
-    entry.term.loadAddon(webgl);
-    entry.webgl = webgl;
-  } catch (err) {
-    // No WebGL: xterm.js keeps rendering with its DOM renderer, just slower.
-    console.warn(`WebGL renderer unavailable for pane ${entry.paneId}`, err);
-  }
 }
 
 /**
