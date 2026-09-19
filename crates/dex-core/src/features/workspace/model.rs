@@ -85,6 +85,17 @@ pub enum WorkspaceError {
     /// An empty or over-long label, or one with whitespace.
     #[error("pane labels must be 1 to 32 characters with no spaces")]
     InvalidLabel,
+    /// Not `windows` or `wsl:<distro>`.
+    #[error("{0}")]
+    InvalidRuntime(String),
+    /// A WSL distro that is not installed.
+    #[error("no WSL distro named {distro:?} is installed")]
+    NoSuchDistro {
+        /// The distro asked for.
+        distro: String,
+        /// The distros that are.
+        installed: Vec<String>,
+    },
     /// A pane kind no renderer understands.
     #[error("{0:?} is not a pane kind Dex can show")]
     InvalidKind(String),

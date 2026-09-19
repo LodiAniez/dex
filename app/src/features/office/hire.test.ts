@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockOutArgs, clockOutQuestion, hireArgs, isHiringFreeze, labelClash, memoArgs } from "./hire";
+import { clockOutArgs, clockOutQuestion, hireArgs, hireRuntime, isHiringFreeze, labelClash, memoArgs } from "./hire";
 
 const pane = (id: string, kind: string) => ({ id, kind });
 
@@ -12,6 +12,25 @@ describe("hireArgs", () => {
 
   it("does not split the office itself, which is usually what has focus", () => {
     expect(hireArgs({ ...ws, active_pane: "p3" }, "do it", "")?.pane).toBe("p1");
+  });
+
+  it("says where the agent runs only when one was chosen", () => {
+    expect(hireArgs(ws, "do it", "", "wsl:Ubuntu")).toMatchObject({ runtime: "wsl:Ubuntu" });
+    expect(hireArgs(ws, "do it", "")).not.toHaveProperty("runtime");
+  });
+
+  it("offers to run the agent where the pane it splits off runs", () => {
+    const mixed = {
+      id: "ws-1",
+      active_pane: "p2",
+      panes: [
+        { id: "p1", kind: "terminal", runtime: "windows" },
+        { id: "p2", kind: "terminal", runtime: "wsl:Ubuntu" },
+      ],
+    };
+    expect(hireRuntime(mixed)).toBe("wsl:Ubuntu");
+    expect(hireRuntime({ ...mixed, active_pane: "p1" })).toBe("windows");
+    expect(hireRuntime({ id: "ws-1", active_pane: null, panes: [] })).toBe("windows");
   });
 
   it("passes a label only when one was typed", () => {

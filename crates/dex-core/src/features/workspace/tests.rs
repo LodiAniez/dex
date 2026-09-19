@@ -12,6 +12,7 @@ use crate::app::AppState;
 
 mod docking;
 mod panes;
+mod runtimes;
 mod targets;
 
 fn named(name: &str) -> CreateWorkspaceArgs {

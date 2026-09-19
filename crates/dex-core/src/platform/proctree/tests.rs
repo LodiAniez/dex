@@ -152,3 +152,14 @@ fn a_line_ps_could_not_fill_in_is_skipped_not_misread() {
     let procs = super::parse_ps("  12\n  abc  1 x\n\n  7   1 /bin/sleep 30\n");
     assert_eq!(procs, vec![proc(7, 1, "sleep", "/bin/sleep 30")]);
 }
+
+#[test]
+fn a_pane_whose_own_process_is_wsl_cannot_be_seen_into_either() {
+    // A WSL pane runs `wsl.exe` as its shell. Nothing Windows can see runs
+    // under it, and that is no evidence Claude Code has gone.
+    let procs = [
+        proc(700, 1, "wsl.exe", "wsl.exe -d Ubuntu --cd C:/src"),
+        proc(701, 700, "conhost.exe", "conhost.exe 0x4"),
+    ];
+    assert_eq!(claude_under(&procs, 700), Presence::CannotTell);
+}

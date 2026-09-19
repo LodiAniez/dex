@@ -27,6 +27,7 @@ fn split_args(pane: &str, direction: SplitDirection) -> SplitPaneArgs {
         cwd: None,
         label: None,
         kind: None,
+        runtime: None,
     }
 }
 

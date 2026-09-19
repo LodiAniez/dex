@@ -72,8 +72,8 @@ describe("what the palette offers", () => {
   });
 
   it("marks what is current", () => {
-    const current = items.filter((item) => item.kind !== "command" && item.current);
-    expect(current.map((item) => item.kind === "command" ? "" : item.id)).toEqual(["ws-api", "pane-1"]);
+    const current = items.filter((item) => "current" in item && item.current);
+    expect(current.map((item) => ("id" in item ? item.id : ""))).toEqual(["ws-api", "pane-1"]);
   });
 
   it("shows each command's binding, as bound right now", () => {
@@ -140,5 +140,20 @@ describe("ranking", () => {
   it("returns the matched positions for highlighting", () => {
     const [first] = rankItems(items, "lead");
     expect(first.positions).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe("new panes elsewhere", () => {
+  it("offers a pane in each distro, and one back on Windows, once WSL is there", () => {
+    const withWsl = buildItems(null, SHIPPED_KEYMAP, ["windows", "wsl:Ubuntu"]);
+    const places = withWsl.filter((item) => item.kind === "runtime");
+    expect(places.map((item) => item.title)).toEqual(["New pane on Windows", "New pane in Ubuntu (WSL)"]);
+    expect(places.map((item) => item.kind === "runtime" && item.runtime)).toEqual(["windows", "wsl:Ubuntu"]);
+  });
+
+  it("offers none on a machine with nowhere else to run", () => {
+    const windowsOnly = buildItems(null, SHIPPED_KEYMAP, ["windows"]);
+    expect(windowsOnly.some((item) => item.kind === "runtime")).toBe(false);
+    expect(buildItems(null, SHIPPED_KEYMAP).some((item) => item.kind === "runtime")).toBe(false);
   });
 });

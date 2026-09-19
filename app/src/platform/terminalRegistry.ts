@@ -32,6 +32,7 @@ interface Entry {
   paneId: string;
   workspaceId?: string;
   cwd?: string;
+  runtime?: string;
   term: Terminal;
   fit: FitAddon;
   serialize: SerializeAddon;
@@ -76,7 +77,7 @@ function parking(): HTMLDivElement {
 }
 
 /** Creates the pane's terminal if it does not exist yet. Idempotent. */
-export function openTerminal(paneId: string, cwd?: string, workspaceId?: string): void {
+export function openTerminal(paneId: string, cwd?: string, workspaceId?: string, runtime?: string): void {
   if (entries.has(paneId)) return;
 
   const term = new Terminal({
@@ -99,7 +100,7 @@ export function openTerminal(paneId: string, cwd?: string, workspaceId?: string)
   term.attachCustomKeyEventHandler((event) => !(shortcutFilter?.(event) ?? false));
 
   const entry: Entry = {
-    paneId, workspaceId, cwd, term, fit, serialize, element,
+    paneId, workspaceId, cwd, runtime, term, fit, serialize, element,
     webgl: null, spawned: false, dead: false, pendingAck: 0, ackTimer: null, resizeTimer: null,
     pendingInput: "", writing: false, received: 0, away: false, resizeOnShow: false,
   };
@@ -129,6 +130,7 @@ export function attachTerminal(paneId: string, host: HTMLElement): void {
       paneId,
       workspaceId: entry.workspaceId,
       cwd: entry.cwd,
+      runtime: entry.runtime,
       cols: entry.term.cols,
       rows: entry.term.rows,
       onData: (bytes) => writeOutput(entry, bytes),

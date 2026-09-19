@@ -142,6 +142,10 @@ pub struct SpawnArgs {
     /// Workspace, when the caller is not in a pane.
     #[serde(default)]
     pub workspace: Option<String>,
+    /// Where the agent runs: `windows` or `wsl:<distro>`. The caller's pane's
+    /// runtime by default, so an agent in WSL hires into WSL.
+    #[serde(default)]
+    pub runtime: Option<String>,
 }
 
 /// Result of `agent.spawn`.

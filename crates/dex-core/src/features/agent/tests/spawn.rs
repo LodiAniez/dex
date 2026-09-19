@@ -23,7 +23,77 @@ fn brief(task: &str, pane: &str) -> SpawnArgs {
         direction: None,
         pane: Some(pane.into()),
         workspace: None,
+        runtime: None,
     }
+}
+
+async fn runtime_of(state: &AppState, pane: &str) -> String {
+    let pane = pane.to_owned();
+    state
+        .db
+        .call(move |conn| workspace::pane_runtime(conn, &pane))
+        .await
+        .unwrap()
+        .unwrap()
+}
+
+async fn move_to_wsl(state: &AppState, pane: &str) {
+    let pane = pane.to_owned();
+    state
+        .db
+        .call(move |conn| workspace::set_pane_runtime(conn, &pane, "wsl:Ubuntu"))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn an_agent_in_wsl_hires_into_wsl_and_one_on_windows_stays_there() {
+    let (_dir, state, first) = pane().await;
+    parent_agent(&state, &first, "parent").await;
+    let on_windows = spawn(&state, brief("windows work", &first)).await.unwrap();
+    assert_eq!(runtime_of(&state, &on_windows.pane).await, "windows");
+
+    move_to_wsl(&state, &first).await;
+    let in_wsl = spawn(&state, brief("linux work", &first)).await.unwrap();
+    assert_eq!(runtime_of(&state, &in_wsl.pane).await, "wsl:Ubuntu");
+}
+
+#[tokio::test]
+async fn a_spawn_can_say_where_its_agent_runs() {
+    let (_dir, state, first) = pane().await;
+    parent_agent(&state, &first, "parent").await;
+    move_to_wsl(&state, &first).await;
+    let back = spawn(
+        &state,
+        SpawnArgs {
+            runtime: Some("windows".into()),
+            ..brief("windows work", &first)
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(runtime_of(&state, &back.pane).await, "windows");
+}
+
+#[tokio::test]
+async fn a_spawn_into_a_distro_that_is_not_installed_is_refused() {
+    let (_dir, state, first) = pane().await;
+    let err = spawn(
+        &state,
+        SpawnArgs {
+            runtime: Some("wsl:NoSuchDistroHere".into()),
+            ..brief("linux work", &first)
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            AgentError::Target(workspace::WorkspaceError::NoSuchDistro { .. })
+        ),
+        "{err:?}"
+    );
 }
 
 /// A git repository with one commit.

@@ -310,6 +310,11 @@ export function App() {
         if (action) perform(action);
         return;
       }
+      case "runtime": {
+        const pane = list?.workspaces.find((ws) => ws.id === list.active)?.active_pane;
+        if (pane) run(splitPane(pane, "right", "terminal", item.runtime));
+        return;
+      }
     }
   };
 

@@ -12,6 +12,8 @@ interface Props {
   /** The pane's workspace; its shell gets it as DEX_WORKSPACE_ID. */
   workspaceId: string;
   cwd?: string;
+  /** Where its shell runs: `windows` or `wsl:<distro>`. */
+  runtime?: string;
   /** The workspace's focused pane: its terminal takes keyboard focus. */
   active: boolean;
 }
@@ -22,13 +24,13 @@ interface Props {
  * registry until the pane is closed (PRD §7.3). Splits, closes, and zoom all
  * remount these boxes; none of them restart a shell.
  */
-export function TerminalPane({ paneId, workspaceId, cwd, active }: Props) {
+export function TerminalPane({ paneId, workspaceId, cwd, runtime, active }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    openTerminal(paneId, cwd, workspaceId);
+    openTerminal(paneId, cwd, workspaceId, runtime);
     attachTerminal(paneId, host);
     const observer = new ResizeObserver(() => fitTerminal(paneId));
     observer.observe(host);
@@ -36,7 +38,7 @@ export function TerminalPane({ paneId, workspaceId, cwd, active }: Props) {
       observer.disconnect();
       detachTerminal(paneId);
     };
-  }, [paneId, cwd, workspaceId]);
+  }, [paneId, cwd, workspaceId, runtime]);
 
   // Declared after the attach effect, so it runs once the terminal is in place.
   useEffect(() => {

@@ -65,6 +65,18 @@ pub struct CreatePaneArgs {
     /// non-terminal pane runs no shell.
     #[serde(default)]
     pub kind: Option<String>,
+    /// Where its shell runs: `windows` or `wsl:<distro>`. The split pane's
+    /// runtime by default.
+    #[serde(default)]
+    pub runtime: Option<String>,
+}
+
+/// Result of `pane.runtimes`: where a pane's shell can run on this machine.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeList {
+    /// `windows` first, then `wsl:<distro>` for each installed distro.
+    pub runtimes: Vec<String>,
 }
 
 /// Args for `pane.content`: what a `markdown` pane shows.

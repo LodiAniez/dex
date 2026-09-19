@@ -41,6 +41,16 @@ pub fn spawn_anchor(
     }
 }
 
+/// What the child's pane is, wherever it goes.
+pub struct ChildPane {
+    /// Its working directory.
+    pub cwd: String,
+    /// Its label, if the spawn gave one.
+    pub label: Option<String>,
+    /// Where its shell runs: `windows` or `wsl:<distro>`.
+    pub runtime: String,
+}
+
 /// Makes the child's pane where it belongs, and keeps the workspace's
 /// arrangement if it had one worth keeping.
 pub async fn split_for(
@@ -49,8 +59,7 @@ pub async fn split_for(
     caller_pane: &str,
     caller_agent: Option<&str>,
     direction: Option<&str>,
-    cwd: String,
-    label: Option<String>,
+    child: ChildPane,
 ) -> Result<WorkspaceList, AgentError> {
     let kept = workspace::preset_in_use(state, workspace_id).await?;
     let (ws, pane, parent) = (
@@ -63,15 +72,17 @@ pub async fn split_for(
         .call(move |conn| store::live_sibling_panes(conn, &ws, parent.as_deref(), &pane))
         .await?;
     let (anchor, dir) = spawn_anchor(caller_pane, &siblings, direction);
-    let list = workspace::split_pane(
+    let list = workspace::split_pane_in(
         state,
         SplitPaneArgs {
             pane: anchor,
             direction: dir,
-            cwd: Some(cwd),
-            label,
+            cwd: Some(child.cwd),
+            label: child.label,
             kind: None,
+            runtime: None,
         },
+        child.runtime,
     )
     .await?;
     match kept {
