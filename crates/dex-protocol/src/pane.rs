@@ -19,10 +19,17 @@ pub struct PaneSummary {
     pub cwd: String,
     /// `terminal`, `markdown`, `diff`, or `activity`.
     pub kind: String,
+    /// Where its shell runs: `windows` or `wsl:<distro>`.
+    #[serde(default = "windows")]
+    pub runtime: String,
     /// Whether this is its workspace's focused pane.
     pub focused: bool,
     /// Whether its workspace is the one on screen.
     pub in_active_workspace: bool,
+}
+
+fn windows() -> String {
+    "windows".into()
 }
 
 /// Result of `pane.list`.
@@ -65,6 +72,57 @@ pub struct CreatePaneArgs {
     /// non-terminal pane runs no shell.
     #[serde(default)]
     pub kind: Option<String>,
+}
+
+/// Result of `pane.terminal`: the terminal new panes open in, and the choices.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerminalView {
+    /// `windows` (PowerShell, or the configured shell) or `wsl:<distro>`.
+    pub terminal: String,
+    /// `windows` first, then `wsl:<distro>` for each installed distro.
+    pub runtimes: Vec<String>,
+    /// After a choice: panes whose shell is running in another terminal. They
+    /// keep it unless the owner has them restarted (`pane.started` records
+    /// where each one then starts).
+    #[serde(default)]
+    pub running_elsewhere: Vec<RunningPane>,
+}
+
+/// A pane whose shell runs in another terminal than the one chosen.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunningPane {
+    /// Pane id.
+    pub pane: String,
+    /// Its workspace's name.
+    pub workspace: String,
+    /// Its label, if it has one.
+    pub label: Option<String>,
+    /// The folder it restarts in.
+    pub cwd: String,
+    /// Where its shell runs now.
+    pub runtime: String,
+    /// Whether something may be running in it: a restart would end it. Dex
+    /// cannot always tell; anything it cannot rule out counts as busy.
+    pub busy: bool,
+}
+
+/// Args for `pane.started`: a pane's shell has started, in `runtime`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneStartedArgs {
+    /// Pane id.
+    pub pane: String,
+    /// `windows` or `wsl:<distro>`: where the shell is running.
+    pub runtime: String,
+}
+
+/// Args for `pane.terminal`: with `terminal`, choose it; without, only ask.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerminalArgs {
+    /// `windows` or `wsl:<distro>`, for an installed distro.
+    #[serde(default)]
+    pub terminal: Option<String>,
 }
 
 /// Args for `pane.content`: what a `markdown` pane shows.

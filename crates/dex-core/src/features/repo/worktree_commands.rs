@@ -18,6 +18,7 @@ use super::store;
 use crate::app::AppState;
 use crate::features::workspace;
 use crate::platform::proc::{self, GitError};
+use crate::platform::wsl::{self, Runtime};
 use crate::platform::{paths, proc::Output};
 
 /// `worktree.add`: a fresh worktree on a new branch, optionally attached to a
@@ -132,6 +133,59 @@ fn create(repo: &Path, path: &Path, branch: &str) -> Result<Output, RepoError> {
     .map_err(RepoError::Git)
 }
 
+/// `create`, by the distro's own git, for an agent that runs in WSL. Windows
+/// git would record the worktree's links as `C:/...` paths, which Linux git
+/// cannot follow, and check files out with Windows line endings, which it sees
+/// as every line changed. Linux git with `--relative-paths` avoids both, and
+/// Windows git reads the result as well (both need git 2.48 or later).
+fn create_in_wsl(distro: &str, repo: &Path, path: &Path, branch: &str) -> Result<(), RepoError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))?;
+    }
+    let linux = |windows: &Path| {
+        wsl::linux_path(distro, &paths::normalize(windows))
+            .map_err(|err| RepoError::Git(GitError::Other(err)))
+    };
+    // Git on both sides must know relative worktrees: adding one marks the
+    // repository's format, and an older git then refuses the whole repository.
+    let too_old = |place: &str, printed: &str| match logic::git_version(printed) {
+        Some(version) if version >= logic::RELATIVE_WORKTREES => Ok(()),
+        _ => Err(RepoError::GitTooOld {
+            place: place.to_owned(),
+            version: printed.trim().trim_start_matches("git version ").to_owned(),
+        }),
+    };
+    let windows = proc::git(repo, &["--version"]).map_err(RepoError::Git)?;
+    too_old("Windows", &windows.stdout)?;
+    let (repo, path) = (linux(repo)?, linux(path)?);
+    match wsl::git_version(distro) {
+        Ok(Some(linux_git)) => too_old(distro, &linux_git)?,
+        Ok(None) => {
+            return Err(RepoError::GitTooOld {
+                place: distro.to_owned(),
+                version: "not installed".to_owned(),
+            });
+        }
+        Err(err) => return Err(RepoError::Git(GitError::Other(err))),
+    }
+    let add = |new_branch: bool| {
+        let mut args = vec!["worktree", "add", "--relative-paths", &path];
+        args.extend(if new_branch {
+            vec!["-b", branch]
+        } else {
+            vec![branch]
+        });
+        wsl::git(distro, &repo, &args).map_err(|stderr| proc::translate(&stderr))
+    };
+    match add(true) {
+        Err(GitError::Exists(_)) => add(false),
+        other => other,
+    }
+    .map(|_| ())
+    .map_err(RepoError::Git)
+}
+
 /// For the agent slice: creating a worktree as part of a spawn.
 ///
 /// Spawning cannot go through `worktree.add`: it needs the path back, and a
@@ -141,6 +195,7 @@ pub async fn create_for_spawn(
     state: &AppState,
     repo_target: &str,
     branch: &str,
+    runtime: &str,
 ) -> Result<(String, PathBuf), RepoError> {
     if let Err(reason) = logic::check_branch(branch) {
         return Err(RepoError::InvalidBranch {
@@ -153,9 +208,17 @@ pub async fn create_for_spawn(
     let repo_path = repo.path.clone();
     let branch = branch.to_owned();
     let made = path.clone();
-    tokio::task::spawn_blocking(move || create(Path::new(&repo_path), &made, &branch))
-        .await
-        .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))??;
+    let runtime = Runtime::parse(runtime).map_err(|err| {
+        RepoError::Target(crate::features::workspace::WorkspaceError::InvalidRuntime(
+            err,
+        ))
+    })?;
+    tokio::task::spawn_blocking(move || match runtime {
+        Runtime::Wsl(distro) => create_in_wsl(&distro, Path::new(&repo_path), &made, &branch),
+        Runtime::Windows => create(Path::new(&repo_path), &made, &branch).map(|_| ()),
+    })
+    .await
+    .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))??;
     Ok((repo.id, path))
 }
 

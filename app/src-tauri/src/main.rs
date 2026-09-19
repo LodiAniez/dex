@@ -73,6 +73,11 @@ fn main() {
                     if let Err(err) = token.write(&token_path) {
                         tracing::error!(%err, "cannot write the token file; `dex` commands will be refused");
                     }
+                    // Every pane opens in the terminal the owner chose. Here,
+                    // not earlier: a second copy of Dex, about to be refused
+                    // above, must not move the running copy's panes; and still
+                    // before setup returns, so the window has started no shell.
+                    tauri::async_runtime::block_on(dex_core::router::open_panes(&daemon_state));
                     tauri::async_runtime::spawn(daemon::serve_pipe(
                         server,
                         pipe_name,

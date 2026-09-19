@@ -127,6 +127,16 @@ fn repo_repair(err: &RepoError) -> (ErrorCode, String) {
         RepoError::InvalidBranch { reason, .. } => {
             (ErrorCode::InvalidArgs, reason.repair().to_owned())
         }
+        RepoError::GitTooOld { place, .. } if place == "Windows" => (
+            ErrorCode::InvalidArgs,
+            "Install the current Git for Windows (https://git-scm.com), then spawn again.".to_owned(),
+        ),
+        RepoError::GitTooOld { place, .. } => (
+            ErrorCode::InvalidArgs,
+            format!(
+                "Install or update git in {place}. On Ubuntu: `sudo add-apt-repository ppa:git-core/ppa && sudo apt update && sudo apt install git`. Then spawn again."
+            ),
+        ),
         RepoError::Git(GitError::Missing) => (
             ErrorCode::GitFailed,
             "Install Git for Windows and make sure git.exe is on PATH.".to_owned(),
@@ -253,6 +263,23 @@ fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
             ErrorCode::InvalidArgs,
             "Use a short label without spaces, like `server` or `tests`.",
         ),
+        WorkspaceError::InvalidRuntime(_) => (
+            ErrorCode::InvalidArgs,
+            "Use `windows`, or `wsl:<distro>` for a WSL distro; `wsl.exe --list` names them.",
+        ),
+        WorkspaceError::NoSuchDistro { installed, .. } if installed.is_empty() => (
+            ErrorCode::InvalidArgs,
+            "No WSL distro is installed. Install one (`wsl --install Ubuntu`), or run this on Windows.",
+        ),
+        WorkspaceError::NoSuchDistro { installed, .. } => {
+            return (
+                ErrorCode::InvalidArgs,
+                format!(
+                    "Use an installed distro ({}), or run this on Windows.",
+                    installed.join(", ")
+                ),
+            );
+        }
         WorkspaceError::InvalidKind(_) => (
             ErrorCode::InvalidArgs,
             "Use `terminal` for a shell, `activity` for the workspace's live event stream, `diff` for a repository's changes, or `markdown` for a file.",

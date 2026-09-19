@@ -1,7 +1,7 @@
 //! Whether Claude Code is running under a pane's shell, decided from a
 //! snapshot of the process table.
 
-use super::{Presence, Proc, claude_under, parse};
+use super::{Presence, Proc, bare, claude_under, parse};
 
 fn proc(pid: u32, parent: u32, name: &str, command: &str) -> Proc {
     Proc {
@@ -151,4 +151,28 @@ fn ps_output_is_read_into_the_same_rows_as_the_windows_table() {
 fn a_line_ps_could_not_fill_in_is_skipped_not_misread() {
     let procs = super::parse_ps("  12\n  abc  1 x\n\n  7   1 /bin/sleep 30\n");
     assert_eq!(procs, vec![proc(7, 1, "sleep", "/bin/sleep 30")]);
+}
+
+#[test]
+fn a_pane_whose_own_process_is_wsl_cannot_be_seen_into_either() {
+    // A WSL pane runs `wsl.exe` as its shell. Nothing Windows can see runs
+    // under it, and that is no evidence Claude Code has gone.
+    let procs = [
+        proc(700, 1, "wsl.exe", "wsl.exe -d Ubuntu --cd C:/src"),
+        proc(701, 700, "conhost.exe", "conhost.exe 0x4"),
+    ];
+    assert_eq!(claude_under(&procs, 700), Presence::CannotTell);
+}
+
+#[test]
+fn a_shell_with_nothing_under_it_is_bare() {
+    let procs = [
+        proc(800, 1, "pwsh.exe", "pwsh.exe"),
+        proc(801, 800, "conhost.exe", "conhost.exe 0x4"),
+        proc(900, 1, "pwsh.exe", "pwsh.exe"),
+        proc(901, 900, "node.exe", "node server.js"),
+    ];
+    assert_eq!(bare(&procs, 800), Some(true), "only its console host");
+    assert_eq!(bare(&procs, 900), Some(false), "a server is running in it");
+    assert_eq!(bare(&procs, 999), None, "not in the table");
 }

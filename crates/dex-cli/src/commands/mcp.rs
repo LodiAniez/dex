@@ -46,7 +46,7 @@ pub enum McpCommand {
 pub fn run(command: McpCommand, format: Format) -> Result<(), ErrorBody> {
     match command {
         McpCommand::Status => {
-            let found = registration()?;
+            let found = registration(At::Windows)?;
             if format.json {
                 output::json(&describe(&found));
             } else {
@@ -55,10 +55,10 @@ pub fn run(command: McpCommand, format: Format) -> Result<(), ErrorBody> {
         }
         McpCommand::Install => install(format)?,
         McpCommand::Uninstall => {
-            match registration()? {
+            match registration(At::Windows)? {
                 None => println!("The Dex MCP server was not registered."),
                 Some(_) => {
-                    claude(&["mcp", "remove", SERVER, "-s", "user"])?;
+                    claude(At::Windows, &["mcp", "remove", SERVER, "-s", "user"])?;
                     println!("Removed the Dex MCP server from your Claude Code config.");
                 }
             };
@@ -67,9 +67,34 @@ pub fn run(command: McpCommand, format: Format) -> Result<(), ErrorBody> {
     Ok(())
 }
 
+/// Which Claude Code to talk to: the Windows one, or the one in a distro.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum At<'a> {
+    Windows,
+    Wsl(&'a str),
+}
+
 fn install(format: Format) -> Result<(), ErrorBody> {
-    let exe = server_path()?;
-    match registration()? {
+    let server = server_path()?.to_string_lossy().into_owned();
+    let Some(after) = install_in(At::Windows, &server)? else {
+        println!("Already registered, pointing at this build. Nothing to do.");
+        return Ok(());
+    };
+    if format.json {
+        output::json(&describe(&Some(after)));
+    } else {
+        println!("Registered the Dex MCP server for all your projects.");
+        println!("Its tools appear only in Claude Code sessions running inside a Dex pane.");
+    }
+    Ok(())
+}
+
+/// Registers `server` with the Claude Code `at`, at user scope. `None` when it
+/// already was, pointing there. Also how `dex wsl setup` registers it inside a
+/// distro, with `server` as Linux sees `dex-mcp.exe`.
+pub(crate) fn install_in(at: At, server: &str) -> Result<Option<Found>, ErrorBody> {
+    let exe = server;
+    match registration(at)? {
         // Someone registered `dex` closer than user scope, where it wins. Say
         // so rather than adding a second one that never takes effect.
         Some(found) if !found.user_scope => {
@@ -85,12 +110,9 @@ fn install(format: Format) -> Result<(), ErrorBody> {
                 ),
             });
         }
-        Some(found) if found.command == exe.to_string_lossy() => {
-            println!("Already registered, pointing at this build. Nothing to do.");
-            return Ok(());
-        }
+        Some(found) if found.command == exe => return Ok(None),
         // Registered, but pointing at a dex-mcp.exe that has since moved.
-        Some(_) => claude(&["mcp", "remove", SERVER, "-s", "user"]).map(|_| ())?,
+        Some(_) => claude(at, &["mcp", "remove", SERVER, "-s", "user"]).map(|_| ())?,
         None => {}
     }
 
@@ -109,12 +131,12 @@ fn install(format: Format) -> Result<(), ErrorBody> {
         args.push(format!("{name}=${{{name}:-}}"));
     }
     args.push("--".into());
-    args.push(exe.to_string_lossy().into_owned());
-    claude(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
+    args.push(exe.to_owned());
+    claude(at, &args.iter().map(String::as_str).collect::<Vec<_>>())?;
 
     // Read back: a registration that silently lost its placeholders would look
     // installed and do nothing in every session.
-    let after = registration()?.ok_or_else(|| ErrorBody {
+    let after = registration(at)?.ok_or_else(|| ErrorBody {
         code: ErrorCode::Internal,
         message: "Claude Code accepted the registration but does not list it".into(),
         repair: "Run `claude mcp list` to see what it has, and report this.".into(),
@@ -129,13 +151,7 @@ fn install(format: Format) -> Result<(), ErrorBody> {
             ),
         });
     }
-    if format.json {
-        output::json(&describe(&Some(after)));
-    } else {
-        println!("Registered the Dex MCP server for all your projects.");
-        println!("Its tools appear only in Claude Code sessions running inside a Dex pane.");
-    }
-    Ok(())
+    Ok(Some(after))
 }
 
 /// What Claude Code has registered under our name, if anything.
@@ -151,8 +167,8 @@ pub struct Found {
     pub placeholders_intact: bool,
 }
 
-fn registration() -> Result<Option<Found>, ErrorBody> {
-    let output = run_claude(&["mcp", "get", SERVER])?;
+pub(crate) fn registration(at: At) -> Result<Option<Found>, ErrorBody> {
+    let output = run_claude(at, &["mcp", "get", SERVER])?;
     if !output.status.success() {
         return Ok(None);
     }
@@ -242,8 +258,8 @@ fn server_path() -> Result<PathBuf, ErrorBody> {
     Ok(server)
 }
 
-fn claude(args: &[&str]) -> Result<String, ErrorBody> {
-    let output = run_claude(args)?;
+fn claude(at: At, args: &[&str]) -> Result<String, ErrorBody> {
+    let output = run_claude(at, args)?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     if !output.status.success() {
         return Err(ErrorBody {
@@ -253,14 +269,23 @@ fn claude(args: &[&str]) -> Result<String, ErrorBody> {
                 args.join(" "),
                 String::from_utf8_lossy(&output.stderr).trim()
             ),
-            repair: "Run that command yourself to see what Claude Code reports.".into(),
+            repair: match at {
+                At::Windows => "Run that command yourself to see what Claude Code reports.".into(),
+                At::Wsl(distro) => {
+                    format!("Run that command in a {distro} pane to see what Claude Code reports.")
+                }
+            },
         });
     }
     Ok(stdout)
 }
 
-fn run_claude(args: &[&str]) -> Result<std::process::Output, ErrorBody> {
-    Command::new("claude").args(args).output().map_err(|err| {
+fn run_claude(at: At, args: &[&str]) -> Result<std::process::Output, ErrorBody> {
+    match at {
+        At::Windows => Command::new("claude").args(args).output(),
+        At::Wsl(distro) => crate::wsl::run_login(distro, "claude", args),
+    }
+    .map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
             return ErrorBody {
                 code: ErrorCode::Internal,
@@ -281,7 +306,7 @@ fn run_claude(args: &[&str]) -> Result<std::process::Output, ErrorBody> {
 
 /// For `dex doctor`: one line on the MCP registration.
 pub fn doctor_check() -> (bool, String) {
-    match registration() {
+    match registration(At::Windows) {
         Err(err) => (false, err.message),
         Ok(None) => (false, "not registered (run `dex mcp install`)".into()),
         Ok(Some(found)) if !found.user_scope => (

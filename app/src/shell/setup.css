@@ -131,3 +131,67 @@
   padding: 12px 20px 16px;
   border-top: 1px solid var(--border);
 }
+
+/* The terminal choice, above the checks: a row like them, with a picker. */
+.setup-terminal {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.setup-terminal .setup-dot { background: var(--accent); }
+
+.setup-select {
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+/* After a terminal is chosen: the running panes to restart in it, or not. */
+.setup-terminal-block {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.setup-terminal-block .setup-terminal {
+  border-bottom: none;
+}
+
+.setup-restart {
+  padding: 4px 20px 12px 44px;
+  font-size: 12.5px;
+}
+
+.setup-restart-head {
+  margin: 0 0 6px;
+  color: var(--text-dim);
+}
+
+.setup-restart ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-restart label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.setup-restart-detail {
+  color: var(--text-dim);
+}
+
+.setup-restart-detail.is-busy {
+  color: #e3b341;
+}
+
+.setup-restart-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}

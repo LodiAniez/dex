@@ -6,6 +6,7 @@ use std::process::Command;
 
 use dex_protocol::agent::{AgentEventArgs, SpawnArgs};
 use dex_protocol::context::{Caller, DigestArgs};
+use dex_protocol::pane::TerminalArgs;
 use dex_protocol::repo::AddRepoArgs;
 use dex_protocol::workspace::CreateWorkspaceArgs;
 
@@ -24,6 +25,62 @@ fn brief(task: &str, pane: &str) -> SpawnArgs {
         pane: Some(pane.into()),
         workspace: None,
     }
+}
+
+async fn runtime_of(state: &AppState, pane: &str) -> String {
+    let pane = pane.to_owned();
+    state
+        .db
+        .call(move |conn| workspace::pane_runtime(conn, &pane))
+        .await
+        .unwrap()
+        .unwrap()
+}
+
+async fn choose(state: &AppState, terminal: &str) {
+    let terminal = terminal.to_owned();
+    state
+        .db
+        .call(move |conn| workspace::set_terminal(conn, &terminal))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn an_agent_runs_in_the_terminal_chosen_for_dex_whoever_spawns_it() {
+    let (_dir, state, first) = pane().await;
+    parent_agent(&state, &first, "parent").await;
+    let unchosen = spawn(&state, brief("windows work", &first)).await.unwrap();
+    assert_eq!(runtime_of(&state, &unchosen.pane).await, "windows");
+
+    // The lead is on Windows; the choice, not the lead, decides.
+    choose(&state, "wsl:Ubuntu").await;
+    let in_wsl = spawn(&state, brief("linux work", &first)).await.unwrap();
+    assert_eq!(runtime_of(&state, &in_wsl.pane).await, "wsl:Ubuntu");
+    assert_eq!(
+        runtime_of(&state, &first).await,
+        "windows",
+        "a running pane stays put"
+    );
+}
+
+#[tokio::test]
+async fn a_distro_that_is_not_installed_cannot_be_chosen() {
+    let (_dir, state, _first) = pane().await;
+    let err = workspace::choose_terminal(
+        &state,
+        TerminalArgs {
+            terminal: Some("wsl:NoSuchDistroHere".into()),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, workspace::WorkspaceError::NoSuchDistro { .. }),
+        "{err:?}"
+    );
+    let still = workspace::terminal(&state).await.unwrap();
+    assert_eq!(still, "windows");
 }
 
 /// A git repository with one commit.

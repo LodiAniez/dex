@@ -53,12 +53,14 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
     let settings = state.config.get();
     let caller = caller(state, &args).await?;
     check_limits(state, &caller, &settings.agents).await?;
+    // Where the child runs: the terminal the owner chose for Dex, whoever spawns.
+    let runtime = workspace::terminal(state).await?;
 
     // Step 2: the worktree, before anything else is created. A spawn that fell
     // back to the main checkout would put two agents in one working tree.
     let (repo_id, cwd, branch) = match (&args.repo, &args.worktree) {
         (Some(repo), Some(branch)) => {
-            let (repo_id, path) = repo::create_for_spawn(state, repo, branch).await?;
+            let (repo_id, path) = repo::create_for_spawn(state, repo, branch, &runtime).await?;
             (
                 Some(repo_id),
                 crate::platform::paths::normalize(&path),
@@ -82,8 +84,11 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         &caller.pane,
         caller.agent_id.as_deref(),
         args.direction.as_deref(),
-        cwd.clone(),
-        args.label.clone(),
+        super::placement::ChildPane {
+            cwd: cwd.clone(),
+            label: args.label.clone(),
+            runtime,
+        },
     )
     .await?;
     // The new pane takes focus in its workspace, which is how it is identified.

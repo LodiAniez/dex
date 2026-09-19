@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use dex_core::app::AppState;
 use dex_core::platform::pipe;
 use dex_core::platform::pty::{OutputSink, PtyOutput, SpawnRequest, resolve_shell, shell_args};
+use dex_core::platform::wsl::{self, Runtime};
 use dex_core::platform::{login_env, paths};
 use dex_core::router;
 use dex_protocol::Request;
@@ -33,6 +34,8 @@ pub struct SpawnPane {
     pane_id: String,
     workspace_id: Option<String>,
     cwd: Option<String>,
+    /// `windows` (the default) or `wsl:<distro>`.
+    runtime: Option<String>,
     cols: u16,
     rows: u16,
 }
@@ -47,16 +50,39 @@ pub async fn pty_spawn(
     on_output: Channel<InvokeResponseBody>,
     on_event: Channel<PtyEvent>,
 ) -> Result<(), String> {
-    let program = resolve_shell(state.config.get().shell.as_deref()).ok_or(if cfg!(windows) {
-        "no shell found: pwsh.exe, powershell.exe and cmd.exe are all missing from PATH"
-    } else {
-        "no shell found: $SHELL, /bin/zsh, /bin/bash and /bin/sh are all missing"
-    })?;
+    let runtime = match pane.runtime.as_deref() {
+        Some(text) => Runtime::parse(text)?,
+        None => Runtime::Windows,
+    };
     let cwd = pane
         .cwd
         .map(PathBuf::from)
         .or_else(paths::home_dir)
         .unwrap_or_else(std::env::temp_dir);
+    let (program, args) = match &runtime {
+        Runtime::Windows => {
+            let shell =
+                resolve_shell(state.config.get().shell.as_deref()).ok_or(if cfg!(windows) {
+                    "no shell found: pwsh.exe, powershell.exe and cmd.exe are all missing from PATH"
+                } else {
+                    "no shell found: $SHELL, /bin/zsh, /bin/bash and /bin/sh are all missing"
+                })?;
+            (shell, shell_args(cfg!(unix)))
+        }
+        // The distro's own login shell, started in the pane's folder, which
+        // `wsl.exe` translates (`C:/src` is `/mnt/c/src` inside). Checked here:
+        // `wsl.exe` only says ERROR_FILE_NOT_FOUND about a folder that has
+        // gone, such as a worktree since removed.
+        Runtime::Wsl(distro) => {
+            if !cwd.is_dir() {
+                return Err(format!(
+                    "the pane's folder {} no longer exists",
+                    cwd.display()
+                ));
+            }
+            (wsl_exe(), wsl::pane_args(distro, &paths::normalize(&cwd)))
+        }
+    };
     let socket = pipe::socket_env(&pipe::default_name()).map_err(|err| err.to_string())?;
     let mut env = vec![
         ("DEX_PANE_ID".to_owned(), pane.pane_id.clone()),
@@ -78,10 +104,18 @@ pub async fn pty_spawn(
     if let Some(workspace_id) = pane.workspace_id {
         env.push(("DEX_WORKSPACE_ID".to_owned(), workspace_id));
     }
+    // Into Linux, and back out to `dex.exe` when a hook there runs it.
+    if let Runtime::Wsl(_) = runtime {
+        let owners = std::env::var("WSLENV").ok();
+        env.push((
+            "WSLENV".to_owned(),
+            wsl::wslenv(owners.as_deref(), &wsl::PASSED_IN),
+        ));
+    }
 
     let request = SpawnRequest {
         pane_id: pane.pane_id,
-        args: shell_args(cfg!(unix)),
+        args,
         program,
         cwd,
         env,
@@ -89,10 +123,27 @@ pub async fn pty_spawn(
         rows: pane.rows,
     };
     let sink = window_sink(state.inner(), &request.pane_id, on_output, on_event);
+    let started = request.pane_id.clone();
     state
         .pty
         .spawn(request, sink)
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    // Where the shell really runs, now that it does: the watchdog looks for an
+    // agent there, and the terminal choice lists it by it.
+    let record = Request {
+        id: "pty-started".into(),
+        cmd: "pane.started".into(),
+        args: json!({ "pane": started, "runtime": runtime.to_string() }),
+    };
+    router::dispatch(state.inner(), record).await;
+    Ok(())
+}
+
+/// `wsl.exe`, from System32 rather than whatever `PATH` finds first.
+fn wsl_exe() -> PathBuf {
+    std::env::var_os("SystemRoot")
+        .map(|root| PathBuf::from(root).join("System32").join("wsl.exe"))
+        .unwrap_or_else(|| PathBuf::from("wsl.exe"))
 }
 
 /// A pane's output, sent to one window's channels. The process's exit also

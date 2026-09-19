@@ -6,7 +6,9 @@ use std::process::Command;
 use dex_protocol::PROTOCOL_VERSION;
 use serde::Serialize;
 
-use crate::commands::{hooks, mcp, skill};
+use dex_protocol::pane::{PaneList, TerminalView};
+
+use crate::commands::{hooks, mcp, skill, wsl};
 use crate::output::{self, Format};
 use dex_cli::client;
 
@@ -20,16 +22,21 @@ enum Status {
 
 #[derive(Debug, Serialize)]
 struct Check {
-    name: &'static str,
+    name: String,
     status: Status,
     detail: String,
+    /// The `dex` command that fixes this, for the setup panel's button, when
+    /// it takes arguments (`wsl setup <distro>`). The fixed steps it knows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fix: Option<String>,
 }
 
-fn check(name: &'static str, status: Status, detail: impl Into<String>) -> Check {
+fn check(name: impl Into<String>, status: Status, detail: impl Into<String>) -> Check {
     Check {
-        name,
+        name: name.into(),
         status,
         detail: detail.into(),
+        fix: None,
     }
 }
 
@@ -46,6 +53,19 @@ pub fn run(format: Format) -> bool {
     checks.push(verdict("hooks", hooks::doctor_check()));
     checks.push(verdict("mcp", mcp::doctor_check()));
     checks.push(verdict("skill", skill::doctor_check()));
+    for (name, passed, detail, fixable) in wsl::doctor_checks(&distros_in_use()) {
+        let status = match passed {
+            Some(true) => Status::Ok,
+            Some(false) => Status::Fail,
+            None => Status::Skip,
+        };
+        let distro = name.trim_start_matches("wsl:").to_owned();
+        let mut line = check(name, status, detail);
+        if passed != Some(true) && fixable {
+            line.fix = Some(format!("wsl setup {distro}"));
+        }
+        checks.push(line);
+    }
 
     let healthy = checks.iter().all(|c| c.status != Status::Fail);
     if format.json {
@@ -59,7 +79,7 @@ pub fn run(format: Format) -> bool {
                     Status::Fail => "FAIL",
                     Status::Skip => "skip",
                 };
-                vec![c.name.to_owned(), status.to_owned(), c.detail.clone()]
+                vec![c.name.clone(), status.to_owned(), c.detail.clone()]
             })
             .collect();
         output::table(format, &["CHECK", "STATUS", "DETAIL"], &rows);
@@ -108,6 +128,35 @@ fn connection_checks() -> Vec<Check> {
             check("version", Status::Skip, "needs the app running"),
         ],
     }
+}
+
+/// The distros Dex's panes run in, and the one chosen as its terminal, as far
+/// as the app says; none if it is not running.
+fn distros_in_use() -> Vec<String> {
+    let Ok(mut client) = client::connect() else {
+        return Vec::new();
+    };
+    let chosen = client
+        .call::<TerminalView>("pane.terminal", serde_json::json!({}))
+        .map(|view| view.terminal)
+        .ok();
+    let running = client
+        .call::<PaneList>("pane.list", serde_json::json!({}))
+        .map(|list| {
+            list.panes
+                .into_iter()
+                .map(|pane| pane.runtime)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut distros: Vec<String> = running
+        .into_iter()
+        .chain(chosen)
+        .filter_map(|runtime| runtime.strip_prefix("wsl:").map(str::to_owned))
+        .collect();
+    distros.sort();
+    distros.dedup();
+    distros
 }
 
 /// Claude Code itself. Without it the hooks and the MCP server have nothing

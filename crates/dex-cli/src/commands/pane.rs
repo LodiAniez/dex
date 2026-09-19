@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use clap::{Subcommand, ValueEnum};
-use dex_protocol::pane::{Created, PaneList, Sent};
+use dex_protocol::pane::{Created, PaneList, Sent, TerminalView};
 use dex_protocol::workspace::WorkspaceList;
 use dex_protocol::{ErrorBody, ErrorCode};
 use serde_json::json;
@@ -60,6 +60,12 @@ pub enum PaneCommand {
         /// file at --path, rendered).
         #[arg(long)]
         kind: Option<String>,
+    },
+    /// The terminal Dex opens panes and agents in; with one, choose it.
+    /// `windows` (PowerShell) or `wsl:<distro>`, e.g. `wsl:Ubuntu`.
+    Terminal {
+        /// The terminal to use from now on. Without it, show the choice.
+        terminal: Option<String>,
     },
     /// Split the current pane.
     Split {
@@ -120,6 +126,18 @@ pub fn run(command: PaneCommand, format: Format) -> Result<(), ErrorBody> {
             let list: PaneList = client::connect()?
                 .call("pane.list", json!({ "workspace": workspace, "pane": pane }))?;
             print_panes(&list, format);
+        }
+        PaneCommand::Terminal { terminal } => {
+            let view: TerminalView =
+                client::connect()?.call("pane.terminal", json!({ "terminal": terminal }))?;
+            if format.json {
+                output::json(&view);
+            } else {
+                for runtime in &view.runtimes {
+                    let mark = if *runtime == view.terminal { "*" } else { " " };
+                    println!("{mark} {runtime}");
+                }
+            }
         }
         PaneCommand::Create {
             path,

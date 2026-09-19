@@ -63,6 +63,21 @@ fn is_unreadable_runtime(proc: &Proc) -> bool {
     proc.command.is_empty() && RUNTIMES.iter().any(|runtime| name.starts_with(runtime))
 }
 
+/// Whether nothing runs under the shell `shell_pid` - a plain shell at its
+/// prompt, which can be closed and started again elsewhere without losing
+/// anything. `None` if the shell is not in the table. A console host the
+/// system starts beside a console program is not the owner's.
+pub fn bare(procs: &[Proc], shell_pid: u32) -> Option<bool> {
+    procs.iter().find(|proc| proc.pid == shell_pid)?;
+    Some(!procs.iter().any(|proc| {
+        let name = proc.name.to_ascii_lowercase();
+        proc.parent == shell_pid
+            && proc.pid != shell_pid
+            && !name.starts_with("conhost")
+            && !name.starts_with("openconsole")
+    }))
+}
+
 /// Whether Claude Code runs under `shell_pid`, at any depth.
 pub fn claude_under(procs: &[Proc], shell_pid: u32) -> Presence {
     let Some(shell) = procs.iter().find(|proc| proc.pid == shell_pid) else {
@@ -71,6 +86,10 @@ pub fn claude_under(procs: &[Proc], shell_pid: u32) -> Presence {
     // `shell = "claude"`: the pane's own process is it.
     if shell.name.to_ascii_lowercase().starts_with("claude") {
         return Presence::There;
+    }
+    // A WSL pane: its own process is `wsl.exe`, and what runs in it is hidden.
+    if shell.name.to_ascii_lowercase().starts_with("wsl") {
+        return Presence::CannotTell;
     }
     let mut children: HashMap<u32, Vec<&Proc>> = HashMap::new();
     for proc in procs {

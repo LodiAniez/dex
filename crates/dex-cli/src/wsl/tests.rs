@@ -1,0 +1,85 @@
+use super::*;
+
+#[test]
+fn the_distros_wsl_lists_are_read_from_utf16_less_docker_desktops() {
+    let printed: Vec<u8> = "Ubuntu\r\ndocker-desktop-data\r\nDebian\r\n"
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    assert_eq!(parse_distros(&printed), vec!["Ubuntu", "Debian"]);
+}
+
+#[test]
+fn other_programs_machinery_is_not_offered_as_a_place_to_work() {
+    let printed: Vec<u8> = "Ubuntu\r\nrancher-desktop\r\npodman-machine-default\r\n"
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    assert_eq!(parse_distros(&printed), vec!["Ubuntu"]);
+}
+
+// Windows paths: only Windows joins them with backslashes, and only Windows has WSL.
+#[cfg(windows)]
+#[test]
+fn a_linux_path_is_reached_from_windows_through_wsl_localhost() {
+    let path = under(
+        std::path::Path::new(r"\\wsl.localhost\Ubuntu"),
+        "/home/me/.claude/settings.json",
+    );
+    assert_eq!(
+        path,
+        std::path::PathBuf::from(r"\\wsl.localhost\Ubuntu\home\me\.claude\settings.json")
+    );
+    // A network path, not a folder named wsl.localhost on the current drive -
+    // which is what one lost backslash makes of it, and writes land there.
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        let prefix = path.components().next();
+        assert!(
+            matches!(prefix, Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::UNC(server, share) if server == "wsl.localhost" && share == "Ubuntu")),
+            "{path:?}"
+        );
+    }
+}
+
+#[test]
+fn the_dex_command_in_linux_runs_the_windows_one_with_its_arguments() {
+    assert_eq!(
+        shim("/mnt/c/Program Files/Dex/dex.exe"),
+        "#!/bin/sh\n# Written by `dex wsl setup`: Dex's CLI is the Windows one.\nexec '/mnt/c/Program Files/Dex/dex.exe' \"$@\"\n"
+    );
+    // A quote in the path cannot end the quoting early.
+    assert!(shim("/mnt/c/it's/dex.exe").contains(r"'/mnt/c/it'\''s/dex.exe'"));
+}
+
+#[test]
+fn the_path_is_read_after_the_marker_whatever_the_profile_printed_first() {
+    let printed = "Welcome to Ubuntu 26.04 LTS\n * Documentation: ...\n__DEX_PATH__/home/me/.local/bin:/usr/bin\n";
+    assert_eq!(
+        read_marked(printed).as_deref(),
+        Some("/home/me/.local/bin:/usr/bin")
+    );
+    assert_eq!(read_marked("no marker"), None);
+}
+
+#[test]
+fn a_program_runs_with_the_owners_path_or_in_a_test_the_stand_in_home_first() {
+    assert_eq!(
+        login_env(Some("/usr/bin"), None, None),
+        vec!["PATH=/usr/bin"]
+    );
+    assert_eq!(
+        login_env(Some("/usr/bin"), None, Some("/var/tmp/t")),
+        vec!["PATH=/var/tmp/t/.local/bin:/usr/bin", "HOME=/var/tmp/t"]
+    );
+    // PATH unreadable: the system's, with the owner's ~/.local/bin first.
+    assert_eq!(
+        login_env(None, Some("/home/me"), None),
+        vec!["PATH=/home/me/.local/bin:/usr/local/bin:/usr/bin:/bin"]
+    );
+    assert_eq!(
+        login_env(None, None, None),
+        vec!["PATH=/usr/local/bin:/usr/bin:/bin"]
+    );
+}

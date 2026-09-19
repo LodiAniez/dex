@@ -151,8 +151,38 @@ pub fn short_ref(reference: &str) -> String {
         .to_owned()
 }
 
+/// The first git that makes worktrees with `--relative-paths`, and reads a
+/// repository that has one (it marks the repository's format for it).
+pub const RELATIVE_WORKTREES: (u32, u32) = (2, 48);
+
+/// Major and minor from `git --version`: `git version 2.53.0`, or Git for
+/// Windows' `git version 2.55.0.windows.5`.
+pub fn git_version(printed: &str) -> Option<(u32, u32)> {
+    let number = printed.trim().strip_prefix("git version ")?;
+    let mut parts = number.split('.');
+    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_git_version_is_read_from_either_side() {
+        assert_eq!(
+            super::git_version(
+                "git version 2.53.0
+"
+            ),
+            Some((2, 53))
+        );
+        assert_eq!(
+            super::git_version("git version 2.55.0.windows.5"),
+            Some((2, 55))
+        );
+        assert_eq!(super::git_version("git version 2.43.0"), Some((2, 43)));
+        assert!(super::git_version("git version 2.43.0").unwrap() < super::RELATIVE_WORKTREES);
+        assert_eq!(super::git_version("bash: git: command not found"), None);
+    }
+
     use super::*;
 
     #[test]
