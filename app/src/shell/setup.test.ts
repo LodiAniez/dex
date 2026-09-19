@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { type Check, type DoctorReport, failures, fingerprint, headline, shouldOffer, stepFor, stepLabel } from "./setup";
+import {
+  type Check,
+  type DoctorReport,
+  distroToSetUp,
+  failures,
+  fingerprint,
+  headline,
+  shouldOffer,
+  stepFor,
+  stepLabel,
+} from "./setup";
 
 function report(...checks: Check[]): DoctorReport {
   return { ok: checks.every((c) => c.status !== "fail"), checks };
@@ -99,5 +109,35 @@ describe("a WSL distro in the setup panel", () => {
   it("does not open the panel by itself until Dex runs something there", () => {
     const report = { ok: true, checks: [{ name: "hooks", status: "ok" as const, detail: "" }, distro("skip", "wsl setup Ubuntu")] };
     expect(shouldOffer(report, null)).toBe(false);
+  });
+});
+
+describe("the chosen terminal's distro, in settings", () => {
+  const distro = (name: string, status: "ok" | "fail" | "skip"): Check => ({
+    name: `wsl:${name}`,
+    status,
+    detail: "",
+    fix: status === "ok" ? undefined : `wsl setup ${name}`,
+  });
+
+  it("names a chosen distro that is not set up for agents yet", () => {
+    expect(distroToSetUp(report(ok("hooks"), distro("Ubuntu", "fail")), "wsl:Ubuntu")).toBe("Ubuntu");
+    // Just chosen: doctor has not counted it as in use yet.
+    expect(distroToSetUp(report(distro("Ubuntu", "skip")), "wsl:Ubuntu")).toBe("Ubuntu");
+  });
+
+  it("names nothing once it is set up", () => {
+    expect(distroToSetUp(report(distro("Ubuntu", "ok")), "wsl:Ubuntu")).toBeNull();
+  });
+
+  it("names nothing for PowerShell, or for another distro that is not set up", () => {
+    const checks = report(distro("Ubuntu", "fail"), distro("Debian", "ok"));
+    expect(distroToSetUp(checks, "windows")).toBeNull();
+    expect(distroToSetUp(checks, "wsl:Debian")).toBeNull();
+  });
+
+  it("names nothing doctor has not checked", () => {
+    expect(distroToSetUp(report(ok("hooks")), "wsl:Ubuntu")).toBeNull();
+    expect(distroToSetUp(null, "wsl:Ubuntu")).toBeNull();
   });
 });

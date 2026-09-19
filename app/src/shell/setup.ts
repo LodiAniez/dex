@@ -77,6 +77,16 @@ export function shouldOffer(report: DoctorReport, dismissed: string | null): boo
   return now !== "" && now !== dismissed;
 }
 
+/**
+ * The distro of the chosen terminal, when doctor says it is not set up for
+ * agents yet; null for PowerShell, a distro that is ready, or one not checked.
+ */
+export function distroToSetUp(report: DoctorReport | null, terminal: string): string | null {
+  if (!terminal.startsWith("wsl:")) return null;
+  const check = report?.checks.find((c) => c.name === terminal);
+  return check && stepFor(check) ? terminal.slice(4) : null;
+}
+
 /** What the header line should say. */
 export function headline(report: DoctorReport): string {
   const failed = failures(report);

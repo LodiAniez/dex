@@ -363,6 +363,26 @@ body,
   color: #e6e9ef;
 }
 
+/* The gear: Dex's own settings, the terminal it opens. */
+.settings-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #9aa3b2;
+  cursor: pointer;
+}
+
+.settings-open:hover {
+  border-color: #4a515e;
+  color: #e6e9ef;
+}
+
 /* ---- Activity popup: the same stream, over whatever view is up ---- */
 
 .activity-backdrop {

@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { agentCounts, loadAgents, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
@@ -26,38 +25,19 @@ import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
 import { neighborPane } from "./paneGeometry";
 import { bringForward, forgetDetached, getDetached, isDetached, watchPopouts } from "./popouts";
-import { type DoctorReport, fingerprint, shouldOffer } from "./setup";
-import { Setup } from "./SetupPanel";
+import { useSetupDialogs } from "./SetupDialogs";
 import { Sidebar } from "./Sidebar";
 import { chooseMode, modeOfAction, nextMode, rememberMode, showsPanes, storedMode, whenPanesHidden, type ViewMode } from "./viewMode";
 import { TitleBar } from "./TitleBar";
 import { visibleActive } from "./visibleLayout";
 
 const SIDEBAR_PREF = "dex.sidebarOpen";
-/** The set of setup problems the owner last chose to put off. */
-const SETUP_DISMISSED = "dex.setupDismissed";
 
 function readSidebarPref(): boolean {
   try {
     return localStorage.getItem(SIDEBAR_PREF) !== "false";
   } catch {
     return true;
-  }
-}
-
-function readPref(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writePref(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Storage unavailable: the panel will simply offer again next time.
   }
 }
 
@@ -108,8 +88,10 @@ export function App() {
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
-  const [setupReport, setSetupReport] = useState<DoctorReport | null>(null);
-  const [setupOpen, setSetupOpen] = useState(false);
+  const setup = useSetupDialogs(() => {
+    const pane = activePane();
+    if (pane) focusTerminal(pane);
+  });
 
   const agents = useAgents();
 
@@ -148,13 +130,6 @@ export function App() {
     }
   }, [mode]);
 
-  /** Runs `dex doctor`; opens the panel only when it should offer itself. */
-  const checkSetup = async (offer: boolean) => {
-    const report = await invoke<DoctorReport>("setup_check");
-    setSetupReport(report);
-    if (offer && shouldOffer(report, readPref(SETUP_DISMISSED))) setSetupOpen(true);
-  };
-
   useEffect(() => {
     run(loadWorkspaces());
     run(loadAgents());
@@ -165,7 +140,7 @@ export function App() {
     // First run: if hooks or the MCP server are missing, say so and offer to
     // fix it. A doctor that cannot run at all is logged, not shown — the app
     // is usable without it and the palette can ask again.
-    void checkSetup(true).catch((err) => console.warn("setup check failed", err));
+    void setup.check(true).catch((err) => console.warn("setup check failed", err));
   }, []);
 
   // A pane closed while in its own window is forgotten here too.
@@ -265,8 +240,10 @@ export function App() {
         return;
       }
       case "open-setup":
-        setSetupOpen(true);
-        run(checkSetup(false));
+        setup.openSetup();
+        return;
+      case "open-settings":
+        setup.openSettings();
         return;
     }
   };
@@ -325,6 +302,7 @@ export function App() {
         counts={agentCounts(agents)}
         onShowActivity={active ? () => setActivityOpen((open) => !open) : undefined}
         view={active ? { mode, onChoose: chooseView } : undefined}
+        onOpenSettings={setup.openSettings}
       />
       <div className="app-body">
         <Sidebar
@@ -364,20 +342,7 @@ export function App() {
         />
       )}
       {paletteOpen && <CommandPalette onRun={runItem} onClose={closePalette} />}
-      {setupOpen && setupReport && (
-        <Setup
-          report={setupReport}
-          onRecheck={() => checkSetup(false)}
-          onClose={() => {
-            // Remember what was put off, so the same problems do not reopen
-            // the panel every start — but new ones still do.
-            writePref(SETUP_DISMISSED, fingerprint(setupReport));
-            setSetupOpen(false);
-            const pane = activePane();
-            if (pane) focusTerminal(pane);
-          }}
-        />
-      )}
+      {setup.dialogs}
       <NoticeBar />
     </div>
   );
