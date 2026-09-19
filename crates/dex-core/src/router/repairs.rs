@@ -65,7 +65,7 @@ pub(super) fn error_body(err: &CoreError) -> ErrorBody {
         ),
         CoreError::Agent(AgentError::BriefTooLong { .. }) => (
             ErrorCode::InvalidArgs,
-            "Keep --task to what the agent must do, and put the detail in shared context: `dex context write <key>`, then name the key in the brief.".to_owned(),
+            "Keep the brief to what the agent must do, and put the detail in shared context (`dex context write <key>`, or the `context_write` tool), then name the key in the brief.".to_owned(),
         ),
         CoreError::Agent(AgentError::WorktreeWithoutRepo) => (
             ErrorCode::InvalidArgs,

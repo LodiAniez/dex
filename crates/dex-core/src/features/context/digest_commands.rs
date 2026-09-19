@@ -132,17 +132,26 @@ async fn checkouts(
             }
         })
         .await?;
+    // All at once, under one deadline: however many repos, the start waits
+    // BRANCH_WAIT at most. A git that has not answered by then is left to
+    // finish on its own (a stalled share gives up in its own time).
+    let asked: Vec<_> = linked
+        .iter()
+        .map(|(_, checkout, _)| {
+            checkout
+                .clone()
+                .map(|path| tokio::task::spawn_blocking(move || repo::branch_at(Path::new(&path))))
+        })
+        .collect();
+    let deadline = tokio::time::Instant::now() + BRANCH_WAIT;
     let mut found = Vec::with_capacity(linked.len());
-    for (name, checkout, branch) in linked {
-        let live = match checkout.clone() {
-            Some(path) => {
-                let asked = tokio::task::spawn_blocking(move || repo::branch_at(Path::new(&path)));
-                tokio::time::timeout(BRANCH_WAIT, asked)
-                    .await
-                    .ok()
-                    .and_then(Result::ok)
-                    .flatten()
-            }
+    for ((name, checkout, branch), asking) in linked.into_iter().zip(asked) {
+        let live = match asking {
+            Some(asking) => tokio::time::timeout_at(deadline, asking)
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .flatten(),
             None => None,
         };
         found.push(WorkspaceCheckout {

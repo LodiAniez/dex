@@ -101,7 +101,40 @@ pub fn full(orientation: &Orientation, cap: usize) -> String {
             None => format!("This agent's id is {}.", me.id),
         });
     }
+    let lines = the_rest(orientation);
+    // The task first: whole if it fits under the ceiling beside what is
+    // always said. The rest has its budget, and no more than the task leaves.
+    // Room is kept for saying what of the rest was left out, whatever the task.
+    // Counted in characters, as Claude Code counts.
+    let note = width(&left_out(lines.len())) + 1;
+    let task = orientation
+        .task_brief
+        .as_deref()
+        .map(|task| task_line(task, CEILING.saturating_sub(width(&text) + 1 + note)));
+    let taken = width(&text) + task.as_deref().map_or(0, |line| width(line) + 1);
+    let room = cap
+        .saturating_sub(width(&text))
+        .min(CEILING.saturating_sub(taken));
+    let rest = pack(&lines, room, left_out);
+    if let Some(task) = task {
+        text.push('\n');
+        text.push_str(&task);
+    }
+    for line in rest {
+        text.push('\n');
+        text.push_str(&line);
+    }
+    text
+}
 
+/// A sibling's task, as the list of other agents gives it: enough to know
+/// what they are on. Their whole brief is theirs; a long one must not crowd
+/// everything after it out of this agent's digest.
+const SIBLING_TASK_CHARS: usize = 120;
+
+/// Everything in a full digest but where it is, who it is and its task, most
+/// important first.
+fn the_rest(orientation: &Orientation) -> Vec<String> {
     let mut lines = Vec::new();
     for checkout in &orientation.repos {
         let branch = checkout.branch.as_deref().unwrap_or("a detached HEAD");
@@ -121,7 +154,7 @@ pub fn full(orientation: &Orientation, cap: usize) -> String {
             let task = sibling
                 .task
                 .as_deref()
-                .map(|t| format!(" — {t}"))
+                .map(|t| format!(" — {}", shortened(t, SIBLING_TASK_CHARS)))
                 .unwrap_or_default();
             lines.push(format!("- {} ({}){task}", sibling.label, sibling.status));
         }
@@ -139,28 +172,23 @@ pub fn full(orientation: &Orientation, cap: usize) -> String {
             plural(orientation.unread, "message", "messages"),
         ));
     }
-    // The task first: whole if it fits under the ceiling beside what is
-    // always said. The rest has its budget, and no more than the task leaves.
-    // Room is kept for saying what of the rest was left out, whatever the task.
-    let note = left_out(lines.len()).len() + 1;
-    let task = orientation
-        .task_brief
-        .as_deref()
-        .map(|task| task_line(task, CEILING.saturating_sub(text.len() + 1 + note)));
-    let taken = text.len() + task.as_ref().map_or(0, |line| line.len() + 1);
-    let room = cap
-        .saturating_sub(text.len())
-        .min(CEILING.saturating_sub(taken));
-    let rest = pack(&lines, room, left_out);
-    if let Some(task) = task {
-        text.push('\n');
-        text.push_str(&task);
+    lines
+}
+
+/// Characters, as Claude Code counts its limit - not bytes.
+fn width(text: &str) -> usize {
+    text.chars().count()
+}
+
+/// The first line of `text`, and at most `most` characters of it.
+fn shortened(text: &str, most: usize) -> String {
+    let first = text.lines().next().unwrap_or("");
+    if width(first) <= most && first.len() == text.trim_end().len() {
+        return first.to_owned();
     }
-    for line in rest {
-        text.push('\n');
-        text.push_str(&line);
-    }
-    text
+    let mut cut: String = first.chars().take(most).collect();
+    cut.push('…');
+    cut
 }
 
 /// The task line, whole if it fits in `room` characters; cut to fit, saying
@@ -226,7 +254,7 @@ fn fit(lines: &[String], cap: usize) -> Option<String> {
         return None;
     }
     let mut text = HEADING.to_owned();
-    for line in pack(lines, cap.saturating_sub(text.len()), earlier) {
+    for line in pack(lines, cap.saturating_sub(width(&text)), earlier) {
         text.push('\n');
         text.push_str(&line);
     }
@@ -237,14 +265,14 @@ fn fit(lines: &[String], cap: usize) -> Option<String> {
 /// break), and then - if any did not - a note of how many were left out, room
 /// for which is kept.
 fn pack(lines: &[String], room: usize, omission: fn(usize) -> String) -> Vec<String> {
-    let reserve = omission(lines.len()).len() + 1;
+    let reserve = width(&omission(lines.len())) + 1;
     let mut used = 0;
     let mut kept = Vec::new();
     for line in lines {
-        if used + 1 + line.len() > room.saturating_sub(reserve) {
+        if used + 1 + width(line) > room.saturating_sub(reserve) {
             break;
         }
-        used += 1 + line.len();
+        used += 1 + width(line);
         kept.push(line.clone());
     }
     let dropped = lines.len() - kept.len();

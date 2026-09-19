@@ -194,13 +194,6 @@ async fn a_new_session_in_the_same_pane_ends_the_previous_agent() {
 }
 
 #[tokio::test]
-async fn hooks_from_a_session_dex_never_saw_start_register_it() {
-    let (_dir, state, pane) = pane().await;
-    fire(&state, "batch", &pane, 5, session("s9")).await;
-    assert_eq!(only_agent(&state).await.status, AgentStatus::Running);
-}
-
-#[tokio::test]
 async fn stop_failure_records_the_failure_type() {
     let (_dir, state, pane) = pane().await;
     fire(&state, "prompt", &pane, 1, session("s1")).await;

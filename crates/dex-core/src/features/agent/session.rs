@@ -2,7 +2,8 @@
 //! one pane is one agent, whatever its session id does: `/clear` and an
 //! in-session `/resume` end one session and start another - SessionEnd, then
 //! SessionStart with another id - and the agent, its id, its children and its
-//! messages carry on through it (issue #55).
+//! messages carry on through it (issue #55). A `/resume` into a conversation
+//! the pane already had is that conversation's own agent coming back.
 
 /// How long after its agent ended a `clear` or `compact` start is still that
 /// agent carrying on, when its SessionEnd arrived first and ended it.
@@ -12,23 +13,24 @@ pub const CARRY_ON_MS: i64 = 60_000;
 /// by separate processes, and the one that ran second may have stamped first.
 const SKEW_MS: i64 = 2_000;
 
-/// Whether a SessionEnd is the agent ending. `/clear` and `/resume` end the
-/// session, not the agent: a SessionStart follows at once, in the same process.
+/// Whether a SessionEnd is the agent ending. `/clear` ends the session, not
+/// the agent: a SessionStart follows at once, in the same process. `/resume`
+/// does end it - the conversation resumed may be another agent's - and the
+/// start that follows decides who carries on.
 pub fn ends_the_agent(end_reason: Option<&str>) -> bool {
-    !matches!(end_reason, Some("clear") | Some("resume"))
+    end_reason != Some("clear")
 }
 
 /// Whether a SessionStart with this `source` is the pane's live agent carrying
 /// on under a new session id, rather than a session beginning.
 pub fn keeps_live_agent(source: Option<&str>) -> bool {
-    matches!(source, Some("clear") | Some("compact") | Some("resume"))
+    matches!(source, Some("clear") | Some("compact"))
 }
 
-/// Whether a SessionStart with this `source` may bring back the pane's agent
-/// that ended moments ago. Not `resume`: `claude --resume` in a fresh process
-/// is found by its session id, and could be any earlier conversation.
+/// Whether a SessionStart with this `source`, for a session nobody holds, may
+/// bring back the pane's agent that ended moments ago.
 pub fn revives_just_ended(source: Option<&str>) -> bool {
-    matches!(source, Some("clear") | Some("compact"))
+    matches!(source, Some("clear") | Some("compact") | Some("resume"))
 }
 
 /// Whether a start stamped `stamp` is the agent whose ending hook was stamped
@@ -43,10 +45,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_quitting_ends_the_agent() {
+    fn only_clear_does_not_end_the_agent() {
         assert!(!ends_the_agent(Some("clear")));
-        assert!(!ends_the_agent(Some("resume")));
         for reason in [
+            Some("resume"),
             Some("prompt_input_exit"),
             Some("logout"),
             Some("other"),
@@ -57,19 +59,20 @@ mod tests {
     }
 
     #[test]
-    fn clear_compact_and_resume_keep_the_live_agent_startup_does_not() {
-        for source in ["clear", "compact", "resume"] {
+    fn clear_and_compact_keep_the_live_agent_resume_and_startup_do_not() {
+        for source in ["clear", "compact"] {
             assert!(keeps_live_agent(Some(source)), "{source}");
         }
+        assert!(!keeps_live_agent(Some("resume")));
         assert!(!keeps_live_agent(Some("startup")));
         assert!(!keeps_live_agent(None));
     }
 
     #[test]
-    fn only_clear_and_compact_bring_back_an_agent_that_just_ended() {
+    fn clear_compact_and_resume_bring_back_an_agent_that_just_ended() {
         assert!(revives_just_ended(Some("clear")));
         assert!(revives_just_ended(Some("compact")));
-        assert!(!revives_just_ended(Some("resume")));
+        assert!(revives_just_ended(Some("resume")));
         assert!(!revives_just_ended(Some("startup")));
     }
 

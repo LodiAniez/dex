@@ -168,3 +168,84 @@ async fn quitting_still_ends_the_agent_with_or_without_a_reason() {
     fire(&state, "session-end", &pane, 2, session("s1")).await;
     assert_eq!(only_agent(&state).await.status, AgentStatus::Dead);
 }
+
+#[tokio::test]
+async fn resuming_a_conversation_this_pane_already_had_brings_back_its_own_agent() {
+    // Agent B ran s0 and quit; agent A runs s1; A's owner /resumes s0.
+    // Real times: reviving a row that has ended compares with the daemon's clock.
+    let (_dir, state, pane) = pane().await;
+    let t = crate::platform::clock::now_millis();
+    fire(
+        &state,
+        "session-start",
+        &pane,
+        t + 1_000,
+        start("s0", "startup"),
+    )
+    .await;
+    fire(
+        &state,
+        "session-end",
+        &pane,
+        t + 2_000,
+        end("s0", "prompt_input_exit"),
+    )
+    .await;
+    fire(
+        &state,
+        "session-start",
+        &pane,
+        t + 3_000,
+        start("s1", "startup"),
+    )
+    .await;
+    fire(&state, "session-end", &pane, t + 4_000, end("s1", "resume")).await;
+    fire(
+        &state,
+        "session-start",
+        &pane,
+        t + 5_000,
+        start("s0", "resume"),
+    )
+    .await;
+    fire(&state, "prompt", &pane, t + 6_000, session("s0")).await;
+
+    let live: Vec<_> = agents(&state)
+        .await
+        .into_iter()
+        .filter(|agent| agent.status != AgentStatus::Dead)
+        .collect();
+    assert_eq!(live.len(), 1, "one Claude Code, one live agent: {live:?}");
+}
+
+#[tokio::test]
+async fn a_spawned_agents_id_decides_which_just_ended_agent_carries_on() {
+    use dex_protocol::agent::AgentEventArgs;
+    let (_dir, state, pane) = pane().await;
+    fire(
+        &state,
+        "session-start",
+        &pane,
+        1_000,
+        start("s1", "startup"),
+    )
+    .await;
+    fire(&state, "session-end", &pane, 2_000, end("s1", "other")).await;
+    // A start that says it is some other agent is not this one carrying on.
+    let other = AgentEventArgs {
+        kind: "session-start".into(),
+        pane: pane.clone(),
+        agent: Some("someone-else".into()),
+        stamp: 3_000,
+        input: start("s2", "compact"),
+    };
+    super::super::event(&state, other).await.unwrap();
+    assert_eq!(agents(&state).await.len(), 2);
+}
+
+#[tokio::test]
+async fn hooks_from_a_session_dex_never_saw_start_register_it() {
+    let (_dir, state, pane) = pane().await;
+    fire(&state, "batch", &pane, 5, session("s9")).await;
+    assert_eq!(only_agent(&state).await.status, AgentStatus::Running);
+}

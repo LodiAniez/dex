@@ -291,7 +291,7 @@ fn a_digest_never_passes_what_claude_code_shows_whole() {
     assert!(
         text.contains("The brief continues"),
         "{}",
-        &text[text.len() - 200..]
+        text.chars().rev().take(200).collect::<String>()
     );
     assert!(text.contains("agents_list"));
 }
@@ -335,4 +335,43 @@ fn a_budget_set_past_the_ceiling_still_keeps_under_it() {
         "{} chars",
         text.chars().count()
     );
+}
+
+#[test]
+fn a_brief_in_another_script_is_counted_in_characters_not_bytes() {
+    // 3,000 characters of CJK are 9,000 bytes: the rest must not be squeezed out.
+    let orientation = Orientation {
+        workspace: "api".into(),
+        task_brief: Some("審".repeat(3_000)),
+        unread: 1,
+        ..Default::default()
+    };
+    let text = full(&orientation, caps().full_chars);
+    assert!(
+        text.contains("1 unread message waiting"),
+        "the rest was squeezed out"
+    );
+    assert!(text.chars().count() <= CEILING);
+}
+
+#[test]
+fn another_agents_long_brief_does_not_crowd_out_the_rest() {
+    let orientation = Orientation {
+        workspace: "api".into(),
+        siblings: vec![Sibling {
+            label: "lead".into(),
+            status: "running".into(),
+            task: Some("a very long brief. ".repeat(400)),
+        }],
+        entries: vec!["notes/plan".into()],
+        unread: 2,
+        ..Default::default()
+    };
+    let text = full(&orientation, caps().full_chars);
+    assert!(
+        text.contains("- lead (running) — a very long brief."),
+        "{text}"
+    );
+    assert!(text.contains("- notes/plan"), "{text}");
+    assert!(text.contains("2 unread messages waiting"), "{text}");
 }
