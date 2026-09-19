@@ -87,10 +87,10 @@ const HOW_THE_OWNER_HEARS: &str = "The owner sees at once when an agent asks the
 /// An agent's orientation when its session starts.
 ///
 /// Never cut: where it is, who it is, and above all its task, which nothing
-/// else can tell it (issue #55). The task sits outside the budget - a long one
-/// does not crowd out the rest, which gets the whole budget, most important
-/// first. Only Claude Code's own ceiling can cut the task, and then it says
-/// where the rest of it is.
+/// else can tell it (issue #55). The task sits outside the budget: the rest
+/// gets its budget, most important first, or what the task leaves under
+/// Claude Code's ceiling if that is less. Only the ceiling can cut the task,
+/// and then it says where the rest of it is.
 pub fn full(orientation: &Orientation, cap: usize) -> String {
     let mut text = HEADING.to_owned();
     text.push_str(&format!("\nWorkspace: {}", orientation.workspace));
@@ -148,12 +148,21 @@ fn the_rest(orientation: &Orientation) -> Vec<String> {
         });
     }
     lines.push(HOW_THE_OWNER_HEARS.to_owned());
+    // Before the lists: messages waiting are this agent's own business.
+    if orientation.unread > 0 {
+        lines.push(format!(
+            "{} unread {} waiting, readable with message_inbox.",
+            orientation.unread,
+            plural(orientation.unread, "message", "messages"),
+        ));
+    }
     if !orientation.siblings.is_empty() {
         lines.push("Other agents here:".into());
         for sibling in &orientation.siblings {
             let task = sibling
                 .task
                 .as_deref()
+                .filter(|t| !t.trim().is_empty())
                 .map(|t| format!(" — {}", shortened(t, SIBLING_TASK_CHARS)))
                 .unwrap_or_default();
             lines.push(format!("- {} ({}){task}", sibling.label, sibling.status));
@@ -165,13 +174,6 @@ fn the_rest(orientation: &Orientation) -> Vec<String> {
             lines.push(format!("- {key}"));
         }
     }
-    if orientation.unread > 0 {
-        lines.push(format!(
-            "{} unread {} waiting, readable with message_inbox.",
-            orientation.unread,
-            plural(orientation.unread, "message", "messages"),
-        ));
-    }
     lines
 }
 
@@ -180,13 +182,24 @@ fn width(text: &str) -> usize {
     text.chars().count()
 }
 
-/// The first line of `text`, and at most `most` characters of it.
+/// The first line of `text` with anything in it, and at most `most`
+/// characters of that; `…` when more was left.
 fn shortened(text: &str, most: usize) -> String {
-    let first = text.lines().next().unwrap_or("");
-    if width(first) <= most && first.len() == text.trim_end().len() {
+    let text = text.trim();
+    let first = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    if width(first) <= most && first.len() == text.len() {
         return first.to_owned();
     }
-    let mut cut: String = first.chars().take(most).collect();
+    let mut cut: String = first
+        .chars()
+        .take(most)
+        .collect::<String>()
+        .trim_end()
+        .to_owned();
     cut.push('…');
     cut
 }

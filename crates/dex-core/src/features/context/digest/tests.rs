@@ -375,3 +375,23 @@ fn another_agents_long_brief_does_not_crowd_out_the_rest() {
     assert!(text.contains("- notes/plan"), "{text}");
     assert!(text.contains("2 unread messages waiting"), "{text}");
 }
+
+#[test]
+fn unread_messages_are_told_even_beside_the_longest_brief() {
+    let orientation = Orientation {
+        workspace: "api".into(),
+        task_brief: Some("b".repeat(8_000)),
+        siblings: (0..10)
+            .map(|i| Sibling {
+                label: format!("worker-{i}"),
+                status: "running".into(),
+                task: Some("x".repeat(200)),
+            })
+            .collect(),
+        entries: (0..25).map(|i| format!("notes/entry-{i}")).collect(),
+        unread: 3,
+        ..Default::default()
+    };
+    let text = full(&orientation, caps().full_chars);
+    assert!(text.contains("3 unread messages waiting"), "{text}");
+}

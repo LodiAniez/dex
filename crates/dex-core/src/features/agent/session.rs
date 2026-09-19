@@ -5,9 +5,30 @@
 //! messages carry on through it (issue #55). A `/resume` into a conversation
 //! the pane already had is that conversation's own agent coming back.
 
-/// How long after its agent ended a `clear` or `compact` start is still that
-/// agent carrying on, when its SessionEnd arrived first and ended it.
+/// How long after its agent ended a start is still that agent carrying on,
+/// when its SessionEnd arrived first and ended it.
 pub const CARRY_ON_MS: i64 = 60_000;
+
+/// What an agent ended by `/resume` says: it left for another conversation,
+/// and a `resume` start moments later may be it carrying on. An agent that
+/// quit is not - `claude --resume` in a new process is someone new.
+pub const LEFT_BY_RESUME: &str = "left for another conversation (/resume)";
+
+/// What a SessionEnd leaves in the ended agent's status detail.
+pub fn end_detail(end_reason: Option<&str>) -> Option<&'static str> {
+    (end_reason == Some("resume")).then_some(LEFT_BY_RESUME)
+}
+
+/// Whether a start with this `source` may carry on an agent that ended this
+/// way (its status detail): a `resume` only one that left by `/resume`.
+pub fn ended_for(source: Option<&str>, detail: Option<&str>) -> bool {
+    source != Some("resume") || detail == Some(LEFT_BY_RESUME)
+}
+
+/// Whether a start is a `/resume`, which may come before its own end.
+pub fn is_resume(source: Option<&str>) -> bool {
+    source == Some("resume")
+}
 
 /// How far a start's stamp may seem to come before its end's: hooks are stamped
 /// by separate processes, and the one that ran second may have stamped first.
@@ -74,6 +95,15 @@ mod tests {
         assert!(revives_just_ended(Some("compact")));
         assert!(revives_just_ended(Some("resume")));
         assert!(!revives_just_ended(Some("startup")));
+    }
+
+    #[test]
+    fn a_resume_carries_on_only_an_agent_that_left_by_resume() {
+        assert_eq!(end_detail(Some("resume")), Some(LEFT_BY_RESUME));
+        assert_eq!(end_detail(Some("prompt_input_exit")), None);
+        assert!(ended_for(Some("resume"), Some(LEFT_BY_RESUME)));
+        assert!(!ended_for(Some("resume"), None));
+        assert!(ended_for(Some("compact"), None));
     }
 
     #[test]
