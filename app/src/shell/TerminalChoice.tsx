@@ -48,6 +48,9 @@ export function TerminalChoice({ terminal, onChosen }: { terminal: Terminal; onC
     setBusy(true);
     setProblem(null);
     setOffer(null);
+    const failed = (err: unknown) =>
+      // What happened, and the daemon's repair for it.
+      setProblem(err instanceof DexError ? `${err.message}. ${err.repair}` : String(err));
     try {
       const answer = await choose(runtime);
       const restartable = offered(answer.running_elsewhere, runtime);
@@ -57,13 +60,14 @@ export function TerminalChoice({ terminal, onChosen }: { terminal: Terminal; onC
         setOffer({ runtime, choices: restartable, others });
         setTicked(new Set(restartable.filter((choice) => choice.ticked).map((choice) => choice.pane)));
       }
-      await onChosen();
     } catch (err) {
-      // What happened, and the daemon's repair for it.
-      setProblem(err instanceof DexError ? `${err.message}. ${err.repair}` : String(err));
+      failed(err);
+      return;
     } finally {
       setBusy(false);
     }
+    // The checks take a second or two; the restart offer must not wait on them.
+    await onChosen().catch(failed);
   };
   // Asked again at the click: the list may be minutes old.
   const restart = async () => {
