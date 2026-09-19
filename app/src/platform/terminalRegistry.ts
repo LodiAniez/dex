@@ -17,10 +17,11 @@
 import { joinWrapped, type BufferRow } from "./bufferText";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import type { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { ackPty, attachPty, holdPty, killPty, resizePty, spawnPty, writePty, type PtyEvent } from "./pty";
+import { endAll } from "./mirrorFeed";
 import { runtimeLabel, switchNow } from "./runtimes";
+import { type Entry, entries, retire } from "./terminalEntries";
 import { loadWebgl } from "./webglRenderer";
 
 /** Acknowledge rendered output in batches of this size... */
@@ -32,35 +33,6 @@ const KILL_GRACE_MS = 1000;
 /** PRD §7.1: ConPTY repaints on every resize, so only send the settled size. */
 const RESIZE_DEBOUNCE_MS = 100;
 
-interface Entry {
-  paneId: string;
-  workspaceId?: string;
-  cwd?: string;
-  runtime?: string;
-  /** Closed by `restartIn`, to start again in its new runtime on exit. */
-  switching: boolean;
-  term: Terminal;
-  fit: FitAddon;
-  serialize: SerializeAddon;
-  webgl: WebglAddon | null;
-  element: HTMLDivElement;
-  spawned: boolean;
-  dead: boolean;
-  pendingAck: number;
-  ackTimer: number | null;
-  resizeTimer: number | null;
-  /** Input typed while a write was in flight; sent as the next write. */
-  pendingInput: string;
-  writing: boolean;
-  /** Output bytes this window has been sent since it took the pane: what a hand-off waits for. */
-  received: number;
-  /** In another window: this one neither sends input nor resizes the PTY. */
-  away: boolean;
-  /** Just taken back from another window: the PTY is still at that window's size. */
-  resizeOnShow: boolean;
-}
-
-const entries = new Map<string, Entry>();
 let parkingHost: HTMLDivElement | null = null;
 let shortcutFilter: ((event: KeyboardEvent) => boolean) | null = null;
 
@@ -109,11 +81,15 @@ export function openTerminal(paneId: string, cwd?: string, workspaceId?: string,
     paneId, workspaceId, cwd, runtime, term, fit, serialize, element,
     webgl: null, spawned: false, dead: false, pendingAck: 0, ackTimer: null, resizeTimer: null,
     pendingInput: "", writing: false, received: 0, away: false, resizeOnShow: false, switching: false,
+    mirrors: new Set(), decoder: new TextDecoder(),
   };
   entries.set(paneId, entry);
 
   term.onData((data) => sendInput(entry, data));
-  term.onResize(({ cols, rows }) => scheduleResize(entry, cols, rows));
+  term.onResize(({ cols, rows }) => {
+    for (const mirror of entry.mirrors) mirror.resize(cols, rows);
+    scheduleResize(entry, cols, rows);
+  });
 }
 
 /** Shows the pane's terminal inside `host`, loading a renderer and starting the PTY on first show. */
@@ -147,7 +123,7 @@ function startShell(entry: Entry): void {
     onEvent: (event) => handleEvent(entry, event),
   }).catch((err) => {
     entry.dead = true; // No shell: shown as exited, not waiting on one that never came.
-    entry.term.write(`\r\n\x1b[31mCould not start a shell: ${err}\x1b[0m\r\n`);
+    show(entry, `\r\n\x1b[31mCould not start a shell: ${err}\x1b[0m\r\n`);
   });
 }
 
@@ -186,7 +162,7 @@ export function restartIn(paneId: string, runtime: string): boolean {
       if (!entry.switching || entries.get(paneId) !== entry) return;
       entry.switching = false;
       entry.runtime = previous; // Still running where it was.
-      entry.term.write(`\r\n\x1b[31mCould not restart in ${runtimeLabel(runtime)}: ${err}\x1b[0m\r\n`);
+      show(entry, `\r\n\x1b[31mCould not restart in ${runtimeLabel(runtime)}: ${err}\x1b[0m\r\n`);
     }, KILL_GRACE_MS);
   });
   return true;
@@ -230,9 +206,9 @@ export function disposeTerminal(paneId: string): void {
   // A switch under way must not start a shell for a pane that is gone.
   entry.switching = false;
   if (!entry.dead) void killPty(paneId).catch(() => {});
+  retire(paneId);
   entry.term.dispose();
   entry.element.remove();
-  entries.delete(paneId);
 }
 
 /** How long a hand-off waits for output already on its way to this window. */
@@ -254,6 +230,7 @@ export async function handOff(paneId: string): Promise<string> {
   await new Promise<void>((resolve) => entry.term.write("", resolve));
   flushAck(entry);
   entry.away = true;
+  endAll(entry.mirrors);
   detachTerminal(paneId);
   return entry.serialize.serialize();
 }
@@ -343,6 +320,10 @@ async function flushInput(entry: Entry): Promise<void> {
 /** Writes PTY output and acknowledges it once xterm.js has actually processed it (flow control). */
 function writeOutput(entry: Entry, bytes: Uint8Array): void {
   entry.received += bytes.length;
+  if (entry.mirrors.size > 0) {
+    const text = entry.decoder.decode(bytes, { stream: true });
+    for (const mirror of entry.mirrors) mirror.data(text);
+  }
   entry.term.write(bytes, () => {
     entry.pendingAck += bytes.length;
     if (entry.pendingAck >= ACK_BATCH_BYTES) {
@@ -376,18 +357,27 @@ function handleEvent(entry: Entry, event: PtyEvent): void {
   if (event.type === "dropped") {
     // Bytes were discarded mid-stream, so the terminal state is unknown: reset it (PRD §7.1).
     entry.term.reset();
-    entry.term.write("\x1b[2m[… output dropped while the display was unresponsive …]\x1b[0m\r\n");
+    entry.decoder = new TextDecoder(); // A character split at the gap is gone.
+    // ESC c: a mirror resets as the terminal just did.
+    for (const mirror of entry.mirrors) mirror.data("\x1bc");
+    show(entry, "\x1b[2m[… output dropped while the display was unresponsive …]\x1b[0m\r\n");
     return;
   }
   // Closed to start again in another terminal (`restartIn`): no exit to report.
   if (entry.switching && entries.get(entry.paneId) === entry) {
     entry.switching = false;
-    entry.term.write(`\r\n\x1b[2m[now in ${runtimeLabel(entry.runtime ?? "windows")}]\x1b[0m\r\n`);
+    show(entry, `\r\n\x1b[2m[now in ${runtimeLabel(entry.runtime ?? "windows")}]\x1b[0m\r\n`);
     startShell(entry);
     return;
   }
   // Keep the pane and its scrollback: output after a crash is often exactly what the user wants.
   entry.dead = true;
   const code = event.code === null ? "unknown" : String(event.code);
-  entry.term.write(`\r\n\x1b[2m[process exited with code ${code}]\x1b[0m\r\n`);
+  show(entry, `\r\n\x1b[2m[process exited with code ${code}]\x1b[0m\r\n`);
+}
+
+/** Writes a notice of Dex's own into the pane, and into anything mirroring it. */
+function show(entry: Entry, text: string): void {
+  entry.term.write(text);
+  for (const mirror of entry.mirrors) mirror.data(text);
 }

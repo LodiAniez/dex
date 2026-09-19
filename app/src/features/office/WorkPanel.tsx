@@ -24,11 +24,13 @@ interface Props {
   screen: string[];
   /** Leaves the view for the terminals, on this pane. */
   onGoToPane: (paneId: string) => void;
+  /** Opens their screen large, on a monitor they can be prompted from. */
+  onExpand: () => void;
   onClose: () => void;
 }
 
 /** One employee's work: what they were asked, what is on their screen, what they have done. */
-export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPane, onClose }: Props) {
+export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPane, onExpand, onClose }: Props) {
   const { agent, persona, role } = employee;
   // The labels this agent goes by, so that the agents it hired count as its doing.
   const theirLabels = [...who.labels].filter(([, name]) => name === persona.name).map(([label]) => label);
@@ -118,7 +120,18 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
       )}
       <div className="office-panel-task">{agent.task_brief ?? "Started by you; no brief."}</div>
 
-      <span className="office-panel-label">Their screen, live</span>
+      <div className="office-panel-label-row">
+        <span className="office-panel-label">Their screen, live</span>
+        <button
+          type="button"
+          className="office-panel-expand"
+          disabled={!agent.pane_id}
+          title="Open their screen on a monitor, and prompt them from it"
+          onClick={onExpand}
+        >
+          ⤢ Expand
+        </button>
+      </div>
       <div className="office-panel-screen">
         {screen.length > 0 ? screen.map((line, i) => <div key={i}>{line}</div>) : <div className="quiet">nothing on screen</div>}
       </div>

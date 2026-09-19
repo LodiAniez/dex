@@ -2,6 +2,7 @@ import "./popout.css";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, useState } from "react";
+import { serveMirrors } from "../platform/terminalMirror";
 import { attachTerminal, fitTerminal, focusTerminal, handOff, takeOver } from "../platform/terminalRegistry";
 import { DOCK, DOCKED, READY, STATE, type PaneMessage, type Screen } from "./popouts";
 
@@ -33,6 +34,12 @@ export function PopoutView({ paneId, title }: { paneId: string; title: string })
     let cancelled = false;
     const stops: (() => void)[] = [];
     void (async () => {
+      // The office's monitor asks this window for a copy of its pane. Started
+      // after this effect was cleaned up (React runs it twice in development),
+      // it stops at once rather than serve every copy twice.
+      const serving = await serveMirrors();
+      if (cancelled) serving();
+      else stops.push(serving);
       stops.push(
         await listen<Screen>(STATE, (event) => {
           if (event.payload.paneId !== paneId || cancelled) return;
