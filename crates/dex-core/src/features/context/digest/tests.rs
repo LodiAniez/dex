@@ -295,3 +295,44 @@ fn a_digest_never_passes_what_claude_code_shows_whole() {
     );
     assert!(text.contains("agents_list"));
 }
+
+#[test]
+fn the_longest_brief_a_spawn_takes_arrives_whole_even_with_a_full_workspace() {
+    // The brief wins: the rest shrinks to fit beside it under the ceiling.
+    let brief = "b".repeat(8_000);
+    let orientation = Orientation {
+        workspace: "api".into(),
+        me: Some(Me {
+            id: "0c23c7a1-5f44-4d7e-9a57-5c0a2f1b9e10".into(),
+            label: Some("reviewer-x".into()),
+        }),
+        task_brief: Some(brief.clone()),
+        entries: (0..200).map(|i| format!("notes/entry-{i}")).collect(),
+        ..Default::default()
+    };
+    let text = full(&orientation, caps().full_chars);
+    assert!(
+        text.contains(&format!("This agent's task: {brief}\n")),
+        "the brief was cut"
+    );
+    assert!(
+        text.chars().count() <= CEILING,
+        "{} chars",
+        text.chars().count()
+    );
+}
+
+#[test]
+fn a_budget_set_past_the_ceiling_still_keeps_under_it() {
+    let orientation = Orientation {
+        workspace: "api".into(),
+        entries: (0..2_000).map(|i| format!("notes/entry-{i}")).collect(),
+        ..Default::default()
+    };
+    let text = full(&orientation, 50_000);
+    assert!(
+        text.chars().count() <= CEILING,
+        "{} chars",
+        text.chars().count()
+    );
+}

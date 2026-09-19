@@ -139,15 +139,22 @@ pub fn full(orientation: &Orientation, cap: usize) -> String {
             plural(orientation.unread, "message", "messages"),
         ));
     }
-    let rest = pack(&lines, cap.saturating_sub(text.len()), left_out);
-    if let Some(task) = &orientation.task_brief {
-        let others: usize = text.chars().count()
-            + rest
-                .iter()
-                .map(|line| line.chars().count() + 1)
-                .sum::<usize>();
+    // The task first: whole if it fits under the ceiling beside what is
+    // always said. The rest has its budget, and no more than the task leaves.
+    // Room is kept for saying what of the rest was left out, whatever the task.
+    let note = left_out(lines.len()).len() + 1;
+    let task = orientation
+        .task_brief
+        .as_deref()
+        .map(|task| task_line(task, CEILING.saturating_sub(text.len() + 1 + note)));
+    let taken = text.len() + task.as_ref().map_or(0, |line| line.len() + 1);
+    let room = cap
+        .saturating_sub(text.len())
+        .min(CEILING.saturating_sub(taken));
+    let rest = pack(&lines, room, left_out);
+    if let Some(task) = task {
         text.push('\n');
-        text.push_str(&task_line(task, CEILING.saturating_sub(others + 1)));
+        text.push_str(&task);
     }
     for line in rest {
         text.push('\n');
