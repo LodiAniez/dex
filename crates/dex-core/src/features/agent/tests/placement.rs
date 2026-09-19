@@ -20,7 +20,6 @@ fn brief(task: &str, pane: &str, direction: Option<&str>) -> SpawnArgs {
         direction: direction.map(str::to_owned),
         pane: Some(pane.into()),
         workspace: None,
-        runtime: None,
     }
 }
 
@@ -271,7 +270,6 @@ async fn an_owner_hire_never_splits_an_agent_the_owner_started_by_hand() {
             cwd: None,
             label: None,
             kind: None,
-            runtime: None,
         },
     )
     .await

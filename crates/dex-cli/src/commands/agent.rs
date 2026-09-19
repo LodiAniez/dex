@@ -16,7 +16,6 @@ use dex_protocol::agent::{AgentList, AgentView, Spawned, Stopped};
 use dex_protocol::pane::PaneList;
 use serde_json::json;
 
-use crate::commands::pane::RunsIn;
 use crate::output::{self, Format};
 use dex_cli::client;
 
@@ -62,8 +61,6 @@ pub enum AgentCommand {
         /// Where its pane goes.
         #[arg(long, value_enum, default_value = "right")]
         direction: Direction,
-        #[command(flatten)]
-        runs_in: RunsIn,
     },
 }
 
@@ -92,7 +89,6 @@ pub fn run(
             worktree,
             label,
             direction,
-            runs_in,
         } => {
             let spawned: Spawned = client::connect()?.call(
                 "agent.spawn",
@@ -107,7 +103,6 @@ pub fn run(
                     },
                     "pane": std::env::var("DEX_PANE_ID").ok().filter(|id| !id.is_empty()),
                     "workspace": workspace,
-                    "runtime": runs_in.runtime(),
                 }),
             )?;
             if format.json {

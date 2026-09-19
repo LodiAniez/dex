@@ -16,7 +16,6 @@ fn brief(task: &str, pane: &str) -> SpawnArgs {
         direction: None,
         pane: Some(pane.into()),
         workspace: None,
-        runtime: None,
     }
 }
 
@@ -142,7 +141,6 @@ async fn clocking_out_closes_the_pane_even_of_an_agent_the_owner_started() {
             cwd: None,
             label: None,
             kind: None,
-            runtime: None,
         },
     )
     .await

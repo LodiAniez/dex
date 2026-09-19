@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import "./palette.css";
 import { currentKeymap, subscribeKeymap } from "../../platform/config";
-import { useRuntimes } from "../../platform/runtimes";
 import { useWorkspaces } from "../workspaces";
 import { buildItems, parseQuery, rankItems, type PaletteItem, type RankedItem } from "./items";
 
@@ -25,7 +24,6 @@ const KIND_LABEL: Record<PaletteItem["kind"], string> = {
   workspace: "workspace",
   pane: "pane",
   command: "command",
-  runtime: "command",
 };
 
 /** How many rows to show; the rest is what typing more is for. */
@@ -51,8 +49,7 @@ export function CommandPalette({ onRun, onClose }: CommandPaletteProps) {
   // Bindings shown beside commands follow the config live.
   useEffect(() => subscribeKeymap(() => setKeymapVersion((v) => v + 1)), []);
   // `keymapVersion` stands in for the keymap itself, which lives outside React.
-  const runtimes = useRuntimes();
-  const items = useMemo(() => buildItems(list, currentKeymap(), runtimes), [list, keymapVersion, runtimes]);
+  const items = useMemo(() => buildItems(list, currentKeymap()), [list, keymapVersion]);
   const ranked: RankedItem[] = useMemo(() => rankItems(items, query).slice(0, MAX_ROWS), [items, query]);
 
   useEffect(() => input.current?.focus(), []);
@@ -119,7 +116,7 @@ export function CommandPalette({ onRun, onClose }: CommandPaletteProps) {
             >
               <span className="palette-title">
                 <Highlighted text={row.item.title} positions={row.positions} />
-                {"current" in row.item && row.item.current && <span className="palette-current">current</span>}
+                {row.item.kind !== "command" && row.item.current && <span className="palette-current">current</span>}
               </span>
               <span className="palette-detail">{row.item.detail}</span>
               {scope === "all" && <span className="palette-kind">{KIND_LABEL[row.item.kind]}</span>}
@@ -132,12 +129,5 @@ export function CommandPalette({ onRun, onClose }: CommandPaletteProps) {
 }
 
 function rowKey(item: PaletteItem): string {
-  switch (item.kind) {
-    case "command":
-      return `command:${item.action}`;
-    case "runtime":
-      return `runtime:${item.runtime}`;
-    default:
-      return `${item.kind}:${item.id}`;
-  }
+  return item.kind === "command" ? `command:${item.action}` : `${item.kind}:${item.id}`;
 }

@@ -188,7 +188,6 @@
 
 .office-panel-memo,
 .office-hire textarea,
-.office-hire select,
 .office-hire input {
   width: 100%;
   padding: 9px 11px;
@@ -204,7 +203,6 @@
 
 .office-panel-memo:focus,
 .office-hire textarea:focus,
-.office-hire select:focus,
 .office-hire input:focus {
   border-color: var(--accent);
   outline: none;

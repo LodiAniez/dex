@@ -44,6 +44,20 @@ fn an_agent_the_table_cannot_speak_for_is_left_alone() {
 }
 
 #[test]
+fn an_agent_in_wsl_is_gone_only_when_its_distro_says_its_pane_runs_no_claude() {
+    // The distro reported Claude Code in pane w-1 only.
+    let running = vec!["w-1".to_owned()];
+    let candidates = vec![
+        ("alive".to_owned(), "w-1".to_owned()),
+        ("crashed".to_owned(), "w-2".to_owned()),
+    ];
+    assert_eq!(
+        presence::gone_in_wsl(&running, &candidates),
+        HashSet::from(["crashed".to_owned()])
+    );
+}
+
+#[test]
 fn only_an_agent_gone_both_times_it_was_looked_for_is_ended() {
     // Claude Code replaces itself when it updates: gone for a moment is not gone.
     let first = HashSet::from(["blinked".to_owned(), "left".to_owned()]);
@@ -158,7 +172,6 @@ async fn a_spawned_agent_that_departed_takes_its_pane_with_it() {
             direction: None,
             pane: Some(first.clone()),
             workspace: None,
-            runtime: None,
         },
     )
     .await

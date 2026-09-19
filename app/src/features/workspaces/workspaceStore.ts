@@ -115,10 +115,8 @@ export async function splitPane(
   direction: "right" | "down",
   // `markdown` is missing on purpose: it needs a file, which only the CLI supplies.
   kind?: "terminal" | "activity" | "diff",
-  /** `windows` or `wsl:<distro>`; the split pane's when absent. */
-  runtime?: string,
 ): Promise<void> {
-  publish(await request<WorkspaceList>("pane.split", { pane, direction, kind, runtime }));
+  publish(await request<WorkspaceList>("pane.split", { pane, direction, kind }));
 }
 
 /** Closes a pane. The daemon refuses to close a workspace's last pane. */

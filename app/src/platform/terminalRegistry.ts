@@ -20,6 +20,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { ackPty, attachPty, holdPty, killPty, resizePty, spawnPty, writePty, type PtyEvent } from "./pty";
+import { runtimeLabel, switchNow } from "./runtimes";
 
 /** Acknowledge rendered output in batches of this size... */
 const ACK_BATCH_BYTES = 64 * 1024;
@@ -33,6 +34,8 @@ interface Entry {
   workspaceId?: string;
   cwd?: string;
   runtime?: string;
+  /** Closed by `restartIn`, to start again in its new runtime on exit. */
+  switching: boolean;
   term: Terminal;
   fit: FitAddon;
   serialize: SerializeAddon;
@@ -102,7 +105,7 @@ export function openTerminal(paneId: string, cwd?: string, workspaceId?: string,
   const entry: Entry = {
     paneId, workspaceId, cwd, runtime, term, fit, serialize, element,
     webgl: null, spawned: false, dead: false, pendingAck: 0, ackTimer: null, resizeTimer: null,
-    pendingInput: "", writing: false, received: 0, away: false, resizeOnShow: false,
+    pendingInput: "", writing: false, received: 0, away: false, resizeOnShow: false, switching: false,
   };
   entries.set(paneId, entry);
 
@@ -123,20 +126,60 @@ export function attachTerminal(paneId: string, host: HTMLElement): void {
     entry.resizeOnShow = false;
     void resizePty(paneId, entry.term.cols, entry.term.rows).catch(() => {});
   }
-  if (!entry.spawned) {
-    entry.spawned = true;
-    // Spawned only after the first fit, so the shell starts at the real size.
-    void spawnPty({
-      paneId,
-      workspaceId: entry.workspaceId,
-      cwd: entry.cwd,
-      runtime: entry.runtime,
-      cols: entry.term.cols,
-      rows: entry.term.rows,
-      onData: (bytes) => writeOutput(entry, bytes),
-      onEvent: (event) => handleEvent(entry, event),
-    }).catch((err) => entry.term.write(`\r\n\x1b[31mCould not start a shell: ${err}\x1b[0m\r\n`));
-  }
+  // Spawned only after the first fit, so the shell starts at the real size.
+  if (!entry.spawned) startShell(entry);
+}
+
+function startShell(entry: Entry): void {
+  entry.spawned = true;
+  entry.dead = false;
+  void spawnPty({
+    paneId: entry.paneId,
+    workspaceId: entry.workspaceId,
+    cwd: entry.cwd,
+    runtime: entry.runtime,
+    cols: entry.term.cols,
+    rows: entry.term.rows,
+    onData: (bytes) => writeOutput(entry, bytes),
+    onEvent: (event) => handleEvent(entry, event),
+  }).catch((err) => {
+    entry.dead = true; // No shell: shown as exited, not waiting on one that never came.
+    entry.term.write(`\r\n\x1b[31mCould not start a shell: ${err}\x1b[0m\r\n`);
+  });
+}
+
+/**
+ * The pane's runtime as the daemon has it now: where a shell not started yet
+ * will start. A running shell is never moved from here - only by `restartIn`,
+ * when the owner asks.
+ */
+export function syncRuntime(paneId: string, runtime: string): void {
+  const entry = entries.get(paneId);
+  if (entry && !entry.spawned) entry.runtime = runtime;
+}
+
+/** Whether this window can restart the pane's shell in `runtime`. */
+export function canRestartIn(paneId: string, runtime: string): boolean {
+  const entry = entries.get(paneId);
+  return entry !== undefined && switchNow(entry, runtime);
+}
+
+/**
+ * Closes the pane's shell and starts it again in `runtime`, in the pane's
+ * folder, keeping the scrollback - for a pane the owner chose to move to a new
+ * terminal. Whatever ran in the shell ends. False if this window cannot.
+ */
+export function restartIn(paneId: string, runtime: string): boolean {
+  const entry = entries.get(paneId);
+  if (!entry || !switchNow(entry, runtime)) return false;
+  const previous = entry.runtime;
+  entry.runtime = runtime;
+  entry.switching = true;
+  void killPty(paneId).catch(() => {
+    entry.switching = false;
+    entry.runtime = previous; // Still running where it was.
+  });
+  return true;
 }
 
 let focusSuspended = false;
@@ -174,6 +217,8 @@ export function fitTerminal(paneId: string): void {
 export function disposeTerminal(paneId: string): void {
   const entry = entries.get(paneId);
   if (!entry) return;
+  // A switch under way must not start a shell for a pane that is gone.
+  entry.switching = false;
   if (!entry.dead) void killPty(paneId).catch(() => {});
   entry.term.dispose();
   entry.element.remove();
@@ -209,6 +254,8 @@ export async function handOff(paneId: string): Promise<string> {
  * whatever was held while it moved. `content` null keeps this window's own
  * screen, for a pane whose other window went without handing anything back.
  */
+// No runtime here: a taken-over pane's shell is already running (`spawned` below);
+// anything that started one from this path would need the pane's runtime.
 export async function takeOver(paneId: string, content: string | null, cwd?: string, workspaceId?: string): Promise<void> {
   openTerminal(paneId, cwd, workspaceId);
   const entry = entries.get(paneId);
@@ -337,6 +384,13 @@ function handleEvent(entry: Entry, event: PtyEvent): void {
     // Bytes were discarded mid-stream, so the terminal state is unknown: reset it (PRD §7.1).
     entry.term.reset();
     entry.term.write("\x1b[2m[… output dropped while the display was unresponsive …]\x1b[0m\r\n");
+    return;
+  }
+  // Closed to start again in another terminal (`restartIn`): no exit to report.
+  if (entry.switching && entries.get(entry.paneId) === entry) {
+    entry.switching = false;
+    entry.term.write(`\r\n\x1b[2m[now in ${runtimeLabel(entry.runtime ?? "windows")}]\x1b[0m\r\n`);
+    startShell(entry);
     return;
   }
   // Keep the pane and its scrollback: output after a crash is often exactly what the user wants.

@@ -6,7 +6,7 @@ use std::process::Command;
 use dex_protocol::PROTOCOL_VERSION;
 use serde::Serialize;
 
-use dex_protocol::pane::PaneList;
+use dex_protocol::pane::{PaneList, TerminalView};
 
 use crate::commands::{hooks, mcp, skill, wsl};
 use crate::output::{self, Format};
@@ -53,7 +53,7 @@ pub fn run(format: Format) -> bool {
     checks.push(verdict("hooks", hooks::doctor_check()));
     checks.push(verdict("mcp", mcp::doctor_check()));
     checks.push(verdict("skill", skill::doctor_check()));
-    for (name, passed, detail) in wsl::doctor_checks(&distros_in_use()) {
+    for (name, passed, detail, fixable) in wsl::doctor_checks(&distros_in_use()) {
         let status = match passed {
             Some(true) => Status::Ok,
             Some(false) => Status::Fail,
@@ -61,7 +61,7 @@ pub fn run(format: Format) -> bool {
         };
         let distro = name.trim_start_matches("wsl:").to_owned();
         let mut line = check(name, status, detail);
-        if passed != Some(true) {
+        if passed != Some(true) && fixable {
             line.fix = Some(format!("wsl setup {distro}"));
         }
         checks.push(line);
@@ -130,19 +130,29 @@ fn connection_checks() -> Vec<Check> {
     }
 }
 
-/// The distros Dex's panes run in, as far as the app says; none if it is not
-/// running.
+/// The distros Dex's panes run in, and the one chosen as its terminal, as far
+/// as the app says; none if it is not running.
 fn distros_in_use() -> Vec<String> {
     let Ok(mut client) = client::connect() else {
         return Vec::new();
     };
-    let Ok(list) = client.call::<PaneList>("pane.list", serde_json::json!({})) else {
-        return Vec::new();
-    };
-    let mut distros: Vec<String> = list
-        .panes
+    let chosen = client
+        .call::<TerminalView>("pane.terminal", serde_json::json!({}))
+        .map(|view| view.terminal)
+        .ok();
+    let running = client
+        .call::<PaneList>("pane.list", serde_json::json!({}))
+        .map(|list| {
+            list.panes
+                .into_iter()
+                .map(|pane| pane.runtime)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut distros: Vec<String> = running
         .into_iter()
-        .filter_map(|pane| pane.runtime.strip_prefix("wsl:").map(str::to_owned))
+        .chain(chosen)
+        .filter_map(|runtime| runtime.strip_prefix("wsl:").map(str::to_owned))
         .collect();
     distros.sort();
     distros.dedup();

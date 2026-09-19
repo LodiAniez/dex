@@ -44,6 +44,16 @@ pub enum RepoError {
         /// Which rule it broke.
         reason: BadBranch,
     },
+    /// A git too old for a worktree an agent in WSL can use.
+    #[error(
+        "git in {place} is {version}; a worktree for an agent in WSL needs git 2.48 or later on both sides"
+    )]
+    GitTooOld {
+        /// `Windows`, or the distro's name.
+        place: String,
+        /// What `git --version` said.
+        version: String,
+    },
     /// git said no. Translated by `platform::proc`, never raw stderr.
     #[error(transparent)]
     Git(#[from] GitError),

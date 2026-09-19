@@ -20,7 +20,6 @@ async fn orphaned_agent(state: &AppState, first: &str) -> String {
             cwd: None,
             label: None,
             kind: None,
-            runtime: None,
         },
     )
     .await

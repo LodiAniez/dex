@@ -80,7 +80,6 @@ async fn a_hire_that_has_not_started_is_refused_rather_than_typed_into() {
             direction: None,
             pane: Some(first),
             workspace: None,
-            runtime: None,
         },
     )
     .await

@@ -26,10 +26,10 @@ struct Located {
     active: Option<String>,
 }
 
-/// A pane about to be created by a split.
 /// What a split answers with.
 type Listed = Result<WorkspaceList, WorkspaceError>;
 
+/// A pane about to be created by a split.
 struct NewPane {
     id: String,
     cwd: Option<String>,
@@ -127,14 +127,14 @@ fn split_located(conn: &mut Connection, found: Located, new: NewPane) -> Outcome
     load_list(conn).map(Ok)
 }
 
-/// `pane.split`: a new terminal pane beside `pane`, in its folder and runtime
-/// (or `cwd` and `runtime`). The new pane takes focus.
+/// `pane.split`: a new terminal pane beside `pane`, in its folder (or `cwd`),
+/// in the chosen terminal (`runtimes.rs`). The new pane takes focus.
 pub async fn split_pane(state: &AppState, args: SplitPaneArgs) -> Listed {
-    let runtime = super::runtimes::runtime_arg(args.runtime.as_deref()).await?;
-    split(state, args, runtime).await
+    let runtime = super::runtimes::terminal(state).await?;
+    split(state, args, Some(runtime)).await
 }
 
-/// For the agent slice: `split_pane` in a runtime it checked, or took from a pane.
+/// For the agent slice: `split_pane` in the terminal it has already read.
 pub async fn split_pane_in(state: &AppState, args: SplitPaneArgs, runtime: String) -> Listed {
     split(state, args, Some(runtime)).await
 }
@@ -170,7 +170,7 @@ pub async fn create_pane(
     let new = NewPane {
         id: ids::new_id(),
         cwd: pane_target(kind_arg(args.kind.as_deref())?, args.cwd.as_deref())?,
-        runtime: super::runtimes::runtime_arg(args.runtime.as_deref()).await?,
+        runtime: Some(super::runtimes::terminal(state).await?),
         label: label_arg(args.label)?,
         kind: kind_arg(args.kind.as_deref())?,
         dir: SplitDir::Horizontal,

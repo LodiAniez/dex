@@ -8,7 +8,7 @@
 interface Workspace {
   id: string;
   active_pane: string | null;
-  panes: readonly { id: string; kind: string; runtime?: string }[];
+  panes: readonly { id: string; kind: string }[];
 }
 
 export interface HireArgs {
@@ -17,19 +17,6 @@ export interface HireArgs {
   /** The terminal the new pane is split off. */
   pane?: string;
   label?: string;
-  /** `windows` or `wsl:<distro>`; where the split-off pane runs if absent. */
-  runtime?: string;
-}
-
-/** The terminal a hire is split off: the focused one, else the first. */
-function hireSource(workspace: Workspace) {
-  const terminals = workspace.panes.filter((pane) => pane.kind === "terminal");
-  return terminals.find((pane) => pane.id === workspace.active_pane) ?? terminals[0];
-}
-
-/** Where a hire runs unless the form says otherwise: where its pane splits off. */
-export function hireRuntime(workspace: Workspace): string {
-  return hireSource(workspace)?.runtime ?? "windows";
 }
 
 /**
@@ -37,14 +24,14 @@ export function hireRuntime(workspace: Workspace): string {
  * split off a terminal — the focused one if it is one — and never off the
  * office, which is what usually has focus when this is pressed.
  */
-export function hireArgs(workspace: Workspace, task: string, label: string, runtime?: string): HireArgs | null {
+export function hireArgs(workspace: Workspace, task: string, label: string): HireArgs | null {
   const brief = task.trim();
   if (!brief) return null;
-  const from = hireSource(workspace);
+  const terminals = workspace.panes.filter((pane) => pane.kind === "terminal");
+  const from = terminals.find((pane) => pane.id === workspace.active_pane) ?? terminals[0];
   const args: HireArgs = { task: brief, workspace: workspace.id };
   if (from) args.pane = from.id;
   if (label.trim()) args.label = label.trim();
-  if (runtime) args.runtime = runtime;
   return args;
 }
 
