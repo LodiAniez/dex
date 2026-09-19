@@ -178,7 +178,7 @@ spawn_permission_mode = "auto"   # what spawned agents run with
 spawn_chrome = false         # true lets spawned agents connect to Claude in Chrome
 
 [digest]
-full_chars = 2000            # budget for an agent's opening briefing
+full_chars = 2000            # budget for an agent's opening briefing (its task brief comes on top, whole)
 delta_chars = 800            # budget for "what changed since your last turn"
 
 [ui]
@@ -207,9 +207,9 @@ They are how Dex knows an agent's status without reading its screen. Each takes 
 
 Agents do not always use it. An agent that ends its turn by asking you something is, to Claude Code, idle: the turn is over. Dex reads how the closing message ends and, if it asks for an answer, shows the agent as **needs you** with what it asked - in the pane header, the sidebar, the title bar's count, a toast, and the office - while keeping it promptable, since answering is just a prompt. It is a careful guess: only the last two sentences (or list items) count, and a phrase counts only as whole words; a sentence asks if it ends in a question mark, uses a phrase like *reply "yes"*, or is simply built as a question ("what would it be.", "Would you like the long version.") whatever it ends with; and "let me know if you need anything else" is not one. Because a guess can miss, the office puts **the question in a speech bubble at the agent's mouth** - they are asking, hand up, and waiting to hear - and shows what any other idle agent said last in a quiet line under their desk, and in their panel, so you can see for yourself.
 
-Hooks cannot tell Dex everything: Claude Code quit with Ctrl+C, crashed or killed says nothing on its way out. So Dex also looks: **an agent whose pane no longer runs Claude Code is dead.** Every fifteen seconds it checks that each started agent still has a Claude Code process in its pane, looks again two seconds later to be sure, and ends the ones that do not - they leave the agent list, walk out of the office, and stop counting toward `agents.max_concurrent`. The workspace log says why, so a lead learns its agent crashed. A pane Dex made for a spawned agent closes with it; a pane you opened stays, and running `claude` in it again starts a new agent. Panes running inside WSL are not checked.
+Hooks cannot tell Dex everything: Claude Code quit with Ctrl+C, crashed or killed says nothing on its way out. So Dex also looks: **an agent whose pane no longer runs Claude Code is dead.** Every fifteen seconds it checks that each started agent still has a Claude Code process in its pane, looks again two seconds later to be sure, and ends the ones that do not - they leave the agent list, walk out of the office, and stop counting toward `agents.max_concurrent`. The workspace log says why, so a lead learns its agent crashed. A pane Dex made for a spawned agent closes with it; a pane you opened stays, and running `claude` in it again starts a new agent. Panes running inside WSL are checked too: Dex asks the distro which of its processes run Claude Code, and for which pane; a distro that does not answer ends nobody.
 
-Two of them also carry information *into* the agent: on `SessionStart`, a full digest of the workspace; on `UserPromptSubmit` and `PostToolBatch`, a short delta of what other agents have done since the agent last looked. Nothing is injected when nothing changed.
+Two of them also carry information *into* the agent: on `SessionStart`, a full digest of the workspace - who the agent is (its label and id), its whole task (a brief is outside the digest's budget; `agent spawn` refuses one over 8,000 characters, so that with the rest it stays under the 10,000 Claude Code shows an agent whole at startup), and where each of the workspace's repos is checked out and on which branch; on `UserPromptSubmit` and `PostToolBatch`, a short delta of what other agents have done since the agent last looked. Nothing is injected when nothing changed.
 
 ### The MCP server
 

@@ -3,14 +3,15 @@
 //! live in `digest.rs`; the rate limit lives here, in the daemon, so that a
 //! hook cannot skip it.
 
-use dex_protocol::context::{Digest, DigestArgs};
+use dex_protocol::context::{Caller, Digest, DigestArgs};
 
 use super::commands::scope;
-use super::digest::{self, Change, Orientation, Sibling};
+use super::digest::{self, Change, Me, Orientation, Sibling, WorkspaceCheckout};
 use super::model::ContextError;
 use super::store;
 use crate::app::AppState;
 use std::path::Path;
+use std::time::Duration;
 
 use crate::features::agent;
 use crate::features::repo;
@@ -23,6 +24,8 @@ const DELTA_MIN_INTERVAL_MS: i64 = 60_000;
 const DELTA_MIN_EVENTS: usize = 1;
 /// Most events considered for one delta; the budget cuts it down further.
 const DELTA_SCAN: u32 = 500;
+/// How long a full digest waits for git to say which branch a checkout is on.
+const BRANCH_WAIT: Duration = Duration::from_secs(3);
 /// Most entry keys named in a full digest.
 const FULL_ENTRIES: usize = 25;
 
@@ -33,6 +36,11 @@ const FULL_ENTRIES: usize = 25;
 pub async fn digest(state: &AppState, args: DigestArgs) -> Result<Digest, ContextError> {
     let now = clock::now_millis();
     let budgets = state.config.get().digest;
+    let repos = if args.kind == "full" {
+        checkouts(state, &args.caller).await?
+    } else {
+        Vec::new()
+    };
     state
         .db
         .call(
@@ -47,17 +55,14 @@ pub async fn digest(state: &AppState, args: DigestArgs) -> Result<Digest, Contex
                     let orientation = Orientation {
                         workspace: workspace::workspace_name(conn, &scope.workspace_id)?
                             .unwrap_or_else(|| "this workspace".into()),
-                        repos: repo::workspace_repos(conn, &scope.workspace_id)?
-                            .into_iter()
-                            .map(|(name, worktree, branch)| {
-                                // The branch recorded when the worktree was made
-                                // can be stale; what is checked out now wins.
-                                let live = worktree
-                                    .as_deref()
-                                    .and_then(|path| repo::branch_at(Path::new(path)));
-                                (name, live.or(branch))
-                            })
-                            .collect(),
+                        repos,
+                        me: match me {
+                            Some(id) => Some(Me {
+                                id: id.to_owned(),
+                                label: agent::label_of(conn, id)?,
+                            }),
+                            None => None,
+                        },
                         task_brief: match me {
                             Some(id) => agent::brief_of(conn, id)?,
                             None => None,
@@ -105,6 +110,57 @@ pub async fn digest(state: &AppState, args: DigestArgs) -> Result<Digest, Contex
             },
         )
         .await?
+}
+
+/// Where the caller's workspace has each of its repos checked out, and the
+/// branch each is on now: the one recorded when it was linked can be stale.
+/// git is asked outside the database, and not for long - a slow disk or a
+/// sleeping WSL distro must not hold up every agent's hooks, or this one's
+/// start - falling back to the recorded branch.
+async fn checkouts(
+    state: &AppState,
+    caller: &Caller,
+) -> Result<Vec<WorkspaceCheckout>, ContextError> {
+    let caller = caller.clone();
+    let linked = state
+        .db
+        .call(move |conn| -> rusqlite::Result<Vec<repo::WorkspaceRepo>> {
+            match scope(conn, &caller)? {
+                Ok(scope) => repo::workspace_repos(conn, &scope.workspace_id),
+                // The digest itself reports a caller it cannot place.
+                Err(_) => Ok(Vec::new()),
+            }
+        })
+        .await?;
+    // All at once, under one deadline: however many repos, the start waits
+    // BRANCH_WAIT at most. A git that has not answered by then is left to
+    // finish on its own (a stalled share gives up in its own time).
+    let asked: Vec<_> = linked
+        .iter()
+        .map(|(_, checkout, _)| {
+            checkout
+                .clone()
+                .map(|path| tokio::task::spawn_blocking(move || repo::branch_at(Path::new(&path))))
+        })
+        .collect();
+    let deadline = tokio::time::Instant::now() + BRANCH_WAIT;
+    let mut found = Vec::with_capacity(linked.len());
+    for ((name, checkout, branch), asking) in linked.into_iter().zip(asked) {
+        let live = match asking {
+            Some(asking) => tokio::time::timeout_at(deadline, asking)
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .flatten(),
+            None => None,
+        };
+        found.push(WorkspaceCheckout {
+            repo: name,
+            path: checkout,
+            branch: live.or(branch),
+        });
+    }
+    Ok(found)
 }
 
 /// The delta half: cursor, rate limit, and the events themselves.

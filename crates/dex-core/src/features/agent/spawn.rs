@@ -42,11 +42,24 @@ const TRUST_KEYS: [&[u8]; 2] = [b"\x1b[B", b"\r"];
 /// start, and a cold start on a large repository is not quick.
 const TRUST_WAIT: Duration = Duration::from_secs(120);
 
+/// The longest brief a spawn takes: with the rest of the startup digest, it
+/// stays under what Claude Code shows an agent whole (`context::digest::CEILING`).
+const MAX_BRIEF_CHARS: usize = 8_000;
+
 /// `agent.spawn`: a new pane, a new agent, and a Claude Code already working.
 pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentError> {
     let brief = args.task.trim().to_owned();
     if brief.is_empty() {
         return Err(AgentError::EmptyBrief);
+    }
+    // It reaches the child in its startup context, which Claude Code shows
+    // whole only up to a limit: refused here, where the lead can act on it.
+    let chars = brief.chars().count();
+    if chars > MAX_BRIEF_CHARS {
+        return Err(AgentError::BriefTooLong {
+            chars,
+            max: MAX_BRIEF_CHARS,
+        });
     }
     // One snapshot for the whole spawn: a reload partway through must not let a
     // spawn pass the old depth limit and then run in the new permission mode.

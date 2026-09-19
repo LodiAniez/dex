@@ -248,7 +248,8 @@ pub(super) fn existing_dir(path: &str) -> Result<PathBuf, RepoError> {
     Ok(candidate)
 }
 
-/// One of a workspace's repos: its name, its worktree path, its branch.
+/// One of a workspace's repos: its name, where it is checked out (its
+/// worktree, else the repo itself), and the branch recorded when it was linked.
 pub type WorkspaceRepo = (String, Option<String>, Option<String>);
 
 /// For other slices: the repos a workspace uses and where each is checked out.
@@ -258,7 +259,7 @@ pub fn workspace_repos(
 ) -> rusqlite::Result<Vec<WorkspaceRepo>> {
     Ok(store::repos_of_workspace(conn, workspace_id)?
         .into_iter()
-        .map(|(repo, worktree, branch)| (repo.name, worktree, branch))
+        .map(|(repo, worktree, branch)| (repo.name, worktree.or(Some(repo.path)), branch))
         .collect())
 }
 

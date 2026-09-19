@@ -13,6 +13,7 @@ mod placement;
 mod presence;
 mod prompt;
 mod reason;
+mod session;
 mod spawn;
 mod stop;
 mod store;

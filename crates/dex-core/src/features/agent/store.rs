@@ -131,6 +131,22 @@ pub fn find_by_session(
     )
 }
 
+/// The agent in a pane that ended most recently.
+pub fn find_last_ended_in_pane(
+    conn: &Connection,
+    pane_id: &str,
+) -> rusqlite::Result<Option<Agent>> {
+    conn.query_row(
+        &format!(
+            "SELECT {AGENT_COLUMNS} FROM agent WHERE pane_id = ?1 AND status = 'dead'
+             ORDER BY status_at DESC, rowid DESC LIMIT 1"
+        ),
+        [pane_id],
+        agent_from_row,
+    )
+    .optional()
+}
+
 /// The newest agent in a pane that has not ended.
 pub fn find_live_in_pane(conn: &Connection, pane_id: &str) -> rusqlite::Result<Option<Agent>> {
     find_one(conn, "pane_id = ?1 AND status != 'dead'", [pane_id])

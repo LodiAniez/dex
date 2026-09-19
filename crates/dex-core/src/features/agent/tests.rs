@@ -13,11 +13,14 @@ use crate::app::AppState;
 use crate::features::workspace::{self, WorkspaceError};
 
 mod asking;
+mod briefs;
 mod launch;
 mod orphans;
 mod placement;
 mod presence;
 mod prompting;
+mod resumes;
+mod sessions;
 mod spawn;
 mod stopping;
 mod waiting;
@@ -189,13 +192,6 @@ async fn a_new_session_in_the_same_pane_ends_the_previous_agent() {
     assert_eq!(all.len(), 2);
     assert_eq!(all[0].status, AgentStatus::Idle, "the newest is live");
     assert_eq!(all[1].status, AgentStatus::Dead, "the older one ended");
-}
-
-#[tokio::test]
-async fn hooks_from_a_session_dex_never_saw_start_register_it() {
-    let (_dir, state, pane) = pane().await;
-    fire(&state, "batch", &pane, 5, session("s9")).await;
-    assert_eq!(only_agent(&state).await.status, AgentStatus::Running);
 }
 
 #[tokio::test]

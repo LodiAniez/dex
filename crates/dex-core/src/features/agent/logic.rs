@@ -48,6 +48,8 @@ pub struct HookInput {
     pub permission_mode: Option<String>,
     /// StopFailure: the failure type, e.g. `rate_limit`.
     pub failure: Option<String>,
+    /// SessionEnd: why, e.g. `clear`, `logout`, `prompt_input_exit`.
+    pub end_reason: Option<String>,
     /// Set when the hook fired inside one of Claude Code's own subagents.
     pub from_subagent: bool,
 }
@@ -67,26 +69,10 @@ pub fn read_input(input: &Value) -> HookInput {
         permission_mode: text("permission_mode"),
         // Not yet captured from a real StopFailure; these are the likely names.
         failure: ["error", "error_type", "reason"].into_iter().find_map(text),
+        end_reason: text("reason"),
         // Hooks also fire inside Claude Code's subagents, carrying the parent's
         // session_id plus an agent_id (PRD §9.1).
         from_subagent: input.get("agent_id").is_some_and(|id| !id.is_null()),
-    }
-}
-
-/// How a SessionStart relates to the agent already in the pane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionStart {
-    /// `startup`, `resume`, `fork`: a session begins; register or rebind an agent.
-    Begins,
-    /// `clear`, `compact`: the same agent carries on, maybe under a new session id.
-    Continues,
-}
-
-/// Classifies a SessionStart by its `source`.
-pub fn session_start(source: Option<&str>) -> SessionStart {
-    match source {
-        Some("clear") | Some("compact") => SessionStart::Continues,
-        _ => SessionStart::Begins,
     }
 }
 
@@ -272,15 +258,6 @@ mod tests {
                 .as_deref(),
             Some("overloaded")
         );
-    }
-
-    #[test]
-    fn clear_and_compact_continue_everything_else_begins() {
-        assert_eq!(session_start(Some("clear")), SessionStart::Continues);
-        assert_eq!(session_start(Some("compact")), SessionStart::Continues);
-        assert_eq!(session_start(Some("startup")), SessionStart::Begins);
-        assert_eq!(session_start(Some("resume")), SessionStart::Begins);
-        assert_eq!(session_start(None), SessionStart::Begins);
     }
 
     #[test]

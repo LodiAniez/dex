@@ -7,8 +7,9 @@ use dex_protocol::agent::{
 use rusqlite::Connection;
 
 use super::identity;
-use super::logic::{self, HookInput, HookKind, SessionStart};
+use super::logic::{self, HookInput, HookKind};
 use super::model::{Agent, AgentError};
+use super::session;
 use super::store;
 use crate::app::AppState;
 use crate::features::{context, workspace};
@@ -28,6 +29,10 @@ pub async fn event(state: &AppState, args: AgentEventArgs) -> Result<EventOutcom
     };
     let input = logic::read_input(&args.input);
     if input.from_subagent {
+        return Ok(IGNORED);
+    }
+    // /clear: the session ends, the agent does not (a SessionStart follows).
+    if kind == HookKind::SessionEnd && !session::ends_the_agent(input.end_reason.as_deref()) {
         return Ok(IGNORED);
     }
     let now = clock::now_millis();
@@ -80,12 +85,12 @@ impl Hook<'_> {
 
 fn session_start(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<()> {
     let pane = &hook.args.pane;
-    if logic::session_start(hook.input.source.as_deref()) == SessionStart::Continues {
-        // /clear or compaction: the same agent carries on, maybe under a new
-        // session id, and its status does not change.
-        if let Some(agent) = store::find_live_in_pane(conn, pane)? {
-            return store::update_session(conn, &agent.id, hook.session(), hook.mode(), hook.now);
-        }
+    // /clear or compaction: the same agent carries on, maybe under a new
+    // session id, and its status does not change.
+    if session::keeps_live_agent(hook.input.source.as_deref())
+        && let Some(agent) = store::find_live_in_pane(conn, pane)?
+    {
+        return store::update_session(conn, &agent.id, hook.session(), hook.mode(), hook.now);
     }
     let existing = match hook.session() {
         Some(session) => store::find_by_session(conn, pane, session)?,
@@ -101,6 +106,19 @@ fn session_start(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<()> {
         (None, None) => store::find_unbound_in_pane(conn, pane)?,
         (found, _) => found,
     };
+    // A session nobody holds may still be the pane's agent carrying on; a
+    // spawned agent found by its id carries on through its own /resume even
+    // when the end was recorded after this start was stamped.
+    let existing = match existing {
+        Some(found)
+            if found.pane_id.as_deref() == Some(pane.as_str())
+                && carries_on_from_end(&found, hook) =>
+        {
+            Some(bring_back(conn, found, hook)?)
+        }
+        Some(found) => Some(found),
+        None => carried_on(conn, hook)?,
+    };
     let existing = revive(conn, hook, existing)?;
     let agent = match existing {
         Some(agent) => {
@@ -113,6 +131,43 @@ fn session_start(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<()> {
     // SessionEnd (killed, crashed) is over.
     store::end_live_in_pane(conn, pane, Some(&agent.id), hook.now)?;
     apply(conn, &agent, hook)
+}
+
+/// The pane's agent that ended moments ago, carrying on into a session nobody
+/// holds - its SessionEnd came first and ended it. Only when no agent in the
+/// pane is live: a start beside a live one may be a new Claude Code after
+/// Ctrl+C, which sends no end, and must not take the old one's identity.
+fn carried_on(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<Option<Agent>> {
+    if store::find_live_in_pane(conn, &hook.args.pane)?.is_some() {
+        return Ok(None);
+    }
+    let Some(agent) = store::find_last_ended_in_pane(conn, &hook.args.pane)?.filter(|agent| {
+        hook.args.agent.as_ref().is_none_or(|id| *id == agent.id)
+            && carries_on_from_end(agent, hook)
+    }) else {
+        return Ok(None);
+    };
+    bring_back(conn, agent, hook).map(Some)
+}
+
+/// Whether this start is `agent`, ended moments ago, carrying on: timed by the
+/// ending hook's stamp (status_at, not the daemon's ended_at) and, for a
+/// `resume`, only if it left by `/resume`.
+fn carries_on_from_end(agent: &Agent, hook: &Hook<'_>) -> bool {
+    let source = hook.input.source.as_deref();
+    agent.status == AgentStatus::Dead
+        && session::revives_just_ended(source)
+        && session::carries_on(agent.status_at, hook.args.stamp)
+        && session::ended_for(source, agent.status_detail.as_deref())
+}
+
+/// Undoes an agent's end, parking it in `unknown` for the hook to move on.
+fn bring_back(conn: &Connection, mut agent: Agent, hook: &Hook<'_>) -> rusqlite::Result<Agent> {
+    store::revive(conn, &agent.id, hook.args.stamp)?;
+    agent.status = AgentStatus::Unknown;
+    agent.status_at = hook.args.stamp;
+    agent.ended_at = None;
+    Ok(agent)
 }
 
 fn status_event(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<()> {
@@ -200,6 +255,10 @@ fn apply(conn: &Connection, agent: &Agent, hook: &Hook<'_>) -> rusqlite::Result<
         // A turn that ended by asking the owner something: idle, and waiting on them.
         AgentStatus::Idle if hook.kind == HookKind::Stop => {
             super::asking::idle_detail(&hook.args.input)
+        }
+        // Left by /resume: a resume moments later may be it carrying on.
+        AgentStatus::Dead => {
+            session::end_detail(hook.input.end_reason.as_deref()).map(str::to_owned)
         }
         _ => None,
     };

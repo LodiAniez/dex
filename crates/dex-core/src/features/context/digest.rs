@@ -22,13 +22,32 @@ pub struct Sibling {
     pub task: Option<String>,
 }
 
+/// The agent a digest is for, so it knows who it is: its own row in
+/// `agents_list`, and the name others use for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Me {
+    pub id: String,
+    pub label: Option<String>,
+}
+
+/// One of the workspace's repos, where this workspace has it checked out -
+/// its worktree, which may be on another branch than the repo's own checkout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceCheckout {
+    pub repo: String,
+    pub path: Option<String>,
+    pub branch: Option<String>,
+}
+
 /// What a full digest is built from.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Orientation {
     pub workspace: String,
-    /// The workspace's repos as `(name, branch)`, so an agent knows which
-    /// checkout it is in before it touches anything (PRD §10.3).
-    pub repos: Vec<(String, Option<String>)>,
+    pub me: Option<Me>,
+    /// The workspace's repos, where each is checked out and on which branch,
+    /// so an agent knows which checkout it is in before it touches anything
+    /// (PRD §10.3).
+    pub repos: Vec<WorkspaceCheckout>,
     pub task_brief: Option<String>,
     pub siblings: Vec<Sibling>,
     /// Entry keys, most recently updated first.
@@ -47,6 +66,15 @@ pub struct Change {
     pub created_at: i64,
 }
 
+/// The most any digest may be, in characters. Claude Code shows an agent a
+/// hook's context only up to 10,000 characters; past that it saves the text to
+/// a file and shows a path and a short preview instead, which nobody reads.
+pub const CEILING: usize = 9_500;
+
+/// Where a brief cut to fit the ceiling goes on: the agent's own row.
+const BRIEF_CONTINUES: &str =
+    " […] The brief continues; this agent's row in agents_list has it whole.";
+
 /// The heading every digest sits under, so an agent can recognise it.
 const HEADING: &str = "## Workspace context";
 
@@ -57,14 +85,75 @@ const HEADING: &str = "## Workspace context";
 const HOW_THE_OWNER_HEARS: &str = "The owner sees at once when an agent asks them something with the AskUserQuestion tool; a question that only ends a reply is easy for them to miss. An agent started by another agent has that agent to ask first.";
 
 /// An agent's orientation when its session starts.
+///
+/// Never cut: where it is, who it is, and above all its task, which nothing
+/// else can tell it (issue #55). The task sits outside the budget: the rest
+/// gets its budget, most important first, or what the task leaves under
+/// Claude Code's ceiling if that is less. Only the ceiling can cut the task,
+/// and then it says where the rest of it is.
 pub fn full(orientation: &Orientation, cap: usize) -> String {
-    let mut lines = vec![format!("Workspace: {}", orientation.workspace)];
-    for (repo, branch) in &orientation.repos {
-        let branch = branch.as_deref().unwrap_or("a detached HEAD");
-        lines.push(format!("Repo {repo} is on {branch}."));
+    let mut text = HEADING.to_owned();
+    text.push_str(&format!("\nWorkspace: {}", orientation.workspace));
+    if let Some(me) = &orientation.me {
+        text.push('\n');
+        text.push_str(&match &me.label {
+            Some(label) => format!("This agent is {label} (agent id {}).", me.id),
+            None => format!("This agent's id is {}.", me.id),
+        });
     }
-    if let Some(task) = &orientation.task_brief {
-        lines.push(format!("This agent's task: {task}"));
+    let lines = the_rest(orientation);
+    // The task first: whole if it fits under the ceiling beside what is
+    // always said. The rest has its budget, and no more than the task leaves.
+    // Room is kept for saying what of the rest was left out, whatever the task.
+    // Counted in characters, as Claude Code counts.
+    let note = width(&left_out(lines.len())) + 1;
+    let task = orientation
+        .task_brief
+        .as_deref()
+        .map(|task| task_line(task, CEILING.saturating_sub(width(&text) + 1 + note)));
+    let taken = width(&text) + task.as_deref().map_or(0, |line| width(line) + 1);
+    let room = cap
+        .saturating_sub(width(&text))
+        .min(CEILING.saturating_sub(taken));
+    let rest = pack(&lines, room, left_out);
+    if let Some(task) = task {
+        text.push('\n');
+        text.push_str(&task);
+    }
+    for line in rest {
+        text.push('\n');
+        text.push_str(&line);
+    }
+    text
+}
+
+/// A sibling's task, as the list of other agents gives it: enough to know
+/// what they are on. Their whole brief is theirs; a long one must not crowd
+/// everything after it out of this agent's digest.
+const SIBLING_TASK_CHARS: usize = 120;
+
+/// Everything in a full digest but where it is, who it is and its task, most
+/// important first.
+fn the_rest(orientation: &Orientation) -> Vec<String> {
+    let mut lines = Vec::new();
+    // First: messages waiting are this agent's own business.
+    if orientation.unread > 0 {
+        lines.push(format!(
+            "{} unread {} waiting, readable with message_inbox.",
+            orientation.unread,
+            plural(orientation.unread, "message", "messages"),
+        ));
+    }
+    for checkout in &orientation.repos {
+        let branch = checkout.branch.as_deref().unwrap_or("a detached HEAD");
+        // Where: the repo's own checkout may be elsewhere, on another branch.
+        lines.push(match &checkout.path {
+            Some(path) => format!(
+                "Repo {} is on {branch}, checked out at {path}.",
+                checkout.repo
+            ),
+            None => format!("Repo {} is on {branch}.", checkout.repo),
+        });
     }
     lines.push(HOW_THE_OWNER_HEARS.to_owned());
     if !orientation.siblings.is_empty() {
@@ -73,7 +162,8 @@ pub fn full(orientation: &Orientation, cap: usize) -> String {
             let task = sibling
                 .task
                 .as_deref()
-                .map(|t| format!(" — {t}"))
+                .filter(|t| !t.trim().is_empty())
+                .map(|t| format!(" — {}", shortened(t, SIBLING_TASK_CHARS)))
                 .unwrap_or_default();
             lines.push(format!("- {} ({}){task}", sibling.label, sibling.status));
         }
@@ -84,15 +174,47 @@ pub fn full(orientation: &Orientation, cap: usize) -> String {
             lines.push(format!("- {key}"));
         }
     }
-    if orientation.unread > 0 {
-        lines.push(format!(
-            "{} unread {} waiting, readable with message_inbox.",
-            orientation.unread,
-            plural(orientation.unread, "message", "messages"),
-        ));
+    lines
+}
+
+/// Characters, as Claude Code counts its limit - not bytes.
+fn width(text: &str) -> usize {
+    text.chars().count()
+}
+
+/// The first line of `text` with anything in it, and at most `most`
+/// characters of that; `…` when more was left.
+fn shortened(text: &str, most: usize) -> String {
+    let text = text.trim();
+    let first = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    if width(first) <= most && first.len() == text.len() {
+        return first.to_owned();
     }
-    // Keeps the head: the workspace and task matter more than the last key.
-    fit(&lines, cap, Keep::Head).unwrap_or_else(|| HEADING.to_owned())
+    let mut cut: String = first
+        .chars()
+        .take(most)
+        .collect::<String>()
+        .trim_end()
+        .to_owned();
+    cut.push('…');
+    cut
+}
+
+/// The task line, whole if it fits in `room` characters; cut to fit, saying
+/// where the rest is, if not.
+fn task_line(task: &str, room: usize) -> String {
+    let line = format!("This agent's task: {task}");
+    if line.chars().count() <= room {
+        return line;
+    }
+    let keep = room.saturating_sub(BRIEF_CONTINUES.chars().count());
+    let mut cut: String = line.chars().take(keep).collect();
+    cut.push_str(BRIEF_CONTINUES);
+    cut
 }
 
 /// What changed since an agent last looked, or `None` when nothing did.
@@ -116,7 +238,7 @@ pub fn delta(changes: &[Change], now: i64, cap: usize) -> Option<String> {
         })
         .collect();
     // Keeps the head: `changes` is newest first, so the oldest is dropped.
-    fit(&lines, cap, Keep::Head)
+    fit(&lines, cap)
 }
 
 /// Collapses repeated writes to one key into the latest, so a busy agent does
@@ -139,42 +261,51 @@ fn collapse(changes: &[Change]) -> Vec<&Change> {
     kept
 }
 
-/// Which end of the list survives truncation.
-enum Keep {
-    Head,
-}
-
 /// Joins lines under the heading within `cap` characters, noting any dropped.
-fn fit(lines: &[String], cap: usize, keep: Keep) -> Option<String> {
+fn fit(lines: &[String], cap: usize) -> Option<String> {
     if lines.is_empty() {
         return None;
     }
-    let Keep::Head = keep;
     let mut text = HEADING.to_owned();
-    let mut used = 0;
-    for line in lines {
-        if text.len() + 1 + line.len() > cap.saturating_sub(marker_len(lines.len())) {
-            break;
-        }
+    for line in pack(lines, cap.saturating_sub(width(&text)), earlier) {
         text.push('\n');
-        text.push_str(line);
-        used += 1;
+        text.push_str(&line);
     }
-    let dropped = lines.len() - used;
-    if dropped > 0 {
-        text.push('\n');
-        text.push_str(&omission(dropped));
-    }
-    (used > 0 || dropped > 0).then_some(text)
+    Some(text)
 }
 
-fn omission(dropped: usize) -> String {
+/// The lines, in order, that fit in `room` characters (each with its line
+/// break), and then - if any did not - a note of how many were left out, room
+/// for which is kept.
+fn pack(lines: &[String], room: usize, omission: fn(usize) -> String) -> Vec<String> {
+    let reserve = width(&omission(lines.len())) + 1;
+    let mut used = 0;
+    let mut kept = Vec::new();
+    for line in lines {
+        if used + 1 + width(line) > room.saturating_sub(reserve) {
+            break;
+        }
+        used += 1 + width(line);
+        kept.push(line.clone());
+    }
+    let dropped = lines.len() - kept.len();
+    if dropped > 0 {
+        kept.push(omission(dropped));
+    }
+    kept
+}
+
+/// What a delta left out: older updates.
+fn earlier(dropped: usize) -> String {
     format!("[… {dropped} earlier updates omitted; context_search finds them …]")
 }
 
-/// Room reserved so the omission note itself always fits.
-fn marker_len(total: usize) -> usize {
-    omission(total).len() + 1
+/// What a full digest left out: the rest of its own lines.
+fn left_out(dropped: usize) -> String {
+    format!(
+        "[… {dropped} more {} of workspace context left out; agents_list and context_search have them …]",
+        plural(dropped, "line", "lines"),
+    )
 }
 
 fn plural<'a>(n: usize, one: &'a str, many: &'a str) -> &'a str {
@@ -201,163 +332,4 @@ pub fn ago(now: i64, then: i64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::platform::config::DigestSettings;
-
-    /// The budgets Dex ships with; the owner may set others.
-    fn caps() -> DigestSettings {
-        DigestSettings::default()
-    }
-
-    fn change(author: &str, body: &str, key: Option<&str>, at: i64) -> Change {
-        Change {
-            author: author.into(),
-            kind: if key.is_some() { "write" } else { "note" }.into(),
-            key: key.map(str::to_owned),
-            body: body.into(),
-            created_at: at,
-        }
-    }
-
-    #[test]
-    fn an_empty_delta_is_nothing_at_all() {
-        assert_eq!(delta(&[], 0, caps().delta_chars), None);
-    }
-
-    #[test]
-    fn a_delta_lists_what_others_did_with_relative_times() {
-        let now = 1_000_000;
-        let changes = [change(
-            "backend",
-            "noted the schema moved",
-            None,
-            now - 600_000,
-        )];
-        let text = delta(&changes, now, caps().delta_chars).unwrap();
-        assert!(text.starts_with(HEADING));
-        assert!(text.contains("backend noted the schema moved"));
-        assert!(text.contains("10 minutes ago"), "{text}");
-    }
-
-    #[test]
-    fn a_delta_never_exceeds_its_budget_and_says_what_it_dropped() {
-        let now = 0;
-        let changes: Vec<Change> = (0..500)
-            .map(|i| change("agent", &format!("did thing number {i}"), None, 0))
-            .collect();
-        let text = delta(&changes, now, caps().delta_chars).unwrap();
-        assert!(
-            text.len() <= caps().delta_chars,
-            "{} characters exceeds the {} cap",
-            text.len(),
-            caps().delta_chars
-        );
-        assert!(text.contains("earlier updates omitted"), "{text}");
-        assert!(
-            text.contains("did thing number 0"),
-            "the newest survives: {text}"
-        );
-    }
-
-    #[test]
-    fn repeated_writes_to_one_key_collapse_to_the_latest() {
-        let now = 0;
-        let changes = [
-            change("a", "wrote notes (v3)", Some("notes"), 0),
-            change("a", "wrote notes (v2)", Some("notes"), -1),
-            change("a", "wrote notes (v1)", Some("notes"), -2),
-            change("a", "wrote other (v1)", Some("other"), -3),
-        ];
-        let text = delta(&changes, now, caps().delta_chars).unwrap();
-        assert_eq!(text.matches("wrote notes").count(), 1, "{text}");
-        assert!(text.contains("wrote notes (v3)"), "the latest wins: {text}");
-        assert!(text.contains("wrote other"));
-    }
-
-    #[test]
-    fn a_full_digest_orients_without_instructing() {
-        let orientation = Orientation {
-            workspace: "api".into(),
-            repos: vec![("api".into(), Some("main".into()))],
-            task_brief: Some("port the auth module".into()),
-            siblings: vec![Sibling {
-                label: "frontend".into(),
-                status: "running".into(),
-                task: Some("rebuild the login form".into()),
-            }],
-            entries: vec!["auth/jwt".into(), "db/pool".into()],
-            unread: 2,
-        };
-        let text = full(&orientation, caps().full_chars);
-        assert!(text.contains("Workspace: api"));
-        assert!(text.contains("Repo api is on main."));
-        assert!(text.contains("frontend (running) — rebuild the login form"));
-        assert!(text.contains("- auth/jwt"));
-        assert!(text.contains("2 unread messages waiting"));
-        assert!(text.len() <= caps().full_chars);
-    }
-
-    #[test]
-    fn a_full_digest_says_how_the_owner_hears_a_question_as_a_fact_not_an_order() {
-        // An agent that ended its turn "Reply yes and I'll overwrite the file"
-        // sat unanswered: to Claude Code, and so to Dex, its turn was over. The
-        // dialog tool is the one way of asking that Dex hears about for certain.
-        let orientation = Orientation {
-            workspace: "api".into(),
-            task_brief: Some("port the auth module".into()),
-            entries: (0..500).map(|i| format!("namespace/key-{i}")).collect(),
-            ..Default::default()
-        };
-        let text = full(&orientation, caps().full_chars);
-        assert!(text.contains("AskUserQuestion"), "{text}");
-        // An agent another agent started is not sent to the owner with what its lead can answer.
-        assert!(text.contains("started by another agent"), "{text}");
-        // Kept when the keys overflow: it is part of the orientation.
-        assert!(text.len() <= caps().full_chars);
-        let lower = text.to_lowercase();
-        for order in ["you must", "you should", "always ", "never "] {
-            assert!(!lower.contains(order), "{order:?} in {text}");
-        }
-    }
-
-    #[test]
-    fn one_unread_message_reads_as_one() {
-        let orientation = Orientation {
-            workspace: "api".into(),
-            unread: 1,
-            ..Default::default()
-        };
-        assert!(full(&orientation, caps().full_chars).contains("1 unread message waiting"));
-    }
-
-    #[test]
-    fn a_full_digest_keeps_the_orientation_when_keys_overflow() {
-        let orientation = Orientation {
-            workspace: "api".into(),
-            task_brief: Some("port the auth module".into()),
-            entries: (0..500).map(|i| format!("namespace/key-{i}")).collect(),
-            ..Default::default()
-        };
-        let text = full(&orientation, caps().full_chars);
-        assert!(text.len() <= caps().full_chars);
-        assert!(text.contains("Workspace: api"), "{text}");
-        assert!(text.contains("port the auth module"));
-        assert!(text.contains("earlier updates omitted"));
-    }
-
-    #[test]
-    fn relative_times_stay_coarse() {
-        let now = 10_000_000;
-        assert_eq!(ago(now, now), "just now");
-        assert_eq!(ago(now, now - 30_000), "just now");
-        assert_eq!(ago(now, now - 60_000), "1 minute ago");
-        assert_eq!(ago(now, now - 900_000), "15 minutes ago");
-        assert_eq!(ago(now, now - 7_200_000), "2 hours ago");
-        assert_eq!(
-            ago(now, now + 5_000),
-            "just now",
-            "clock skew is not negative"
-        );
-    }
-}
+mod tests;

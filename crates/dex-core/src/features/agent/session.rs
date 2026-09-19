@@ -1,0 +1,113 @@
+//! How Claude Code's sessions map onto agents, kept pure. One Claude Code in
+//! one pane is one agent, whatever its session id does: `/clear` and an
+//! in-session `/resume` end one session and start another - SessionEnd, then
+//! SessionStart with another id - and the agent, its id, its children and its
+//! messages carry on through it (issue #55). A `/resume` into a conversation
+//! the pane already had is that conversation's own agent coming back.
+
+/// How long after its agent ended a start is still that agent carrying on,
+/// when its SessionEnd arrived first and ended it.
+pub const CARRY_ON_MS: i64 = 60_000;
+
+/// What an agent ended by `/resume` says: it left for another conversation,
+/// and a `resume` start moments later may be it carrying on. An agent that
+/// quit is not - `claude --resume` in a new process is someone new.
+pub const LEFT_BY_RESUME: &str = "switched conversations with /resume";
+
+/// What a SessionEnd leaves in the ended agent's status detail.
+pub fn end_detail(end_reason: Option<&str>) -> Option<&'static str> {
+    (end_reason == Some("resume")).then_some(LEFT_BY_RESUME)
+}
+
+/// Whether a start with this `source` may carry on an agent that ended this
+/// way (its status detail): a `resume` only one that left by `/resume`.
+pub fn ended_for(source: Option<&str>, detail: Option<&str>) -> bool {
+    source != Some("resume") || detail == Some(LEFT_BY_RESUME)
+}
+
+/// How far a start's stamp may seem to come before its end's: hooks are stamped
+/// by separate processes, and the one that ran second may have stamped first.
+const SKEW_MS: i64 = 2_000;
+
+/// Whether a SessionEnd is the agent ending. `/clear` ends the session, not
+/// the agent: a SessionStart follows at once, in the same process. `/resume`
+/// does end it - the conversation resumed may be another agent's - and the
+/// start that follows decides who carries on.
+pub fn ends_the_agent(end_reason: Option<&str>) -> bool {
+    end_reason != Some("clear")
+}
+
+/// Whether a SessionStart with this `source` is the pane's live agent carrying
+/// on under a new session id, rather than a session beginning.
+pub fn keeps_live_agent(source: Option<&str>) -> bool {
+    matches!(source, Some("clear") | Some("compact"))
+}
+
+/// Whether a SessionStart with this `source`, for a session nobody holds, may
+/// bring back the pane's agent that ended moments ago.
+pub fn revives_just_ended(source: Option<&str>) -> bool {
+    matches!(source, Some("clear") | Some("compact") | Some("resume"))
+}
+
+/// Whether a start stamped `stamp` is the agent whose ending hook was stamped
+/// `ended`: moments later - both stamps from hooks, so on one clock. Long
+/// after, whoever is in the pane is someone new.
+pub fn carries_on(ended: i64, stamp: i64) -> bool {
+    stamp + SKEW_MS >= ended && stamp - ended <= CARRY_ON_MS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_clear_does_not_end_the_agent() {
+        assert!(!ends_the_agent(Some("clear")));
+        for reason in [
+            Some("resume"),
+            Some("prompt_input_exit"),
+            Some("logout"),
+            Some("other"),
+            None,
+        ] {
+            assert!(ends_the_agent(reason), "{reason:?}");
+        }
+    }
+
+    #[test]
+    fn clear_and_compact_keep_the_live_agent_resume_and_startup_do_not() {
+        for source in ["clear", "compact"] {
+            assert!(keeps_live_agent(Some(source)), "{source}");
+        }
+        assert!(!keeps_live_agent(Some("resume")));
+        assert!(!keeps_live_agent(Some("startup")));
+        assert!(!keeps_live_agent(None));
+    }
+
+    #[test]
+    fn clear_compact_and_resume_bring_back_an_agent_that_just_ended() {
+        assert!(revives_just_ended(Some("clear")));
+        assert!(revives_just_ended(Some("compact")));
+        assert!(revives_just_ended(Some("resume")));
+        assert!(!revives_just_ended(Some("startup")));
+    }
+
+    #[test]
+    fn a_resume_carries_on_only_an_agent_that_left_by_resume() {
+        assert_eq!(end_detail(Some("resume")), Some(LEFT_BY_RESUME));
+        assert_eq!(end_detail(Some("prompt_input_exit")), None);
+        assert!(ended_for(Some("resume"), Some(LEFT_BY_RESUME)));
+        assert!(!ended_for(Some("resume"), None));
+        assert!(ended_for(Some("compact"), None));
+    }
+
+    #[test]
+    fn carrying_on_is_moments_after_the_end_and_no_longer() {
+        assert!(carries_on(1_000, 1_000));
+        assert!(carries_on(1_000, 1_000 + CARRY_ON_MS));
+        assert!(!carries_on(1_000, 1_001 + CARRY_ON_MS));
+        // Stamped by another process a moment early: still the same agent.
+        assert!(carries_on(5_000, 3_500));
+        assert!(!carries_on(10_000, 1_000));
+    }
+}
