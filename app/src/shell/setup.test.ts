@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { type Check, type DoctorReport, failures, fingerprint, headline, shouldOffer, stepFor, stepLabel } from "./setup";
+import {
+  type Check,
+  type DoctorReport,
+  distroToSetUp,
+  failures,
+  fingerprint,
+  headline,
+  shouldOffer,
+  stepFor,
+  stepLabel,
+} from "./setup";
 
 function report(...checks: Check[]): DoctorReport {
   return { ok: checks.every((c) => c.status !== "fail"), checks };
@@ -99,5 +109,48 @@ describe("a WSL distro in the setup panel", () => {
   it("does not open the panel by itself until Dex runs something there", () => {
     const report = { ok: true, checks: [{ name: "hooks", status: "ok" as const, detail: "" }, distro("skip", "wsl setup Ubuntu")] };
     expect(shouldOffer(report, null)).toBe(false);
+  });
+});
+
+describe("the chosen terminal's distro, in settings", () => {
+  const distro = (name: string, status: "ok" | "fail" | "skip", fix?: string, detail = ""): Check => ({
+    name: `wsl:${name}`,
+    status,
+    detail,
+    fix,
+  });
+
+  it("names a chosen distro doctor found not set up, with the step that fixes it", () => {
+    const checks = report(ok("hooks"), distro("Ubuntu", "fail", "wsl setup Ubuntu", "hooks missing"));
+    expect(distroToSetUp(checks, "wsl:Ubuntu")).toEqual({ distro: "Ubuntu", detail: "hooks missing", fixable: true });
+  });
+
+  it("says so too where setup cannot fix it, such as Claude Code missing there", () => {
+    const checks = report(distro("Ubuntu", "fail", undefined, "Claude Code is not installed in Ubuntu"));
+    expect(distroToSetUp(checks, "wsl:Ubuntu")).toEqual({
+      distro: "Ubuntu",
+      detail: "Claude Code is not installed in Ubuntu",
+      fixable: false,
+    });
+  });
+
+  it("says nothing while doctor has not looked at it yet", () => {
+    // Skipped: not in use when doctor last ran - the re-check after a choice will look.
+    expect(distroToSetUp(report(distro("Ubuntu", "skip", "wsl setup Ubuntu")), "wsl:Ubuntu")).toBeNull();
+  });
+
+  it("names nothing once it is set up", () => {
+    expect(distroToSetUp(report(distro("Ubuntu", "ok")), "wsl:Ubuntu")).toBeNull();
+  });
+
+  it("names nothing for PowerShell, or for another distro that is not set up", () => {
+    const checks = report(distro("Ubuntu", "fail", "wsl setup Ubuntu"), distro("Debian", "ok"));
+    expect(distroToSetUp(checks, "windows")).toBeNull();
+    expect(distroToSetUp(checks, "wsl:Debian")).toBeNull();
+  });
+
+  it("names nothing doctor has not checked", () => {
+    expect(distroToSetUp(report(ok("hooks")), "wsl:Ubuntu")).toBeNull();
+    expect(distroToSetUp(null, "wsl:Ubuntu")).toBeNull();
   });
 });

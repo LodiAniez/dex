@@ -56,6 +56,7 @@ export const COMMAND_LABELS: Record<string, string> = {
   "view-office": "Office view",
   "cycle-view": "Next view",
   "open-setup": "Setup checks",
+  "open-settings": "Settings",
   "focus-left": "Focus pane left",
   "focus-right": "Focus pane right",
   "focus-up": "Focus pane up",

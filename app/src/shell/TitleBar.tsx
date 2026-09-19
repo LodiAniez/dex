@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUpdate, useUpdate } from "../platform/update";
 import { showError } from "../platform/notices";
+import { GearIcon } from "./GearIcon.part";
 import { IS_MAC } from "./keybindings";
 import { ViewSwitch } from "./ViewSwitch";
 import type { ViewMode } from "./viewMode";
@@ -17,6 +18,8 @@ interface Props {
   onShowActivity?: () => void;
   /** How the workspace is being shown, and how to change it; absent when no workspace is open. */
   view?: { mode: ViewMode; onChoose: (mode: ViewMode) => void };
+  /** Opens Dex's settings: the terminal it opens. */
+  onOpenSettings: () => void;
 }
 
 // Window decorations are off on Windows (PRD §13), so the app draws its own
@@ -25,7 +28,7 @@ interface Props {
 // room for them and draws no buttons of its own.
 // `data-tauri-drag-region` must be on the exact element under the cursor, so
 // the title text carries it too; the buttons deliberately do not.
-export function TitleBar({ title, color, counts, onShowActivity, view }: Props) {
+export function TitleBar({ title, color, counts, onShowActivity, view, onOpenSettings }: Props) {
   const win = getCurrentWindow();
   const update = useUpdate();
   const fullscreen = useMacFullscreen();
@@ -48,6 +51,9 @@ export function TitleBar({ title, color, counts, onShowActivity, view }: Props) 
         )}
         {/* The same workspace two ways: its panes, or its agents in an office. */}
         {view && <ViewSwitch mode={view.mode} onChoose={view.onChoose} />}
+        <button type="button" className="settings-open" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
+          <GearIcon />
+        </button>
         {/* Only while a newer release exists; clicking opens its page. Nothing
             is downloaded or installed from here — the owner reads the notes
             and runs the installer themselves. */}

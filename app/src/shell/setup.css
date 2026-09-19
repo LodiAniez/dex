@@ -195,3 +195,9 @@
   gap: 8px;
   margin-top: 8px;
 }
+
+/* Settings: the same dialog, narrower, with no checks list. */
+.setup.settings { width: min(560px, 94vw); }
+.settings > .setup-sub { padding: 14px 20px; }
+.settings .setup-head h2 { margin: 0; }
+.settings-setup { grid-template-columns: minmax(0, 1fr) auto; }

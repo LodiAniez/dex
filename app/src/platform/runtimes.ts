@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { request } from "./daemon";
+import { DexError, request } from "./daemon";
 import type { RunningPane } from "./generated/RunningPane";
 import type { TerminalView } from "./generated/TerminalView";
 
@@ -117,14 +117,21 @@ export function terminalChoices(view: TerminalView): { value: string; label: str
  */
 export function useTerminal(generation?: unknown): {
   view: TerminalView | null;
+  /** Why the terminal could not be read, when it could not. */
+  error: string | null;
   choose: (runtime: string) => Promise<TerminalView>;
 } {
   const [view, setView] = useState<TerminalView | null>(null);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     void request<TerminalView>("pane.terminal", {}).then(
-      (answer) => live && setView(answer),
-      () => {},
+      (answer) => {
+        if (!live) return;
+        setView(answer);
+        setError(null);
+      },
+      (err) => live && setError(err instanceof DexError ? `${err.message}. ${err.repair}` : String(err)),
     );
     return () => {
       live = false;
@@ -135,5 +142,5 @@ export function useTerminal(generation?: unknown): {
     setView(answer);
     return answer;
   }, []);
-  return { view, choose };
+  return { view, error, choose };
 }

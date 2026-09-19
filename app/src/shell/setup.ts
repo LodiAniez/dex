@@ -77,6 +77,27 @@ export function shouldOffer(report: DoctorReport, dismissed: string | null): boo
   return now !== "" && now !== dismissed;
 }
 
+/** What settings says about the chosen distro when agents cannot run there yet. */
+export interface DistroToSetUp {
+  distro: string;
+  /** Doctor's own words: what is missing. */
+  detail: string;
+  /** Whether the setup panel can fix it (`dex wsl setup`), or the owner must (Claude Code missing). */
+  fixable: boolean;
+}
+
+/**
+ * The chosen terminal's distro, when doctor looked at it and found it not
+ * ready for agents; null for PowerShell, a distro that is ready, or one
+ * doctor has not looked at yet (skipped: the re-check after a choice will).
+ */
+export function distroToSetUp(report: DoctorReport | null, terminal: string): DistroToSetUp | null {
+  if (!terminal.startsWith("wsl:")) return null;
+  const check = report?.checks.find((c) => c.name === terminal);
+  if (check?.status !== "fail") return null;
+  return { distro: terminal.slice(4), detail: check.detail, fixable: stepFor(check) !== null };
+}
+
 /** What the header line should say. */
 export function headline(report: DoctorReport): string {
   const failed = failures(report);

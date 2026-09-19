@@ -63,7 +63,7 @@ describe("whenPanesHidden", () => {
   });
 
   it("leaves alone everything that is not about a pane", () => {
-    for (const kind of ["command-palette", "new-workspace", "toggle-sidebar", "next-workspace", "switch-workspace", "open-setup", "view-office"]) {
+    for (const kind of ["command-palette", "new-workspace", "toggle-sidebar", "next-workspace", "switch-workspace", "open-setup", "open-settings", "view-office"]) {
       expect(whenPanesHidden(kind), kind).toBe("run");
     }
   });

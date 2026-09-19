@@ -126,7 +126,7 @@ Names are for reading. Agents still message each other by **label**, which is wh
 
 **Repositories and worktrees.** Register a repo once (`dex repo add <path>`, or `dex repo scan <folder>` to find several). Then any agent — or you — can get a fresh worktree on a new branch under `%USERPROFILE%\dex\worktrees\<repo>\<branch>`, so parallel agents never share a working tree.
 
-**PowerShell or WSL.** On Windows with WSL installed, choose the terminal Dex opens in: **Terminal** at the top of the setup panel (*Setup checks* in the palette), or `dex pane terminal wsl:Ubuntu` (`dex pane terminal windows` to go back; `dex pane terminal` shows the choices). Everything new then opens there - a new workspace, a split, and every agent spawned, by you or by another agent - and every pane whose shell has not started yet. Panes already running keep their shell: the panel lists them, the ones with nothing running in them ticked, and restarts the ones you leave ticked, each in its folder with its scrollback kept. A pane Dex cannot be sure is idle - an agent, a build, `sudo` in WSL - is left unticked; restarting it ends what runs in it. When Dex starts, every pane opens in the chosen terminal. Panes in WSL say their distro in the header. If the chosen distro is uninstalled, Dex opens in PowerShell again and says so.
+**PowerShell or WSL.** On Windows with WSL installed, choose the terminal Dex opens in: the **gear** in the title bar (*Settings* in the palette), **Terminal** at the top of the setup panel, or `dex pane terminal wsl:Ubuntu` (`dex pane terminal windows` to go back; `dex pane terminal` shows the choices). Everything new then opens there - a new workspace, a split, and every agent spawned, by you or by another agent - and every pane whose shell has not started yet. Panes already running keep their shell: the panel lists them, the ones with nothing running in them ticked, and restarts the ones you leave ticked, each in its folder with its scrollback kept. A pane Dex cannot be sure is idle - an agent, a build, `sudo` in WSL - is left unticked; restarting it ends what runs in it. When Dex starts, every pane opens in the chosen terminal. Panes in WSL say their distro in the header. If the chosen distro is uninstalled, Dex opens in PowerShell again and says so.
 
 Before the first agent in a distro, get it ready once:
 
@@ -157,7 +157,7 @@ On macOS every `Ctrl` in this table is `Cmd`, as Mac apps expect, and every `Alt
 | Cycle layout preset           | `Ctrl+Shift+Space`                  |
 | Toggle sidebar                | `Ctrl+Shift+B`                      |
 
-The **command palette** fuzzy-searches workspaces, panes and commands. Type `w:` to search only workspaces, `p:` for only panes. Commands with no default key — *Show git diff*, *Show activity*, the views, *Setup checks* — live there.
+The **command palette** fuzzy-searches workspaces, panes and commands. Type `w:` to search only workspaces, `p:` for only panes. Commands with no default key — *Show git diff*, *Show activity*, the views, *Setup checks*, *Settings* — live there.
 
 Every shortcut can be rebound in the config file (below).
 
