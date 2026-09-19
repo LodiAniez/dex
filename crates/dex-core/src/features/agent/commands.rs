@@ -110,7 +110,12 @@ fn session_start(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<()> {
     // spawned agent found by its id carries on through its own /resume even
     // when the end was recorded after this start was stamped.
     let existing = match existing {
-        Some(found) if carries_on_from_end(&found, hook) => Some(bring_back(conn, found, hook)?),
+        Some(found)
+            if found.pane_id.as_deref() == Some(pane.as_str())
+                && carries_on_from_end(&found, hook) =>
+        {
+            Some(bring_back(conn, found, hook)?)
+        }
         Some(found) => Some(found),
         None => carried_on(conn, hook)?,
     };
@@ -145,10 +150,9 @@ fn carried_on(conn: &Connection, hook: &Hook<'_>) -> rusqlite::Result<Option<Age
     bring_back(conn, agent, hook).map(Some)
 }
 
-/// Whether this start is `agent`, ended moments ago, carrying on: timed by
-/// the ending hook's own stamp (its status_at), on the same clock as this one
-/// (its ended_at is the daemon's, which the start's stamp may precede), and,
-/// for a `resume`, only if it left by `/resume`.
+/// Whether this start is `agent`, ended moments ago, carrying on: timed by the
+/// ending hook's stamp (status_at, not the daemon's ended_at) and, for a
+/// `resume`, only if it left by `/resume`.
 fn carries_on_from_end(agent: &Agent, hook: &Hook<'_>) -> bool {
     let source = hook.input.source.as_deref();
     agent.status == AgentStatus::Dead
