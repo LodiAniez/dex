@@ -72,6 +72,13 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
+      # WiX, which Tauri downloads on first use: from GitHub, every build otherwise.
+      - uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/tauri
+          key: tauri-tools-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: tauri-tools-${{ runner.os }}-
+
       - name: Frontend install
         working-directory: app
         run: npm ci
@@ -85,7 +92,13 @@ jobs:
       - name: Find the installer
         id: msi
         run: |
-          $built = Get-ChildItem target/release/bundle/msi/*.msi | Select-Object -First 1
+          # Exactly one: a second would mean a version or language nobody meant to ship.
+          $built = @(Get-ChildItem target/release/bundle/msi/*.msi)
+          if ($built.Count -ne 1) {
+            Write-Output "::error::Expected one installer, found $($built.Count): $($built.Name -join ', ')"
+            exit 1
+          }
+          $built = $built[0]
           (Get-FileHash $built.FullName -Algorithm SHA256).Hash + "  " + $built.Name
           "path=$($built.FullName)" >> $env:GITHUB_OUTPUT
           "name=$($built.Name)" >> $env:GITHUB_OUTPUT
@@ -95,12 +108,14 @@ jobs:
       - name: Check the installer
         run: |
           $out = Join-Path $env:RUNNER_TEMP "msi"
-          Start-Process msiexec.exe -ArgumentList "/a `"${{ steps.msi.outputs.path }}`" /qn TARGETDIR=`"$out`"" -Wait
+          $unpack = Start-Process msiexec.exe -ArgumentList "/a `"${{ steps.msi.outputs.path }}`" /qn TARGETDIR=`"$out`"" -Wait -PassThru
+          if ($unpack.ExitCode -ne 0) { Write-Output "::error::msiexec could not unpack the installer: exit $($unpack.ExitCode)"; exit 1 }
           $dir = Get-ChildItem -Recurse $out -Filter dex-app.exe | Select-Object -First 1 | ForEach-Object DirectoryName
           foreach ($file in "dex-app.exe", "dex.exe", "dex-mcp.exe", "skills\dex-agentic\SKILL.md") {
             if (-not (Test-Path (Join-Path $dir $file))) { Write-Output "::error::$file is not in the installer"; exit 1 }
           }
           & (Join-Path $dir "dex.exe") --version
+          if ($LASTEXITCODE -ne 0) { Write-Output "::error::The installer's dex.exe does not run"; exit 1 }
 
       - uses: actions/upload-artifact@v4
         with:
