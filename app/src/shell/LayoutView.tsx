@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ActivityPane } from "../features/activity";
 import { AgentBadge, agentInPane, useAgents } from "../features/agents";
 import { DiffPane, MarkdownPane, TerminalPane } from "../features/panes";
-import { closePane, focusPane, setLayout } from "../features/workspaces";
+import { closePane, focusPane, setLayout, splitPane } from "../features/workspaces";
 import type { Layout } from "../platform/generated/Layout";
 import type { PaneView } from "../platform/generated/PaneView";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
@@ -140,6 +140,18 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
           </span>
         )}
         {zoomed && <span className="pane-badge">zoomed</span>}
+        {/* A new pane beside this one. Not while zoomed: it would open out of sight. */}
+        {!zoomed && (
+          <button
+            type="button"
+            className="icon-button pane-new"
+            title={titled("New pane beside this one", shortcuts.get("split-right"))}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => void splitPane(pane.id, "right").catch(showError)}
+          >
+            +
+          </button>
+        )}
         <button
           type="button"
           className="icon-button pane-popout"

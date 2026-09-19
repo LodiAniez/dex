@@ -96,6 +96,8 @@ dex doctor            # the table above
 
 ## Using Dex
 
+**Adding panes.** The **+** in a pane's header opens a new pane beside it, in the same folder; `Ctrl+Shift+D` does the same for the active pane, and `Ctrl+Shift+E` opens one below it.
+
 **Moving panes.** Drag a pane by its header and drop it on another: on an edge to sit beside it there, taking half its space; in the middle to trade places. A highlight shows where it will land; Escape, or letting go anywhere else, puts it back. `Alt+Shift+Arrow` does the same from the keyboard, one step at a time.
 
 **A pane in a window of its own.** The ↗ button in a pane's header opens it in a separate window - put it on another monitor, resize it, leave it behind Dex. The terminal moves with its scrollback and whatever is running in it; the space it left in the layout closes up. **Dock ↩** in that window, or its own close button, puts it back exactly where it was. *Go to pane* (from the office or a toast) brings its window forward. Closing Dex's main window closes them all. The last pane in the main window stays in it.
