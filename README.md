@@ -79,6 +79,7 @@ Start Dex. The first time, a setup panel opens on its own and runs the same chec
 | `hooks`   | Dex's hooks are in your Claude Code settings               | Press **Install hooks**                        |
 | `mcp`     | Dex's MCP server is registered with Claude Code            | Press **Register MCP server**                  |
 | `skill`   | The `dex-agentic` skill is in your Claude Code skills      | Press **Install skill**                        |
+| `wsl:<distro>` | A WSL distro Dex runs panes in is set up for agents (only checked once it does) | Install Claude Code in the distro, then press **Set up <distro>** |
 
 Press the three buttons. All go green without a restart. That is the whole setup; the panel is in the command palette as **Setup checks** if you ever want it back, and it reappears by itself if something new goes wrong — including after a Dex upgrade, when `skill` turns red until you refresh it.
 
@@ -124,6 +125,15 @@ Click anyone to see their work. If they need you, the panel says what for at the
 Names are for reading. Agents still message each other by **label**, which is why the office always shows the label beside the name. The office changes nothing about how agents run; it is another way of looking at what Dex already tracks. Dex remembers the view you last chose; `[ui] view` in the config sets what it opens as before you have chosen.
 
 **Repositories and worktrees.** Register a repo once (`dex repo add <path>`, or `dex repo scan <folder>` to find several). Then any agent — or you — can get a fresh worktree on a new branch under `%USERPROFILE%\dex\worktrees\<repo>\<branch>`, so parallel agents never share a working tree.
+
+**Agents in WSL.** On Windows with WSL installed, an agent can run inside a Linux distro instead of on Windows: `dex agent spawn --wsl Ubuntu …`, or pick *Runs in* when hiring from HR. An agent runs where the agent that started it runs unless told otherwise, so a lead in Ubuntu hires into Ubuntu. To start one yourself, open a pane there - *New pane in Ubuntu (WSL)* in the palette, or `dex pane split --wsl Ubuntu` - and run `claude` in it. WSL panes say their distro in the header; `dex pane runtimes` lists the distros.
+
+Before the first agent there, get the distro ready once:
+
+1. Install Claude Code inside the distro and sign in (in a pane there: `curl -fsSL https://claude.ai/install.sh | bash`, then `claude`). Agents in WSL use that Claude Code, with its own settings in Linux.
+2. Run `dex wsl setup Ubuntu` (or press **Set up Ubuntu** in the setup panel). It puts a `dex` command in `~/.local/bin` that runs Dex's Windows `dex.exe`, and installs Dex's hooks, MCP server and skill into the distro's Claude Code. `dex wsl status Ubuntu` says what is in place.
+
+Nothing of Dex runs inside the distro: agents there talk to the Windows app through `dex.exe`. Give a WSL agent a worktree (`--repo … --worktree …`): Dex makes it with the distro's own git, so git on both sides reads it cleanly, whereas a checkout made by Git for Windows looks modified throughout to Linux git, because of line endings. Dex cannot see inside WSL to tell whether Claude Code is still running there, so an agent in WSL that crashes stays listed until its pane closes.
 
 ### Keyboard shortcuts
 

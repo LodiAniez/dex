@@ -1,19 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import "./setup.css";
-import { type Check, type DoctorReport, type Step, failures, headline, stepFor } from "./setup";
+import { type Check, type DoctorReport, type Step, failures, headline, stepFor, stepLabel } from "./setup";
 
-const STEP_LABEL: Record<Step, string> = {
-  hooks: "Install hooks",
-  mcp: "Register MCP server",
-  skill: "Install skill",
-};
-
-const STEP_EXPLAINS: Record<Step, string> = {
+const STEP_EXPLAINS: Record<string, string> = {
   hooks: "Adds Dex's hooks to your Claude Code settings, so agents in Dex panes report what they are doing.",
   mcp: "Registers the Dex MCP server with Claude Code, so agents can share notes and messages.",
   skill: "Copies the dex-agentic skill into your Claude Code skills, so agents know when starting another agent helps and how to brief one.",
 };
+
+/** Why to press a step's button. */
+function explains(step: Step): string {
+  return step.startsWith("wsl:")
+    ? `Installs the dex command, Dex's hooks, its MCP server and its skill inside ${step.slice(4)}, for agents that run there. Claude Code must be installed there first.`
+    : (STEP_EXPLAINS[step] ?? "");
+}
 
 interface StepOutcome {
   ok: boolean;
@@ -106,11 +107,11 @@ function CheckRow({ check, running, onRun }: { check: Check; running: Step | nul
       <span className="setup-name">{check.name}</span>
       <span className="setup-detail">
         {check.detail}
-        {step && <span className="setup-explain">{STEP_EXPLAINS[step]}</span>}
+        {step && <span className="setup-explain">{explains(step)}</span>}
       </span>
       {step && (
         <button type="button" className="setup-button" disabled={running !== null} onClick={() => onRun(step)}>
-          {running === step ? "Working…" : STEP_LABEL[step]}
+          {running === step ? "Working…" : stepLabel(step)}
         </button>
       )}
     </li>

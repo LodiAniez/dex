@@ -11,3 +11,4 @@ pub mod pane;
 pub mod repo;
 pub mod skill;
 pub mod workspace;
+pub mod wsl;

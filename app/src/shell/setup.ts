@@ -9,6 +9,8 @@ export interface Check {
   name: string;
   status: CheckStatus;
   detail: string;
+  /** The `dex` command that fixes it, when that takes arguments: `wsl setup Ubuntu`. */
+  fix?: string;
 }
 
 /** `dex doctor --json`, as the app receives it. */
@@ -17,15 +19,35 @@ export interface DoctorReport {
   checks: Check[];
 }
 
-/** A setup step the app can run for the owner. */
-export type Step = "hooks" | "mcp" | "skill";
+/** A setup step the app can run for the owner; `wsl:<distro>` sets up a WSL distro. */
+export type Step = "hooks" | "mcp" | "skill" | `wsl:${string}`;
 
 const STEPS: readonly Step[] = ["hooks", "mcp", "skill"];
 
-/** Which failures the panel can fix itself; the rest it can only explain. */
+const WSL_FIX = "wsl setup ";
+
+/**
+ * Which checks the panel can fix itself; the rest it can only explain. A WSL
+ * distro gets its button even before Dex runs anything there (a skipped
+ * check): setting it up first is how an owner gets it ready.
+ */
 export function stepFor(check: Check): Step | null {
+  if (check.status !== "ok" && check.fix?.startsWith(WSL_FIX)) {
+    return `wsl:${check.fix.slice(WSL_FIX.length)}`;
+  }
   if (check.status !== "fail") return null;
   return STEPS.find((step) => step === check.name) ?? null;
+}
+
+const STEP_LABEL: Record<string, string> = {
+  hooks: "Install hooks",
+  mcp: "Register MCP server",
+  skill: "Install skill",
+};
+
+/** What a step's button says. */
+export function stepLabel(step: Step): string {
+  return step.startsWith("wsl:") ? `Set up ${step.slice(4)}` : (STEP_LABEL[step] ?? step);
 }
 
 /** Failing checks, in the order doctor reported them. */

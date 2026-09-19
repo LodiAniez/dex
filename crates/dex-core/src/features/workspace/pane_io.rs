@@ -46,6 +46,7 @@ pub async fn list_panes(state: &AppState, args: ListPanesArgs) -> Result<PaneLis
                             label: pane.label,
                             cwd: pane.cwd,
                             kind: pane.kind,
+                            runtime: pane.runtime,
                         });
                     }
                 }

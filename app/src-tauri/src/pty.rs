@@ -70,8 +70,18 @@ pub async fn pty_spawn(
             (shell, shell_args(cfg!(unix)))
         }
         // The distro's own login shell, started in the pane's folder, which
-        // `wsl.exe` translates (`C:/src` is `/mnt/c/src` inside).
-        Runtime::Wsl(distro) => (wsl_exe(), wsl::pane_args(distro, &paths::normalize(&cwd))),
+        // `wsl.exe` translates (`C:/src` is `/mnt/c/src` inside). Checked here:
+        // `wsl.exe` only says ERROR_FILE_NOT_FOUND about a folder that has
+        // gone, such as a worktree since removed.
+        Runtime::Wsl(distro) => {
+            if !cwd.is_dir() {
+                return Err(format!(
+                    "the pane's folder {} no longer exists",
+                    cwd.display()
+                ));
+            }
+            (wsl_exe(), wsl::pane_args(distro, &paths::normalize(&cwd)))
+        }
     };
     let socket = pipe::socket_env(&pipe::default_name()).map_err(|err| err.to_string())?;
     let mut env = vec![

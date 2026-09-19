@@ -4,6 +4,7 @@
 
 mod commands;
 mod output;
+mod wsl;
 
 use std::process::ExitCode;
 
@@ -18,6 +19,7 @@ use commands::pane::PaneCommand;
 use commands::repo::{RepoCommand, WorktreeCommand};
 use commands::skill::SkillCommand;
 use commands::workspace::WorkspaceCommand;
+use commands::wsl::WslCommand;
 use output::Format;
 
 /// Command-line interface to the running Dex app.
@@ -76,6 +78,9 @@ enum Command {
     /// Install, remove, or check the Dex skill for Claude Code agents.
     #[command(subcommand)]
     Skill(SkillCommand),
+    /// Get a WSL distro ready for agents: `dex`, hooks, MCP server, skill.
+    #[command(subcommand)]
+    Wsl(WslCommand),
     /// Claude Code hook entry point. Always exits 0; a no-op outside a Dex pane.
     Event(EventArgs),
 }
@@ -124,6 +129,7 @@ fn main() -> ExitCode {
         Command::Mcp(command) => commands::mcp::run(command, format),
         Command::Config(command) => commands::config::run(command, format),
         Command::Skill(command) => commands::skill::run(command, format),
+        Command::Wsl(command) => commands::wsl::run(command, format),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
