@@ -184,6 +184,14 @@ features/agents/
 └─ types.ts          # generated or hand-mirrored from dex-protocol
 ```
 
+**One component per component file.** A `.tsx` file declares exactly one component, the one it is named for. The parts that component is built from - a row, a bubble, an icon - each go in a part file of their own beside it, named `PartName.part.tsx`, and each part file too declares one component. Parts are the component's own: nothing outside imports them, and a slice's `index.ts` never exports one. A part a second component needs has become a component, and loses its `.part`. Hooks and pure helpers are not components; they may share the file.
+
+```
+shell/
+├─ SetupPanel.tsx        # Setup, and nothing else
+└─ CheckRow.part.tsx     # CheckRow, used only by SetupPanel.tsx
+```
+
 **Generate TypeScript types from the Rust protocol crate** rather than hand-maintaining them. Use `ts-rs` or `specta`. Hand-mirrored wire types drift within about two weeks, and the failure is silent — a renamed field becomes `undefined` at runtime rather than a compile error.
 
 ---
@@ -320,6 +328,7 @@ In `CONTRIBUTING.md`, applied to every change:
 - [ ] `ARCHITECTURE.md` updated if a module was added or moved
 - [ ] No new file over 400 lines
 - [ ] No new `Manager`/`Helper`/`Util`
+- [ ] One component per `.tsx` file; its parts in `PartName.part.tsx`
 
 ### 6.3 Structural tests
 
