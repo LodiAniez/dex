@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { request } from "./daemon";
+import type { RunningPane } from "./generated/RunningPane";
 import type { TerminalView } from "./generated/TerminalView";
 
 /**
  * The terminal Dex opens: `windows` (PowerShell) or `wsl:<distro>`. One
  * choice for the whole app (`pane.terminal`): every new pane and every agent
- * spawned opens there, a plain shell switches at once (`switchNow`), and when
- * Dex starts, every pane does. A pane running something keeps its shell.
+ * spawned opens there, and when Dex starts, every pane does. A pane already
+ * running keeps its shell unless the owner has it restarted (`restartChoices`).
  */
 
 /** The distro of a WSL terminal; null for Windows or none. */
@@ -22,16 +23,46 @@ export function runtimeLabel(runtime: string): string {
 }
 
 /**
- * Whether a pane's shell is to be closed and started again in `next`, the
- * runtime its pane now has. The daemon changes a running pane's runtime only
- * when it is a plain shell - nothing running in it - so this only has to know
- * the shell is running here, and started elsewhere.
+ * Whether this window can close a pane's shell and start it again in `next`:
+ * it is running here - not exited, not shown in another window - and in
+ * another terminal. Whether it should is the owner's call.
  */
 export function switchNow(
   shell: { spawned: boolean; dead: boolean; away: boolean; runtime?: string },
   next: string,
 ): boolean {
   return shell.spawned && !shell.dead && !shell.away && shell.runtime !== undefined && shell.runtime !== next;
+}
+
+/** One pane in the "restart these in the new terminal?" list. */
+export interface RestartChoice {
+  pane: string;
+  title: string;
+  detail: string;
+  busy: boolean;
+  /** Ticked to begin with: a plain shell is; one that may be busy is not. */
+  ticked: boolean;
+}
+
+/**
+ * The panes to offer to restart after a terminal is chosen: those running
+ * elsewhere that this window can restart (not ones shown in another window).
+ * Plain shells start ticked; a pane where something may be running does not,
+ * and says so - restarting it would end that.
+ */
+export function restartChoices(
+  running: readonly RunningPane[],
+  canRestart: (pane: string) => boolean,
+): RestartChoice[] {
+  return running
+    .filter((pane) => canRestart(pane.pane))
+    .map((pane) => ({
+      pane: pane.pane,
+      title: pane.label ?? pane.cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? pane.cwd,
+      detail: `${pane.workspace} · ${runtimeLabel(pane.runtime)}${pane.busy ? " · something may be running in it" : ""}`,
+      busy: pane.busy,
+      ticked: !pane.busy,
+    }));
 }
 
 /**
@@ -54,7 +85,7 @@ export function terminalChoices(view: TerminalView): { value: string; label: str
  */
 export function useTerminal(generation?: unknown): {
   view: TerminalView | null;
-  choose: (runtime: string) => Promise<void>;
+  choose: (runtime: string) => Promise<TerminalView>;
 } {
   const [view, setView] = useState<TerminalView | null>(null);
   useEffect(() => {
@@ -68,7 +99,9 @@ export function useTerminal(generation?: unknown): {
     };
   }, [generation]);
   const choose = useCallback(async (runtime: string) => {
-    setView(await request<TerminalView>("pane.terminal", { terminal: runtime }));
+    const answer = await request<TerminalView>("pane.terminal", { terminal: runtime });
+    setView(answer);
+    return answer;
   }, []);
   return { view, choose };
 }

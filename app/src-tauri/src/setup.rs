@@ -99,9 +99,13 @@ pub async fn setup_run(step: String) -> Result<StepOutcome, String> {
             "hooks" | "mcp" | "skill" => vec![step.clone(), "install".into()],
             other => match other.strip_prefix("wsl:") {
                 // Only a distro `wsl.exe` lists: the name becomes an argument.
-                Some(distro) if wsl::distros().iter().any(|d| d == distro) => {
-                    vec!["wsl".into(), "setup".into(), distro.to_owned()]
-                }
+                Some(asked) => match wsl::distros()
+                    .into_iter()
+                    .find(|d| d.eq_ignore_ascii_case(asked))
+                {
+                    Some(distro) => vec!["wsl".into(), "setup".into(), distro],
+                    None => return Err(format!("{other:?} is not a setup step")),
+                },
                 _ => return Err(format!("{other:?} is not a setup step")),
             },
         };

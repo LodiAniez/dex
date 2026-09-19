@@ -53,7 +53,7 @@ pub fn run(format: Format) -> bool {
     checks.push(verdict("hooks", hooks::doctor_check()));
     checks.push(verdict("mcp", mcp::doctor_check()));
     checks.push(verdict("skill", skill::doctor_check()));
-    for (name, passed, detail) in wsl::doctor_checks(&distros_in_use()) {
+    for (name, passed, detail, fixable) in wsl::doctor_checks(&distros_in_use()) {
         let status = match passed {
             Some(true) => Status::Ok,
             Some(false) => Status::Fail,
@@ -61,7 +61,7 @@ pub fn run(format: Format) -> bool {
         };
         let distro = name.trim_start_matches("wsl:").to_owned();
         let mut line = check(name, status, detail);
-        if passed != Some(true) {
+        if passed != Some(true) && fixable {
             line.fix = Some(format!("wsl setup {distro}"));
         }
         checks.push(line);

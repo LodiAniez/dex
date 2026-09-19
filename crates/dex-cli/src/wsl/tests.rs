@@ -52,3 +52,26 @@ fn the_dex_command_in_linux_runs_the_windows_one_with_its_arguments() {
     // A quote in the path cannot end the quoting early.
     assert!(shim("/mnt/c/it's/dex.exe").contains(r"'/mnt/c/it'\''s/dex.exe'"));
 }
+
+#[test]
+fn the_path_is_read_after_the_marker_whatever_the_profile_printed_first() {
+    let printed = "Welcome to Ubuntu 26.04 LTS\n * Documentation: ...\n__DEX_PATH__/home/me/.local/bin:/usr/bin\n";
+    assert_eq!(
+        read_marked(printed).as_deref(),
+        Some("/home/me/.local/bin:/usr/bin")
+    );
+    assert_eq!(read_marked("no marker"), None);
+}
+
+#[test]
+fn a_program_runs_with_the_owners_path_or_in_a_test_the_stand_in_home_first() {
+    assert_eq!(login_env(Some("/usr/bin"), None), vec!["PATH=/usr/bin"]);
+    assert_eq!(
+        login_env(Some("/usr/bin"), Some("/var/tmp/t")),
+        vec!["PATH=/var/tmp/t/.local/bin:/usr/bin", "HOME=/var/tmp/t"]
+    );
+    assert_eq!(
+        login_env(None, None),
+        vec!["PATH=/usr/local/bin:/usr/bin:/bin"]
+    );
+}

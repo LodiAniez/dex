@@ -160,6 +160,12 @@ fn create_in_wsl(distro: &str, repo: &Path, path: &Path, branch: &str) -> Result
     too_old("Windows", &windows.stdout)?;
     let (repo, path) = (linux(repo)?, linux(path)?);
     let linux_git = wsl::git(distro, &repo, &["--version"]).unwrap_or_default();
+    if linux_git.trim().is_empty() {
+        return Err(RepoError::GitTooOld {
+            place: distro.to_owned(),
+            version: "not installed".to_owned(),
+        });
+    }
     too_old(distro, &linux_git)?;
     let add = |new_branch: bool| {
         let mut args = vec!["worktree", "add", "--relative-paths", &path];

@@ -29,6 +29,8 @@ fn changes(cmd: &str) -> Option<&'static str> {
         "workspace.list" | "pane.list" | "pane.send" | "pane.send_key" | "pane.content" => None,
         // Choosing a terminal changes no pane: the next ones open in it.
         "pane.terminal" => None,
+        // Announces itself, and only when where the pane runs is new.
+        "pane.started" => None,
         "agent.list" | "agent.sweep" => None,
         "context.read" | "context.list" | "context.search" | "context.events" => None,
         // A digest advances the caller's cursor, which no client displays.
@@ -84,6 +86,7 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "pane.create" => encode(workspace::create_pane(state, args(req)?).await?),
         "pane.split" => encode(workspace::split_pane(state, args(req)?).await?),
         "pane.terminal" => encode(workspace::choose_terminal(state, args(req)?).await?),
+        "pane.started" => encode(workspace::record_started(state, args(req)?).await?),
         "pane.close" => encode(workspace::close_pane(state, args(req)?).await?),
         "pane.focus" => encode(workspace::focus_pane(state, args(req)?).await?),
         "pane.swap" => encode(workspace::swap_panes(state, args(req)?).await?),

@@ -128,13 +128,13 @@ fn repo_repair(err: &RepoError) -> (ErrorCode, String) {
             (ErrorCode::InvalidArgs, reason.repair().to_owned())
         }
         RepoError::GitTooOld { place, .. } if place == "Windows" => (
-            ErrorCode::Internal,
+            ErrorCode::InvalidArgs,
             "Install the current Git for Windows (https://git-scm.com), then spawn again.".to_owned(),
         ),
         RepoError::GitTooOld { place, .. } => (
-            ErrorCode::Internal,
+            ErrorCode::InvalidArgs,
             format!(
-                "Update git in {place}. On Ubuntu: `sudo add-apt-repository ppa:git-core/ppa && sudo apt update && sudo apt install git`. Then spawn again."
+                "Install or update git in {place}. On Ubuntu: `sudo add-apt-repository ppa:git-core/ppa && sudo apt update && sudo apt install git`. Then spawn again."
             ),
         ),
         RepoError::Git(GitError::Missing) => (

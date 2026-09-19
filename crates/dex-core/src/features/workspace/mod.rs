@@ -17,6 +17,7 @@ mod pane_io;
 mod pane_move;
 mod runtimes;
 mod store;
+mod switching;
 mod targets;
 #[cfg(test)]
 mod tests;
@@ -43,4 +44,5 @@ pub use store::update_terminal as set_terminal;
 pub use store::{
     find_pane_workspace, pane_cwd, pane_label, pane_runtime, workspace_name, workspace_root,
 };
+pub use switching::record_started;
 pub use targets::{focused_pane, pane_id, workspace_id};

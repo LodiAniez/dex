@@ -315,6 +315,43 @@ pub fn terminal_panes(conn: &Connection) -> rusqlite::Result<Vec<(String, String
     rows.collect()
 }
 
+/// A terminal pane as the terminal choice lists it.
+pub struct TerminalPaneRow {
+    pub id: String,
+    pub workspace: String,
+    pub label: Option<String>,
+    pub cwd: String,
+    pub runtime: String,
+}
+
+/// Every terminal pane, with its workspace's name.
+pub fn terminal_panes_named(conn: &Connection) -> rusqlite::Result<Vec<TerminalPaneRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT pane.id, workspace.name, pane.label, pane.cwd, pane.runtime
+         FROM pane JOIN workspace ON workspace.id = pane.workspace_id
+         WHERE pane.kind = 'terminal'
+         ORDER BY workspace.sort_index, pane.created_at, pane.rowid",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(TerminalPaneRow {
+            id: row.get(0)?,
+            workspace: row.get(1)?,
+            label: row.get(2)?,
+            cwd: row.get(3)?,
+            runtime: row.get(4)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Records where a pane's shell runs. False if nothing changed.
+pub fn update_pane_runtime(conn: &Connection, id: &str, runtime: &str) -> rusqlite::Result<bool> {
+    Ok(conn.execute(
+        "UPDATE pane SET runtime = ?2 WHERE id = ?1 AND runtime != ?2",
+        params![id, runtime],
+    )? > 0)
+}
+
 /// These panes' shells run in `runtime` from their next start.
 pub fn update_pane_runtimes(
     conn: &mut Connection,

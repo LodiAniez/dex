@@ -148,3 +148,50 @@
   font: inherit;
   font-size: 12.5px;
 }
+
+/* After a terminal is chosen: the running panes to restart in it, or not. */
+.setup-terminal-block {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.setup-terminal-block .setup-terminal {
+  border-bottom: none;
+}
+
+.setup-restart {
+  padding: 4px 20px 12px 44px;
+  font-size: 12.5px;
+}
+
+.setup-restart-head {
+  margin: 0 0 6px;
+  color: var(--text-dim);
+}
+
+.setup-restart ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-restart label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.setup-restart-detail {
+  color: var(--text-dim);
+}
+
+.setup-restart-detail.is-busy {
+  color: #e3b341;
+}
+
+.setup-restart-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}

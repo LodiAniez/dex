@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distroOf, runtimeLabel, switchNow, terminalChoices } from "./runtimes";
+import { distroOf, restartChoices, runtimeLabel, switchNow, terminalChoices } from "./runtimes";
 
 describe("runtimeLabel", () => {
   it("names a terminal the way the owner thinks of it", () => {
@@ -23,18 +23,18 @@ describe("distroOf", () => {
 
 describe("terminalChoices", () => {
   it("offers every terminal there is, once there is a choice", () => {
-    expect(terminalChoices({ terminal: "windows", runtimes: ["windows", "wsl:Ubuntu"] })).toEqual([
+    expect(terminalChoices({ terminal: "windows", runtimes: ["windows", "wsl:Ubuntu"], running_elsewhere: [] })).toEqual([
       { value: "windows", label: "PowerShell" },
       { value: "wsl:Ubuntu", label: "Ubuntu (WSL)" },
     ]);
   });
 
   it("offers none where Windows is all there is", () => {
-    expect(terminalChoices({ terminal: "windows", runtimes: ["windows"] })).toEqual([]);
+    expect(terminalChoices({ terminal: "windows", runtimes: ["windows"], running_elsewhere: [] })).toEqual([]);
   });
 
   it("keeps a chosen distro that has gone, so the owner can choose away from it", () => {
-    expect(terminalChoices({ terminal: "wsl:Ubuntu", runtimes: ["windows"] })).toEqual([
+    expect(terminalChoices({ terminal: "wsl:Ubuntu", runtimes: ["windows"], running_elsewhere: [] })).toEqual([
       { value: "windows", label: "PowerShell" },
       { value: "wsl:Ubuntu", label: "Ubuntu (WSL) - not installed" },
     ]);
@@ -56,5 +56,31 @@ describe("switchNow", () => {
     expect(switchNow({ ...running, spawned: false }, "wsl:Ubuntu")).toBe(false);
     expect(switchNow({ ...running, dead: true }, "wsl:Ubuntu")).toBe(false);
     expect(switchNow({ ...running, away: true }, "wsl:Ubuntu")).toBe(false);
+  });
+});
+
+describe("restartChoices", () => {
+  const pane = (id: string, busy: boolean, label: string | null = null) => ({
+    pane: id,
+    workspace: "api",
+    label,
+    cwd: "C:/src/api",
+    runtime: "windows",
+    busy,
+  });
+
+  it("ticks plain shells and leaves panes that may be busy for the owner to decide", () => {
+    const choices = restartChoices([pane("a", false), pane("b", true, "server")], () => true);
+    expect(choices.map((c) => [c.pane, c.ticked])).toEqual([
+      ["a", true],
+      ["b", false],
+    ]);
+    expect(choices[0].title).toBe("api");
+    expect(choices[1].title).toBe("server");
+    expect(choices[1].detail).toContain("something may be running in it");
+  });
+
+  it("offers only panes this window can restart", () => {
+    expect(restartChoices([pane("a", false), pane("b", false)], (id) => id === "b").map((c) => c.pane)).toEqual(["b"]);
   });
 });

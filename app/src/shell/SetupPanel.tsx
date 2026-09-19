@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { DexError } from "../platform/daemon";
-import { terminalChoices, useTerminal } from "../platform/runtimes";
+import { type RestartChoice, restartChoices, runtimeLabel, terminalChoices, useTerminal } from "../platform/runtimes";
+import { canRestartIn, restartIn } from "../platform/terminalRegistry";
 import "./setup.css";
 import { type Check, type DoctorReport, type Step, failures, headline, stepFor, stepLabel } from "./setup";
 
@@ -123,22 +124,31 @@ function CheckRow({ check, running, onRun }: { check: Check; running: Step | nul
 
 /**
  * Which terminal Dex opens, where there is a choice (WSL installed). Everything
- * new opens there: panes, and every agent spawned; a plain shell switches at
- * once, and a pane running something keeps its shell until Dex next starts
- * (`workspace/runtimes.rs` in dex-core). A WSL distro also needs setting up for
+ * new opens there: panes, and every agent spawned. Panes already running keep
+ * their shell, and are offered for a restart: plain shells ticked, busy ones
+ * not (`workspace/switching.rs` in dex-core). A WSL distro also needs setting up for
  * agents, which the checks below then say.
  */
 function TerminalChoice({ report, onChosen }: { report: DoctorReport; onChosen: () => Promise<void> }) {
   const { view, choose } = useTerminal(report);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // After a choice: running panes to restart in it, or not, as the owner ticks.
+  const [offer, setOffer] = useState<{ runtime: string; choices: RestartChoice[] } | null>(null);
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
   const choices = view ? terminalChoices(view) : [];
   if (!view || choices.length === 0) return null;
   const pick = async (runtime: string) => {
     setBusy(true);
     setProblem(null);
+    setOffer(null);
     try {
-      await choose(runtime);
+      const answer = await choose(runtime);
+      const restartable = restartChoices(answer.running_elsewhere, (pane) => canRestartIn(pane, runtime));
+      if (restartable.length > 0) {
+        setOffer({ runtime, choices: restartable });
+        setTicked(new Set(restartable.filter((choice) => choice.ticked).map((choice) => choice.pane)));
+      }
       await onChosen();
     } catch (err) {
       // What happened, and the daemon's repair for it.
@@ -147,29 +157,70 @@ function TerminalChoice({ report, onChosen }: { report: DoctorReport; onChosen: 
       setBusy(false);
     }
   };
+  const restart = () => {
+    if (!offer) return;
+    for (const pane of ticked) restartIn(pane, offer.runtime);
+    setOffer(null);
+  };
+  const toggle = (pane: string) =>
+    setTicked((now) => {
+      const next = new Set(now);
+      if (next.has(pane)) next.delete(pane);
+      else next.add(pane);
+      return next;
+    });
   return (
-    <div className="setup-check setup-terminal">
-      <span className="setup-dot" aria-hidden />
-      <span className="setup-name">terminal</span>
-      <span className="setup-detail">
-        Dex opens its panes, and every agent it spawns, here.
-        <span className="setup-explain">
-          A plain shell switches at once; one running something keeps its shell until Dex restarts.{problem && ` ${problem}`}
+    <div className="setup-terminal-block">
+      <div className="setup-check setup-terminal">
+        <span className="setup-dot" aria-hidden />
+        <span className="setup-name">terminal</span>
+        <span className="setup-detail">
+          Dex opens its panes, and every agent it spawns, here.
+          <span className="setup-explain">
+            Panes already running keep their shell unless you restart them.{problem && ` ${problem}`}
+          </span>
         </span>
-      </span>
-      <select
-        className="setup-select"
-        aria-label="Terminal"
-        value={view.terminal}
-        disabled={busy}
-        onChange={(event) => void pick(event.target.value)}
-      >
-        {choices.map((choice) => (
-          <option key={choice.value} value={choice.value}>
-            {choice.label}
-          </option>
-        ))}
-      </select>
+        <select
+          className="setup-select"
+          aria-label="Terminal"
+          value={view.terminal}
+          disabled={busy}
+          onChange={(event) => void pick(event.target.value)}
+        >
+          {choices.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {offer && (
+        <div className="setup-restart" role="group" aria-label={`Restart panes in ${runtimeLabel(offer.runtime)}`}>
+          <p className="setup-restart-head">
+            Restart these in {runtimeLabel(offer.runtime)}? Each starts again in its folder, with its scrollback kept;
+            whatever runs in it ends.
+          </p>
+          <ul>
+            {offer.choices.map((choice) => (
+              <li key={choice.pane}>
+                <label>
+                  <input type="checkbox" checked={ticked.has(choice.pane)} onChange={() => toggle(choice.pane)} />
+                  <span className="setup-restart-title">{choice.title}</span>
+                  <span className={`setup-restart-detail${choice.busy ? " is-busy" : ""}`}>{choice.detail}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="setup-restart-actions">
+            <button type="button" className="setup-button" onClick={() => setOffer(null)}>
+              Not now
+            </button>
+            <button type="button" className="setup-button primary" disabled={ticked.size === 0} onClick={restart}>
+              Restart {ticked.size === 1 ? "1 pane" : `${ticked.size} panes`}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

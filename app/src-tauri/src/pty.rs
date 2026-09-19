@@ -123,10 +123,20 @@ pub async fn pty_spawn(
         rows: pane.rows,
     };
     let sink = window_sink(state.inner(), &request.pane_id, on_output, on_event);
+    let started = request.pane_id.clone();
     state
         .pty
         .spawn(request, sink)
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    // Where the shell really runs, now that it does: the watchdog looks for an
+    // agent there, and the terminal choice lists it by it.
+    let record = Request {
+        id: "pty-started".into(),
+        cmd: "pane.started".into(),
+        args: json!({ "pane": started, "runtime": runtime.to_string() }),
+    };
+    router::dispatch(state.inner(), record).await;
+    Ok(())
 }
 
 /// `wsl.exe`, from System32 rather than whatever `PATH` finds first.

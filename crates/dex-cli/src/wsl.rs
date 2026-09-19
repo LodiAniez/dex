@@ -10,9 +10,11 @@
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -173,40 +175,96 @@ pub fn under(root: &Path, linux: &str) -> PathBuf {
     path
 }
 
-/// A Linux path as Windows reaches it: `\\wsl.localhost\<distro>\home\...`,
-/// or through `\\wsl$`, the older name, where Windows has only that.
-pub fn unc(distro: &str, linux: &str) -> PathBuf {
+/// Where Windows reaches the distro's files: `\\wsl.localhost\<distro>`, or
+/// `\\wsl$\<distro>`, the older name, where Windows has only that. Asked once
+/// per distro that is being set up, not per file.
+pub fn root(distro: &str) -> PathBuf {
     let current = PathBuf::from(format!(r"\\wsl.localhost\{distro}"));
-    let root = if current.is_dir() {
+    if current.is_dir() {
         current
     } else {
         PathBuf::from(format!(r"\\wsl$\{distro}"))
-    };
-    under(&root, linux)
+    }
 }
 
-/// Runs `program` in the distro with the `PATH` its owner's shell sets, where
-/// a Claude Code installed per user lives. A login shell first; then an
-/// interactive one too, since a `PATH` set in `~/.bashrc` - nvm's, for an npm
-/// Claude Code - is skipped by a shell that is not interactive. The arguments
-/// go to the program as they are: the shell only runs `exec "$0" "$@"`.
-pub fn run_login(distro: &str, program: &str, args: &[&str]) -> io::Result<Output> {
-    let home = test_home().map(|home| format!("HOME={home}"));
-    let run = |flags: &str| {
-        let mut all = vec!["-d", distro, "--exec", "env"];
-        if let Some(home) = &home {
-            all.push(home);
-        }
-        all.extend(["bash", flags, "exec \"$0\" \"$@\"", program]);
-        all.extend_from_slice(args);
-        wsl(&all)
-    };
-    let out = run("-lc")?;
-    // 127: bash found no such program.
-    if out.status.code() == Some(127) {
-        return run("-lic");
+/// Printed by the owner's shell before its `PATH`, so a greeting from their
+/// profile (Ubuntu's once-a-day welcome, say) is not mistaken for part of it.
+const MARKER: &str = "__DEX_PATH__";
+
+/// What follows the marker on its line, if anything does.
+pub fn read_marked(printed: &str) -> Option<String> {
+    let after = printed.split(MARKER).nth(1)?;
+    let line = after.lines().next()?.trim();
+    (!line.is_empty()).then(|| line.to_owned())
+}
+
+/// The owner's login shell in the distro, from the user database. Shells whose
+/// `$PATH` is not a colon-separated string (fish, nu) are asked through bash.
+fn login_shell(distro: &str) -> String {
+    let shell = printed(
+        wsl(&[
+            "-d",
+            distro,
+            "--exec",
+            "sh",
+            "-c",
+            r#"getent passwd "$(id -un)" | cut -d: -f7"#,
+        ]),
+        "finding the login shell",
+    )
+    .unwrap_or_default();
+    let name = shell.rsplit('/').next().unwrap_or_default();
+    if shell.starts_with('/') && !matches!(name, "fish" | "nu") {
+        shell
+    } else {
+        "/bin/bash".to_owned()
     }
-    Ok(out)
+}
+
+/// The `PATH` the owner's shell sets for a terminal in the distro: asked once
+/// of an interactive login shell - where nvm, Homebrew and `~/.local/bin` are
+/// added - which prints it and nothing else Dex reads. With the owner's real
+/// home even in a test: that is where their Claude Code is.
+pub fn login_path(distro: &str) -> Option<String> {
+    static ASKED: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+    let asked = ASKED.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(known) = asked.lock().ok().and_then(|map| map.get(distro).cloned()) {
+        return known;
+    }
+    let shell = login_shell(distro);
+    let script = format!(r#"printf '{MARKER}%s\n' "$PATH""#);
+    let path = wsl(&["-d", distro, "--exec", &shell, "-lic", &script])
+        .ok()
+        .and_then(|out| read_marked(&String::from_utf8_lossy(&out.stdout)));
+    if let Ok(mut map) = asked.lock() {
+        map.insert(distro.to_owned(), path.clone());
+    }
+    path
+}
+
+/// The environment a program in the distro runs with: the owner's terminal
+/// `PATH`, and in a test the stand-in home, whose `~/.local/bin` comes first.
+pub fn login_env(path: Option<&str>, test_home: Option<&str>) -> Vec<String> {
+    let path = path.unwrap_or("/usr/local/bin:/usr/bin:/bin");
+    match test_home {
+        Some(home) => vec![
+            format!("PATH={home}/.local/bin:{path}"),
+            format!("HOME={home}"),
+        ],
+        None => vec![format!("PATH={path}")],
+    }
+}
+
+/// Runs `program` in the distro as a terminal of the owner's would find it -
+/// Claude Code installed per user, `dex` in `~/.local/bin` - but without an
+/// interactive shell, whose greetings would land in what is read back.
+pub fn run_login(distro: &str, program: &str, args: &[&str]) -> io::Result<Output> {
+    let env = login_env(login_path(distro).as_deref(), test_home().as_deref());
+    let mut all = vec!["-d", distro, "--exec", "env"];
+    all.extend(env.iter().map(String::as_str));
+    all.push(program);
+    all.extend_from_slice(args);
+    wsl(&all)
 }
 
 /// Makes `path` in the distro runnable.

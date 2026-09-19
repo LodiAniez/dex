@@ -126,11 +126,20 @@ pub fn parse_distros(printed: &[u8]) -> Vec<String> {
 /// waiting for input) must not hang Dex with it.
 const WAIT: Duration = Duration::from_secs(15);
 
+/// Git gets longer: checking out a large repository across the Windows mount
+/// is slow, and one killed half-way leaves a worktree half made.
+const GIT_WAIT: Duration = Duration::from_secs(600);
+
 /// Runs `wsl.exe` with `args`, hiding the console it would flash open from a
 /// GUI app, and gives up after `WAIT`. `None` if it could not be run, or did
 /// not finish. `WSL_UTF8` is left out: it makes `--list` print UTF-8 instead
 /// of the UTF-16 `parse_distros` reads.
 fn run(args: &[&str]) -> Option<Output> {
+    run_within(args, WAIT)
+}
+
+/// `run`, with its own limit.
+fn run_within(args: &[&str], wait: Duration) -> Option<Output> {
     let mut command = Command::new("wsl.exe");
     command
         .args(args)
@@ -166,7 +175,7 @@ fn run(args: &[&str]) -> Option<Output> {
             .take()
             .map(|p| Box::new(p) as Box<dyn Read + Send>),
     );
-    let deadline = Instant::now() + WAIT;
+    let deadline = Instant::now() + wait;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -287,7 +296,12 @@ pub fn linux_path(distro: &str, windows: &str) -> Result<String, String> {
 pub fn git(distro: &str, dir: &str, args: &[&str]) -> Result<String, String> {
     let mut all = vec!["-d", distro, "--exec", "git", "-C", dir];
     all.extend_from_slice(args);
-    let out = run(&all).ok_or_else(|| "wsl.exe could not be run".to_owned())?;
+    let out = run_within(&all, GIT_WAIT).ok_or_else(|| {
+        format!(
+            "git in {distro} did not finish within {} minutes",
+            GIT_WAIT.as_secs() / 60
+        )
+    })?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
     } else {

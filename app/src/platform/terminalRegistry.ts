@@ -146,22 +146,35 @@ function startShell(entry: Entry): void {
 }
 
 /**
- * The pane's runtime as the daemon has it now. A shell not started yet will
- * start there; a running one the daemon moved - a plain shell, nothing in it -
- * is closed and started again there, and its scrollback stays.
+ * The pane's runtime as the daemon has it now: where a shell not started yet
+ * will start. A running shell is never moved from here - only by `restartIn`,
+ * when the owner asks.
  */
 export function syncRuntime(paneId: string, runtime: string): void {
   const entry = entries.get(paneId);
-  if (!entry) return;
-  if (!switchNow(entry, runtime)) {
-    if (!entry.spawned) entry.runtime = runtime;
-    return;
-  }
+  if (entry && !entry.spawned) entry.runtime = runtime;
+}
+
+/** Whether this window can restart the pane's shell in `runtime`. */
+export function canRestartIn(paneId: string, runtime: string): boolean {
+  const entry = entries.get(paneId);
+  return entry !== undefined && switchNow(entry, runtime);
+}
+
+/**
+ * Closes the pane's shell and starts it again in `runtime`, in the pane's
+ * folder, keeping the scrollback - for a pane the owner chose to move to a new
+ * terminal. Whatever ran in the shell ends. False if this window cannot.
+ */
+export function restartIn(paneId: string, runtime: string): boolean {
+  const entry = entries.get(paneId);
+  if (!entry || !switchNow(entry, runtime)) return false;
   entry.runtime = runtime;
   entry.switching = true;
   void killPty(paneId).catch(() => {
     entry.switching = false;
   });
+  return true;
 }
 
 let focusSuspended = false;
@@ -199,6 +212,8 @@ export function fitTerminal(paneId: string): void {
 export function disposeTerminal(paneId: string): void {
   const entry = entries.get(paneId);
   if (!entry) return;
+  // A switch under way must not start a shell for a pane that is gone.
+  entry.switching = false;
   if (!entry.dead) void killPty(paneId).catch(() => {});
   entry.term.dispose();
   entry.element.remove();
@@ -367,8 +382,8 @@ function handleEvent(entry: Entry, event: PtyEvent): void {
     entry.term.write("\x1b[2m[… output dropped while the display was unresponsive …]\x1b[0m\r\n");
     return;
   }
-  // Closed to start again in another terminal (`syncRuntime`): no exit to report.
-  if (entry.switching) {
+  // Closed to start again in another terminal (`restartIn`): no exit to report.
+  if (entry.switching && entries.get(entry.paneId) === entry) {
     entry.switching = false;
     entry.term.write(`\r\n\x1b[2m[now in ${runtimeLabel(entry.runtime ?? "windows")}]\x1b[0m\r\n`);
     startShell(entry);
