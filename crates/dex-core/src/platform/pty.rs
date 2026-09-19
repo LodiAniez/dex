@@ -14,6 +14,7 @@
 //! `PSEUDOCONSOLE_INHERIT_CURSOR`), and it renders nothing until answered.
 //! xterm.js answers; any other driver (tests, a headless consumer) must too.
 
+mod kill;
 mod reader;
 #[cfg(any(unix, test))]
 mod reap;
@@ -122,6 +123,9 @@ pub enum PtyError {
     /// `anyhow`, which a library must not re-export, so they arrive as text.
     #[error("pty: {0}")]
     Pty(String),
+    /// Windows would not end the pane's process (`kill.rs`).
+    #[error("Windows could not end the pane's process")]
+    KillFailed,
     /// Writing to the PTY or starting a thread failed.
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
@@ -331,14 +335,7 @@ impl PtySupervisor {
             })?;
             return Ok(());
         }
-        match pane.killer.kill() {
-            // portable-pty 0.9.0's cloned Windows killer has its check inverted:
-            // it returns `last_os_error()` when TerminateProcess *succeeds*,
-            // which is always OS error 0. Treat that as the success it is.
-            // (A genuine failure comes back as Ok and cannot be detected.)
-            Err(err) if err.raw_os_error() == Some(0) => Ok(()),
-            result => result.map_err(PtyError::from),
-        }
+        kill::outcome(pane.killer.kill())
     }
 
     /// Ends every pane's processes as the app quits (Windows' job already does).
