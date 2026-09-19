@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MirrorFeed, type MirrorMessage } from "./mirrorFeed";
+import { MirrorFeed, endAll, type MirrorMessage } from "./mirrorFeed";
 
 function feed() {
   const sent: MirrorMessage[] = [];
@@ -90,5 +90,27 @@ describe("a mirror feed's backlog", () => {
     for (let i = 0; i < 30000; i++) f.data("0123456789");
     f.start("S", 80, 24);
     expect(sent[1]).toEqual({ kind: "resize", cols: 100, rows: 40 });
+  });
+});
+
+describe("ending every mirror of a pane", () => {
+  it("ends each once and empties the set, even when one starts watching again as it is told", () => {
+    const mirrors = new Set<MirrorFeed>();
+    let ended = 0;
+    const add = () => {
+      const f = new MirrorFeed((message) => {
+        if (message.kind !== "end") return;
+        ended += 1;
+        // Told the pane is going, it looks again - and finds the same set.
+        if (ended < 100) add();
+      });
+      mirrors.add(f);
+    };
+    add();
+    add();
+    endAll(mirrors);
+    expect(ended).toBe(2);
+    // What started watching during the ending is left in the set, not looped over.
+    expect(mirrors.size).toBe(2);
   });
 });

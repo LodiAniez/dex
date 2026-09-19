@@ -20,6 +20,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { Terminal } from "@xterm/xterm";
 import { ackPty, attachPty, holdPty, killPty, resizePty, spawnPty, writePty, type PtyEvent } from "./pty";
 import { runtimeLabel, switchNow } from "./runtimes";
+import { endAll } from "./mirrorFeed";
 import { type Entry, entries } from "./terminalEntries";
 import { loadWebgl } from "./webglRenderer";
 
@@ -205,11 +206,11 @@ export function disposeTerminal(paneId: string): void {
   // A switch under way must not start a shell for a pane that is gone.
   entry.switching = false;
   if (!entry.dead) void killPty(paneId).catch(() => {});
-  for (const mirror of entry.mirrors) mirror.end();
-  entry.mirrors.clear();
+  // Gone from the map before its mirrors hear: one that looks again must not find it.
+  entries.delete(paneId);
+  endAll(entry.mirrors);
   entry.term.dispose();
   entry.element.remove();
-  entries.delete(paneId);
 }
 
 /** How long a hand-off waits for output already on its way to this window. */
@@ -231,8 +232,7 @@ export async function handOff(paneId: string): Promise<string> {
   await new Promise<void>((resolve) => entry.term.write("", resolve));
   flushAck(entry);
   entry.away = true;
-  for (const mirror of entry.mirrors) mirror.end();
-  entry.mirrors.clear();
+  endAll(entry.mirrors);
   detachTerminal(paneId);
   return entry.serialize.serialize();
 }
@@ -359,6 +359,7 @@ function handleEvent(entry: Entry, event: PtyEvent): void {
   if (event.type === "dropped") {
     // Bytes were discarded mid-stream, so the terminal state is unknown: reset it (PRD §7.1).
     entry.term.reset();
+    entry.decoder = new TextDecoder(); // A character split at the gap is gone.
     // ESC c: a mirror resets as the terminal just did.
     for (const mirror of entry.mirrors) mirror.data("\x1bc");
     show(entry, "\x1b[2m[… output dropped while the display was unresponsive …]\x1b[0m\r\n");

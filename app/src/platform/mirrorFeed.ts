@@ -93,3 +93,14 @@ export class MirrorFeed {
     }
   }
 }
+
+/**
+ * Ends every mirror in the set, once, and empties it. From a copy of the set:
+ * a mirror told `end` may start watching again, and a loop over a set visits
+ * what is added to it while it runs - over a pane still there, for ever.
+ */
+export function endAll(mirrors: Set<MirrorFeed>): void {
+  const ending = [...mirrors];
+  mirrors.clear();
+  for (const mirror of ending) mirror.end();
+}

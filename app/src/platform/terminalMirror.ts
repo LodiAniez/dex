@@ -5,18 +5,19 @@
  * carries on unchanged in the terminal view, or in a window of its own.
  *
  * A pane in a window of its own gets its output there, not here, so that window
- * is asked for the copy over app events and answers the window that asked. The
- * copy follows the pane: when it moves between windows, the copy starts again
- * from wherever it is now, with a fresh screen.
+ * is asked for the copy over app events: it says hello at once, then sends the
+ * copy, in order, to the window that asked. The copy follows the pane between
+ * windows (`mirrorLink.ts`).
  */
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MirrorFeed, type MirrorMessage } from "./mirrorFeed";
+import { MirrorLink, type Wire } from "./mirrorLink";
 import { entries } from "./terminalEntries";
 
 /** How much history the copy starts with: the screen and a little above it. */
 const SCROLLBACK = 200;
-/** How often a copy checks where the pane is, and asks again if nobody answered. */
+/** How often a copy checks where the pane is, and asks again if nobody said hello. */
 const RETRY_MS = 1000;
 /** Output sent between windows is gathered this long: one event per frame, not per chunk. */
 const BATCH_MS = 16;
@@ -33,7 +34,7 @@ interface Start {
 }
 interface Carried {
   id: string;
-  message: MirrorMessage;
+  message: Wire;
 }
 
 const quietly = (sent: Promise<unknown>) => void sent.catch(() => {});
@@ -58,58 +59,39 @@ function mirrorHere(paneId: string, send: (message: MirrorMessage) => void): (()
 /**
  * Sends `send` a copy of the pane's terminal until the returned function is
  * called: from this window's terminal, or from the pane's own window. `send`
- * gets a fresh `screen` whenever the copy starts again.
+ * gets a fresh `screen` whenever the copy starts again, after an `end`.
  */
 export function mirrorTerminal(paneId: string, send: (message: MirrorMessage) => void): () => void {
   const me = getCurrentWindow().label;
-  let stopped = false;
-  let stopLocal: (() => void) | null = null;
-  let asked: string | null = null;
-  let answered = false;
-
-  const forget = () => {
-    stopLocal?.();
-    stopLocal = null;
-    if (asked !== null) quietly(emit(STOP, { id: asked }));
-    asked = null;
-  };
-  const receive = (message: MirrorMessage) => {
-    // The pane moved or closed: look for it again.
-    if (message.kind === "end") attach();
-    else send(message);
-  };
-  const attach = () => {
-    forget();
-    if (stopped) return;
-    stopLocal = mirrorHere(paneId, receive);
-    if (stopLocal) return;
-    asked = crypto.randomUUID();
-    answered = false;
-    quietly(emit(START, { id: asked, paneId, to: me } satisfies Start));
-  };
-
-  let unlisten: (() => void) | null = null;
-  listen<Carried>(MESSAGE, (event) => {
-    if (stopped || asked === null || event.payload.id !== asked) return;
-    answered = true;
-    receive(event.payload.message);
-  }).then(
-    (stop) => (stopped ? stop() : (unlisten = stop)),
-    () => {},
+  const link = new MirrorLink(
+    {
+      here: (to) => mirrorHere(paneId, to),
+      isHere: () => {
+        const entry = entries.get(paneId);
+        return entry !== undefined && !entry.away;
+      },
+      ask: (id) => quietly(emit(START, { id, paneId, to: me } satisfies Start)),
+      cancel: (id) => quietly(emit(STOP, { id })),
+      newId: () => crypto.randomUUID(),
+    },
+    send,
   );
-  // Asked before the pane's window was listening, or the pane came back here
-  // without a word (its window closed): look again.
-  const timer = window.setInterval(() => {
-    const entry = entries.get(paneId);
-    const hereNow = entry !== undefined && !entry.away;
-    if ((stopLocal === null && hereNow) || (asked !== null && !answered)) attach();
-  }, RETRY_MS);
-
-  attach();
+  let stopped = false;
+  let unlisten: (() => void) | null = null;
+  listen<Carried>(MESSAGE, (event) => link.heard(event.payload.id, event.payload.message)).then(
+    (stop) => {
+      if (stopped) return stop();
+      unlisten = stop;
+      link.ready();
+    },
+    (err) => console.warn("monitor: cannot hear other windows", err),
+  );
+  const timer = window.setInterval(() => link.tick(), RETRY_MS);
+  link.start();
   return () => {
     stopped = true;
     window.clearInterval(timer);
-    forget();
+    link.stop();
     unlisten?.();
   };
 }
@@ -120,7 +102,13 @@ export async function serveMirrors(): Promise<() => void> {
   const starting = await listen<Start>(START, (event) => {
     const { id, paneId, to } = event.payload;
     if (running.has(id)) return;
-    const deliver = (message: MirrorMessage) => quietly(emitTo(to, MESSAGE, { id, message } satisfies Carried));
+    // One after another: each emit is its own async call, and two in flight
+    // may land in either order - a size before its screen, an end before the
+    // last output.
+    let chain: Promise<unknown> = Promise.resolve();
+    const deliver = (message: Wire) => {
+      chain = chain.then(() => emitTo(to, MESSAGE, { id, message } satisfies Carried)).catch(() => {});
+    };
     let gathered = "";
     let timer: number | null = null;
     const flush = () => {
@@ -138,12 +126,13 @@ export async function serveMirrors(): Promise<() => void> {
       flush();
       deliver(message);
     });
-    if (stop) {
-      running.set(id, () => {
-        flush();
-        stop();
-      });
-    }
+    if (!stop) return;
+    // At once, before the screen: the asker waits for that, however slow.
+    deliver({ kind: "hello" });
+    running.set(id, () => {
+      flush();
+      stop();
+    });
   });
   const stopping = await listen<{ id: string }>(STOP, (event) => {
     running.get(event.payload.id)?.();

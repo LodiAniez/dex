@@ -13,8 +13,8 @@ const SMALLEST = 6;
  * the terminal's own columns and rows - the output is laid out for them - and
  * its text is sized to fit the glass. It never takes a key: `onClick` sends the
  * keyboard to the prompt line below, unless text was selected, which Ctrl+C or
- * Cmd+C copies. It scrolls back like any terminal, and follows new output when
- * at the bottom.
+ * Cmd+C copies (the browser's copy, which xterm fills with the selection). It
+ * scrolls back like any terminal, and follows new output when at the bottom.
  */
 export function MonitorScreen({ paneId, onClick }: { paneId: string; onClick: () => void }) {
   const box = useRef<HTMLDivElement>(null);
@@ -38,6 +38,14 @@ export function MonitorScreen({ paneId, onClick }: { paneId: string; onClick: ()
     term.open(hostElement);
     // Not a stop for Tab: the prompt line and the close button are the monitor's.
     term.textarea?.setAttribute("tabindex", "-1");
+    // xterm takes every key its textarea gets, even with input off: Tab must
+    // reach the monitor, and Ctrl+C with a selection the browser, whose copy
+    // xterm then fills with the selection.
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.key === "Tab") return false;
+      const copying = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c";
+      return !(copying && term.hasSelection());
+    });
     let grid = { cols: term.cols, rows: term.rows };
     let frame = 0;
     // The estimate can be a pixel out once xterm rounds its cells: after each
@@ -58,28 +66,34 @@ export function MonitorScreen({ paneId, onClick }: { paneId: string; onClick: ()
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(settle);
     };
+    // Each fresh screen starts a new stream; what is still queued from an
+    // older one must not draw over it, nor size it.
+    let stream = 0;
     const stop = mirrorTerminal(paneId, (message) => {
       if (message.kind === "data") {
         term.write(message.text);
         return;
       }
-      if (message.kind === "end") return;
-      const { cols, rows } = message;
-      if (message.kind === "screen") {
-        grid = { cols, rows };
-        term.reset();
-        term.resize(cols, rows);
-        refit();
-        term.write(message.content);
-        setLive(true);
+      if (message.kind === "end") {
+        setLive(false); // Looking for the pane again: say so, not a frozen frame.
         return;
       }
-      // After what is already on its way: it was printed at the old size.
+      const { cols, rows } = message;
+      const mine = message.kind === "screen" ? ++stream : stream;
+      // In order, behind what is already on its way (it was printed at the old
+      // size): the size first, then - for a fresh screen - ESC c, which wipes
+      // whatever of the old stream was drawn before it, and the screen itself.
       term.write("", () => {
+        if (mine !== stream) return;
         grid = { cols, rows };
         term.resize(cols, rows);
         refit();
       });
+      if (message.kind === "screen") {
+        term.write(`\x1bc${message.content}`, () => {
+          if (mine === stream) setLive(true);
+        });
+      }
     });
     const observer = new ResizeObserver(refit);
     observer.observe(boxElement);
@@ -99,16 +113,9 @@ export function MonitorScreen({ paneId, onClick }: { paneId: string; onClick: ()
       onClick={() => {
         if (!termRef.current?.hasSelection()) onClick();
       }}
-      onKeyDown={(event) => {
-        const term = termRef.current;
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && term?.hasSelection()) {
-          event.preventDefault();
-          void navigator.clipboard.writeText(term.getSelection()).catch(() => {});
-        }
-      }}
     >
       <div className="monitor-term" ref={host} />
-      {!live && <div className="monitor-waking">Waking the screen...</div>}
+      {!live && <div className="monitor-waking">Looking for their screen...</div>}
     </div>
   );
 }
