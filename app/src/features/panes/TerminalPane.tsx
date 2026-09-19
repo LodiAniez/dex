@@ -5,6 +5,7 @@ import {
   fitTerminal,
   focusTerminal,
   openTerminal,
+  syncRuntime,
 } from "../../platform/terminalRegistry";
 
 interface Props {
@@ -41,6 +42,12 @@ export function TerminalPane({ paneId, workspaceId, cwd, runtime, active }: Prop
     // `runtime` only matters to the first attach, which starts the shell:
     // `openTerminal` is idempotent, so a change here re-attaches, never respawns.
   }, [paneId, cwd, workspaceId, runtime]);
+
+  // The daemon may move the pane to another terminal (the owner chose one):
+  // a plain shell there starts again in it.
+  useEffect(() => {
+    if (runtime) syncRuntime(paneId, runtime);
+  }, [paneId, runtime]);
 
   // Declared after the attach effect, so it runs once the terminal is in place.
   useEffect(() => {

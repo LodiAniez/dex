@@ -5,6 +5,7 @@
 //! records the terminal its shell starts in as its `runtime`, so one already
 //! running keeps going where it is when the choice changes.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use dex_protocol::pane::{TerminalArgs, TerminalView};
@@ -12,6 +13,7 @@ use dex_protocol::pane::{TerminalArgs, TerminalView};
 use super::model::WorkspaceError;
 use super::store;
 use crate::app::AppState;
+use crate::platform::proctree;
 use crate::platform::wsl::{self, Runtime};
 
 /// Checks a terminal against the distros installed, and names the distro as
@@ -65,9 +67,9 @@ pub(super) async fn move_panes(
     let to_wsl = matches!(Runtime::parse(&runtime), Ok(Runtime::Wsl(_)));
     let ids: Vec<String> = panes
         .into_iter()
-        .filter(|(id, _)| !idle_only || state.pty.shell_pid(id).is_none())
-        .filter(|(_, cwd)| !(to_wsl && windows_only(git_file(cwd).as_deref())))
-        .map(|(id, _)| id)
+        .filter(|(id, _, _)| !idle_only || state.pty.shell_pid(id).is_none())
+        .filter(|(_, cwd, _)| !(to_wsl && windows_only(git_file(cwd).as_deref())))
+        .map(|(id, _, _)| id)
         .collect();
     let moved = ids.len();
     state
@@ -77,6 +79,67 @@ pub(super) async fn move_panes(
     Ok(moved)
 }
 
+/// How many processes a WSL pane's shell accounts for there on its own: the
+/// login shell. The session processes `wsl.exe` starts it under belong to
+/// root, so the scan cannot read them and does not count them (measured).
+const WSL_SHELL_ALONE: usize = 1;
+
+/// Switches running panes that are plain shells - nothing running in them -
+/// to `runtime` now: their window sees the new runtime and starts the shell
+/// again there (`syncRuntime` in the frontend). A pane running anything, an
+/// agent above all, keeps its shell. Returns how many switched.
+async fn switch_plain_panes(state: &AppState, runtime: &str) -> Result<usize, WorkspaceError> {
+    let panes = state.db.call(|conn| store::terminal_panes(conn)).await?;
+    let to_wsl = matches!(Runtime::parse(runtime), Ok(Runtime::Wsl(_)));
+    let running: Vec<(String, u32, String)> = panes
+        .into_iter()
+        .filter(|(_, _, current)| current != runtime)
+        .filter(|(_, cwd, _)| !(to_wsl && windows_only(git_file(cwd).as_deref())))
+        .filter_map(|(id, _, current)| state.pty.shell_pid(&id).map(|pid| (id, pid, current)))
+        .collect();
+    if running.is_empty() {
+        return Ok(0);
+    }
+    let plain = tokio::task::spawn_blocking(move || plain_shells(&running))
+        .await
+        .unwrap_or_default();
+    let switched = plain.len();
+    let target = runtime.to_owned();
+    state
+        .db
+        .call(move |conn| store::update_pane_runtimes(conn, &plain, &target))
+        .await?;
+    Ok(switched)
+}
+
+/// Which of `running` - pane, shell pid, runtime - are plain shells: Windows'
+/// process table read once, each distro asked once. Unknown counts as busy.
+fn plain_shells(running: &[(String, u32, String)]) -> Vec<String> {
+    let on_windows = running
+        .iter()
+        .any(|(_, _, runtime)| !matches!(Runtime::parse(runtime), Ok(Runtime::Wsl(_))));
+    let procs = on_windows.then(proctree::snapshot).and_then(Result::ok);
+    let mut distros: HashMap<String, Option<HashMap<String, usize>>> = HashMap::new();
+    running
+        .iter()
+        .filter(|(pane, shell, runtime)| match Runtime::parse(runtime) {
+            Ok(Runtime::Wsl(distro)) => distros
+                .entry(distro.clone())
+                .or_insert_with(|| wsl::pane_processes(&distro).ok())
+                .as_ref()
+                .and_then(|counts| counts.get(pane))
+                .is_some_and(|count| *count <= WSL_SHELL_ALONE),
+            _ => {
+                procs
+                    .as_ref()
+                    .and_then(|procs| proctree::bare(procs, *shell))
+                    == Some(true)
+            }
+        })
+        .map(|(pane, _, _)| pane.clone())
+        .collect()
+}
+
 /// The terminal new panes open in: what was chosen, else Windows.
 pub async fn terminal(state: &AppState) -> Result<String, WorkspaceError> {
     let chosen = state.db.call(|conn| store::find_terminal(conn)).await?;
@@ -84,8 +147,8 @@ pub async fn terminal(state: &AppState) -> Result<String, WorkspaceError> {
 }
 
 /// `pane.terminal`: the terminal, and the choices; with `terminal`, chooses it.
-/// Panes whose shell is running keep it; the rest - and every new one - open
-/// in the new terminal.
+/// Every pane moves to it - one not started yet when it starts, a plain shell
+/// at once - except one with something running in it, which keeps its shell.
 pub async fn choose_terminal(
     state: &AppState,
     args: TerminalArgs,
@@ -100,7 +163,8 @@ pub async fn choose_terminal(
             .db
             .call(move |conn| store::update_terminal(conn, &stored))
             .await?;
-        if move_panes(state, checked, true).await? > 0 {
+        let moved = move_panes(state, checked.clone(), true).await?;
+        if moved + switch_plain_panes(state, &checked).await? > 0 {
             state.bus.publish("workspaces");
         }
     }

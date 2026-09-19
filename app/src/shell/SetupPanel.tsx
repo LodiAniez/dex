@@ -123,8 +123,9 @@ function CheckRow({ check, running, onRun }: { check: Check; running: Step | nul
 
 /**
  * Which terminal Dex opens, where there is a choice (WSL installed). Everything
- * new opens there: panes, and every agent spawned; panes already running keep
- * their shells until Dex next starts. A WSL distro also needs setting up for
+ * new opens there: panes, and every agent spawned; a plain shell switches at
+ * once, and a pane running something keeps its shell until Dex next starts
+ * (`workspace/runtimes.rs` in dex-core). A WSL distro also needs setting up for
  * agents, which the checks below then say.
  */
 function TerminalChoice({ report, onChosen }: { report: DoctorReport; onChosen: () => Promise<void> }) {
@@ -153,7 +154,7 @@ function TerminalChoice({ report, onChosen }: { report: DoctorReport; onChosen: 
       <span className="setup-detail">
         Dex opens its panes, and every agent it spawns, here.
         <span className="setup-explain">
-          A pane whose shell is running keeps it until Dex restarts.{problem && ` ${problem}`}
+          A plain shell switches at once; one running something keeps its shell until Dex restarts.{problem && ` ${problem}`}
         </span>
       </span>
       <select

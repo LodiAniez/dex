@@ -308,10 +308,10 @@ pub fn update_terminal(conn: &Connection, runtime: &str) -> rusqlite::Result<()>
     Ok(())
 }
 
-/// Every terminal pane, as its id and folder.
-pub fn terminal_panes(conn: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
-    let mut stmt = conn.prepare("SELECT id, cwd FROM pane WHERE kind = 'terminal'")?;
-    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+/// Every terminal pane, as its id, folder and runtime.
+pub fn terminal_panes(conn: &Connection) -> rusqlite::Result<Vec<(String, String, String)>> {
+    let mut stmt = conn.prepare("SELECT id, cwd, runtime FROM pane WHERE kind = 'terminal'")?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
     rows.collect()
 }
 

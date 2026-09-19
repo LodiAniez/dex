@@ -10,6 +10,7 @@
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::io::Read;
 use std::process::{Command, Output, Stdio};
@@ -191,10 +192,42 @@ fn run(args: &[&str]) -> Option<Output> {
 /// out: its own command line says "claude" too.
 const CLAUDE_PANES: &str = r#"for p in /proc/[0-9]*; do
   [ "$p" = "/proc/$$" ] && continue
-  case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in
-    *claude*) tr '\0' '\n' < "$p/environ" 2>/dev/null | sed -n 's/^DEX_PANE_ID=//p' ;;
+  case "$(tr '\0' ' ' 2>/dev/null < "$p/cmdline")" in
+    *claude*) tr '\0' '\n' 2>/dev/null < "$p/environ" | sed -n 's/^DEX_PANE_ID=//p' ;;
   esac
 done"#;
+
+/// Prints the `DEX_PANE_ID` of every process in the distro that has one, once
+/// per process: how many processes each Dex pane runs there. Itself left out.
+const PANE_PROCESSES: &str = r#"for p in /proc/[0-9]*; do
+  [ "$p" = "/proc/$$" ] && continue
+  tr '\0' '\n' 2>/dev/null < "$p/environ" | sed -n 's/^DEX_PANE_ID=//p'
+done"#;
+
+/// How many processes each pane runs, from what `PANE_PROCESSES` printed.
+pub fn parse_counts(printed: &str) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    for pane in printed
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        *counts.entry(pane.to_owned()).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// How many processes each Dex pane in `distro` runs. A pane whose count is
+/// its shell alone is a shell at its prompt. Blocking.
+pub fn pane_processes(distro: &str) -> Result<HashMap<String, usize>, String> {
+    let out = run(&["-d", distro, "--exec", "sh", "-c", PANE_PROCESSES])
+        .ok_or_else(|| format!("{distro} did not answer"))?;
+    if out.status.success() {
+        Ok(parse_counts(&String::from_utf8_lossy(&out.stdout)))
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
+    }
+}
 
 /// The pane ids `CLAUDE_PANES` printed, once each.
 pub fn parse_panes(printed: &str) -> Vec<String> {

@@ -112,3 +112,17 @@ fn a_real_distro_says_which_panes_run_claude() {
         .status();
     assert!(found.unwrap().contains(&"probe-pane".to_owned()));
 }
+
+#[test]
+fn processes_are_counted_per_pane() {
+    let counts = parse_counts(
+        "p-1
+p-2
+p-1
+
+",
+    );
+    assert_eq!(counts.get("p-1"), Some(&2));
+    assert_eq!(counts.get("p-2"), Some(&1));
+    assert_eq!(counts.get("p-3"), None);
+}

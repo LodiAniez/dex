@@ -5,8 +5,8 @@ import type { TerminalView } from "./generated/TerminalView";
 /**
  * The terminal Dex opens: `windows` (PowerShell) or `wsl:<distro>`. One
  * choice for the whole app (`pane.terminal`): every new pane and every agent
- * spawned opens there, and when Dex starts, every pane does. A pane already
- * running keeps its shell.
+ * spawned opens there, a plain shell switches at once (`switchNow`), and when
+ * Dex starts, every pane does. A pane running something keeps its shell.
  */
 
 /** The distro of a WSL terminal; null for Windows or none. */
@@ -19,6 +19,19 @@ export function runtimeLabel(runtime: string): string {
   if (runtime === "windows") return "PowerShell";
   const distro = distroOf(runtime);
   return distro ? `${distro} (WSL)` : runtime;
+}
+
+/**
+ * Whether a pane's shell is to be closed and started again in `next`, the
+ * runtime its pane now has. The daemon changes a running pane's runtime only
+ * when it is a plain shell - nothing running in it - so this only has to know
+ * the shell is running here, and started elsewhere.
+ */
+export function switchNow(
+  shell: { spawned: boolean; dead: boolean; away: boolean; runtime?: string },
+  next: string,
+): boolean {
+  return shell.spawned && !shell.dead && !shell.away && shell.runtime !== undefined && shell.runtime !== next;
 }
 
 /**
