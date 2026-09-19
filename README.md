@@ -30,7 +30,7 @@ It is a terminal first. Every pane is a real shell (PowerShell by default on Win
   **Claude Code only.** Status dots, toasts, shared context and spawning all come through Claude Code's hooks and MCP registration. Other coding agents (Codex, Gemini CLI, Aider…) run fine in a Dex pane as plain terminals, but Dex will not know they exist. Supporting them would take an adapter per agent; none is planned for v1.
 - **Git** on PATH — worktrees and the diff pane need it. On Windows that is Git for Windows; on macOS, the Xcode Command Line Tools (`xcode-select --install`) or Git from Homebrew.
 
-Not on Linux yet. Running agents inside WSL from Dex is on the roadmap but not in this release; on Windows, panes run Windows shells.
+Not on Linux yet. On Windows, Dex's panes and agents can run in PowerShell or inside a WSL distro (**PowerShell or WSL**, under [Using Dex](#using-dex)).
 
 ## Install
 
