@@ -253,6 +253,17 @@ body,
   font-size: 9px;
 }
 
+.pane-new {
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+}
+
+/* A narrow pane squeezes its folder name, never its buttons. */
+.pane-header .icon-button {
+  flex: none;
+}
+
 .pane-label {
   padding: 0 6px;
   border-radius: 3px;

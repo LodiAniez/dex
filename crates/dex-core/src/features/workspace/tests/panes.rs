@@ -8,8 +8,8 @@ use dex_protocol::workspace::{
 use super::named;
 use crate::app::AppState;
 use crate::features::workspace::{
-    WorkspaceError, close_pane, create, cycle_layout, focus_pane, layout, set_layout, split_pane,
-    swap_panes,
+    WorkspaceError, close_pane, create, create_pane, cycle_layout, focus_pane, layout, set_layout,
+    split_pane, swap_panes,
 };
 
 fn pane_ids(list: &WorkspaceList) -> Vec<String> {
@@ -257,4 +257,42 @@ async fn a_pane_can_be_created_as_an_activity_stream_and_nothing_else() {
         matches!(refused, Err(WorkspaceError::InvalidKind(ref kind)) if kind == "hologram"),
         "{refused:?}"
     );
+}
+
+#[tokio::test]
+async fn splitting_a_markdown_pane_opens_a_terminal_in_its_folder() {
+    // A markdown pane's cwd is its file; a shell cannot start in a file.
+    let dir = tempfile::tempdir().unwrap();
+    let (_db, state) = AppState::for_tests();
+    let (ws, _) = one_workspace(&state).await;
+    let notes = dir.path().join("notes.md");
+    std::fs::write(&notes, "# Plan\n").unwrap();
+    let shown = create_pane(
+        &state,
+        dex_protocol::pane::CreatePaneArgs {
+            workspace: Some(ws.clone()),
+            kind: Some("markdown".into()),
+            cwd: Some(notes.to_string_lossy().into_owned()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let list = split_pane(&state, split_args(&shown.pane, SplitDirection::Right))
+        .await
+        .unwrap();
+    let here = list.workspaces.iter().find(|w| w.id == ws).unwrap();
+    let file = here.panes.iter().find(|p| p.id == shown.pane).unwrap();
+    let new = here
+        .panes
+        .iter()
+        .find(|p| Some(&p.id) == here.active_pane.as_ref())
+        .unwrap();
+    assert_eq!(new.kind, "terminal");
+    assert_eq!(
+        std::path::Path::new(&new.cwd),
+        std::path::Path::new(&file.cwd).parent().unwrap()
+    );
+    assert!(std::path::Path::new(&new.cwd).is_dir(), "{}", new.cwd);
 }

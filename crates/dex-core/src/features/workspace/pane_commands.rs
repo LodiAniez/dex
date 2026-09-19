@@ -109,7 +109,9 @@ fn split_located(conn: &mut Connection, found: Located, new: NewPane) -> Outcome
         id: new.id.clone(),
         workspace_id: found.pane.workspace_id.clone(),
         label: new.label.clone(),
-        cwd: new.cwd.unwrap_or_else(|| found.pane.cwd.clone()),
+        cwd: new
+            .cwd
+            .unwrap_or_else(|| logic::split_cwd(&found.pane.kind, &found.pane.cwd)),
         kind: new.kind.into(),
         runtime: new.runtime.unwrap_or_else(|| found.pane.runtime.clone()),
     };

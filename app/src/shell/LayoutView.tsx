@@ -145,8 +145,11 @@ function PaneBox({ pane, workspace, zoomed }: { pane: PaneView; workspace: Works
           <button
             type="button"
             className="icon-button pane-new"
-            title={titled("New pane beside this one", shortcuts.get("split-right"))}
+            title={titled("New terminal beside this one", shortcuts.get("split-right"))}
+            aria-label="New terminal beside this one"
             onPointerDown={(event) => event.stopPropagation()}
+            // The keyboard stays in the terminal; the new pane takes it when it opens.
+            onMouseDown={(event) => event.preventDefault()}
             onClick={() => void splitPane(pane.id, "right").catch(showError)}
           >
             +

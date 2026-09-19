@@ -96,7 +96,7 @@ dex doctor            # the table above
 
 ## Using Dex
 
-**Adding panes.** The **+** in a pane's header opens a new pane beside it, in the same folder; `Ctrl+Shift+D` does the same for the active pane, and `Ctrl+Shift+E` opens one below it.
+**Adding panes.** The **+** in a pane's header opens a new terminal beside it, in that pane's folder (a markdown pane's: the folder its file is in) and in the chosen terminal; `Ctrl+Shift+D` does the same for the active pane, and `Ctrl+Shift+E` opens one below it.
 
 **Moving panes.** Drag a pane by its header and drop it on another: on an edge to sit beside it there, taking half its space; in the middle to trade places. A highlight shows where it will land; Escape, or letting go anywhere else, puts it back. `Alt+Shift+Arrow` does the same from the keyboard, one step at a time.
 
