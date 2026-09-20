@@ -10,7 +10,7 @@ use super::*;
 const CURSOR_QUERY: &[u8] = b"\x1b[6n";
 const CURSOR_REPLY: &[u8] = b"\x1b[1;1R";
 
-fn collecting_sink() -> (OutputSink, Receiver<PtyOutput>) {
+pub(super) fn collecting_sink() -> (OutputSink, Receiver<PtyOutput>) {
     let (tx, rx) = channel();
     let sink: OutputSink = Box::new(move |out| {
         let _ = tx.send(out);
@@ -31,7 +31,7 @@ fn sh(pane_id: &str, windows: &str, unix: &str) -> SpawnRequest {
     }
 }
 
-fn cmd(pane_id: &str, script: &str) -> SpawnRequest {
+pub(super) fn cmd(pane_id: &str, script: &str) -> SpawnRequest {
     SpawnRequest {
         pane_id: pane_id.to_owned(),
         program: PathBuf::from("cmd.exe"),
