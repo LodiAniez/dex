@@ -10,7 +10,7 @@ use super::*;
 const CURSOR_QUERY: &[u8] = b"\x1b[6n";
 const CURSOR_REPLY: &[u8] = b"\x1b[1;1R";
 
-fn collecting_sink() -> (OutputSink, Receiver<PtyOutput>) {
+pub(super) fn collecting_sink() -> (OutputSink, Receiver<PtyOutput>) {
     let (tx, rx) = channel();
     let sink: OutputSink = Box::new(move |out| {
         let _ = tx.send(out);
@@ -31,7 +31,7 @@ fn sh(pane_id: &str, windows: &str, unix: &str) -> SpawnRequest {
     }
 }
 
-fn cmd(pane_id: &str, script: &str) -> SpawnRequest {
+pub(super) fn cmd(pane_id: &str, script: &str) -> SpawnRequest {
     SpawnRequest {
         pane_id: pane_id.to_owned(),
         program: PathBuf::from("cmd.exe"),
@@ -235,98 +235,6 @@ fn an_unresponsive_display_cannot_wedge_the_child() {
         seen.events
     );
     assert!(seen.exited(), "events {:?}", seen.events);
-}
-
-/// A child that sits and reads its input: cmd.exe on Windows, /bin/sh
-/// elsewhere. Both stay alive until their pane is killed.
-fn interactive(pane_id: &str) -> SpawnRequest {
-    SpawnRequest {
-        program: if cfg!(windows) {
-            PathBuf::from("cmd.exe")
-        } else {
-            PathBuf::from("/bin/sh")
-        },
-        args: Vec::new(),
-        ..cmd(pane_id, "")
-    }
-}
-
-/// Issue #63: a write into a pane takes real time - ConPTY took about a
-/// second per megabyte when this was written, and a PTY whose child has
-/// stopped reading its input blocks outright. While it runs, every other pane
-/// must stay usable: typed into, resized, opened, killed, or asked when it
-/// last spoke, which the watchdog asks of every running agent each sweep.
-#[test]
-fn a_long_write_to_one_pane_does_not_hold_up_another() {
-    let supervisor = PtySupervisor::new(FlowLimits::default());
-    let (sink_slow, _slow_out) = collecting_sink();
-    let (sink_busy, _busy_out) = collecting_sink();
-    supervisor.spawn(interactive("slow"), sink_slow).unwrap();
-    supervisor.spawn(interactive("busy"), sink_busy).unwrap();
-
-    // Megabytes, so the write is still going when we type into the other pane.
-    let panes = supervisor.panes.clone();
-    let (started, has_started) = channel();
-    let (finished, has_finished) = channel();
-    thread::spawn(move || {
-        let _ = started.send(());
-        let _ = writing::write_to(&panes, "slow", &vec![b'x'; 8 * 1024 * 1024]);
-        let _ = finished.send(());
-    });
-    has_started.recv_timeout(Duration::from_secs(5)).unwrap();
-    // Well inside that write: at the megabyte a second measured above, eight
-    // of them take seconds, and this is a fraction of the first.
-    thread::sleep(Duration::from_millis(300));
-
-    let panes = supervisor.panes.clone();
-    let (done, landed) = channel();
-    thread::spawn(move || {
-        let _ = done.send(writing::write_to(&panes, "busy", b"\r").is_ok());
-    });
-    assert_eq!(
-        landed.recv_timeout(Duration::from_millis(1500)),
-        Ok(true),
-        "typing into another pane waited on the long write"
-    );
-    assert!(
-        has_finished.try_recv().is_err(),
-        "the long write was over already; this proves nothing"
-    );
-
-    // Killing the pane ends the write with it.
-    supervisor.kill("slow").ok();
-    supervisor.kill("busy").ok();
-}
-
-/// The other half of the same rule: text and the Enter after it are two
-/// writes, and they must reach the pane in that order (`pane_io::send`).
-#[test]
-fn writes_to_one_pane_still_take_turns() {
-    let supervisor = PtySupervisor::new(FlowLimits::default());
-    let (sink, _out) = collecting_sink();
-    supervisor
-        .spawn(interactive("one-at-a-time"), sink)
-        .unwrap();
-    let writer = writing::writer_of(&supervisor.panes, "one-at-a-time").expect("the pane");
-    let in_flight = writer.lock().unwrap();
-
-    let panes = supervisor.panes.clone();
-    let (done, landed) = channel();
-    thread::spawn(move || {
-        let _ = done.send(writing::write_to(&panes, "one-at-a-time", b"\r").is_ok());
-    });
-    assert!(
-        landed.recv_timeout(Duration::from_millis(300)).is_err(),
-        "a second write to the same pane went in while the first was in flight"
-    );
-
-    drop(in_flight);
-    assert_eq!(
-        landed.recv_timeout(Duration::from_secs(5)),
-        Ok(true),
-        "and it goes in once the first is done"
-    );
-    supervisor.kill("one-at-a-time").ok();
 }
 
 /// Backend half of the M1 throughput gate: `type` a 50MB file through ConPTY

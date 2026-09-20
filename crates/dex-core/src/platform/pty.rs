@@ -219,7 +219,7 @@ impl PtySupervisor {
             id.clone(),
             Pane {
                 master: pair.master,
-                writer: writing::writer(writer),
+                writer: writing::hold(writer),
                 killer,
                 pid,
                 flow,
@@ -236,7 +236,10 @@ impl PtySupervisor {
             // already reported gone. Dropped (closing the pseudoconsole) after
             // the lock: ClosePseudoConsole can block until the reader drains,
             // which flow control may be pausing - that would stall every pane.
-            let pane = panes.lock().ok().and_then(|mut map| map.remove(&id));
+            let pane = panes
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(&id);
             exit_code.set(code);
             drop(pane);
             tracing::debug!(pane = %id, ?code, "pty child exited");
@@ -341,7 +344,12 @@ impl PtySupervisor {
     /// Ends every pane's processes as the app quits (Windows' job already does).
     pub fn end_all(&self) {
         #[cfg(unix)]
-        reap::end_all(self.lock().values().filter_map(|pane| pane.pid).collect());
+        {
+            // The pids first: reaping joins a thread per pane and reads the
+            // process table, which is no time to be holding every pane.
+            let shells: Vec<u32> = self.lock().values().filter_map(|pane| pane.pid).collect();
+            reap::end_all(shells);
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Pane>> {
