@@ -80,14 +80,17 @@ pub async fn prompt(state: &AppState, args: PromptAgentArgs) -> Result<Prompted,
     }
     let target = args.agent;
     let workspace = args.workspace;
+    let from_pane = args.from_pane;
     let (agent, started) = state
         .db
         .call(move |conn| -> rusqlite::Result<Result<_, AgentError>> {
             // A label names an agent in the caller's workspace (issue #59).
-            let within = match identity::caller_workspace(conn, workspace.as_deref(), None)? {
-                Ok(within) => within,
-                Err(err) => return Ok(Err(err)),
-            };
+            let within =
+                match identity::caller_workspace(conn, workspace.as_deref(), from_pane.as_deref())?
+                {
+                    Ok(within) => within,
+                    Err(err) => return Ok(Err(err)),
+                };
             let agent = match find_target(conn, &target, within.as_deref())? {
                 Ok(agent) => agent,
                 Err(err) => return Ok(Err(err)),

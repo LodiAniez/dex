@@ -196,6 +196,10 @@ pub struct PromptAgentArgs {
     pub agent: String,
     /// The prompt. Flattened to one line: in a terminal a newline is Enter.
     pub text: String,
+    /// The pane the request came from, when it came from one (`DEX_PANE_ID`):
+    /// its workspace is where a label is looked for.
+    #[serde(default)]
+    pub from_pane: Option<String>,
     /// Which workspace the label means, for a caller with no pane of its own.
     /// Labels are unique per workspace, so `reviewer` may name an agent in
     /// each of them; ids need no workspace.

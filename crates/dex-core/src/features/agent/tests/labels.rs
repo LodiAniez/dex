@@ -6,7 +6,8 @@
 //! them all and take the newest, which is how a message, a prompt or a stop
 //! could land on a stranger.
 
-use dex_protocol::agent::{SpawnArgs, StopAgentArgs};
+use dex_protocol::agent::{PromptAgentArgs, SpawnArgs, StopAgentArgs};
+use dex_protocol::pane::LabelPaneArgs;
 use dex_protocol::workspace::{CreateWorkspaceArgs, SplitDirection, SplitPaneArgs};
 use serde_json::json;
 
@@ -14,7 +15,7 @@ use super::{fire, pane};
 use crate::app::AppState;
 use crate::features::agent::identity::find_target;
 use crate::features::agent::model::{Agent, AgentError};
-use crate::features::agent::{spawn, stop};
+use crate::features::agent::{prompt, spawn, stop};
 use crate::features::workspace;
 
 /// Another workspace with a pane of its own: its root, its id, and that
@@ -119,6 +120,45 @@ async fn found(state: &AppState, target: &str, within: Option<&str>) -> Result<A
         .unwrap()
 }
 
+/// The pane an agent runs in.
+async fn pane_of(state: &AppState, agent: &str) -> String {
+    let agent = agent.to_owned();
+    state
+        .db
+        .call(move |conn| crate::features::agent::store::find_agent(conn, &agent))
+        .await
+        .unwrap()
+        .expect("the agent")
+        .pane_id
+        .expect("its pane")
+}
+
+/// Claude Code starts in the agent's pane, so it can be prompted.
+async fn started(state: &AppState, agent: &str) {
+    let pane = pane_of(state, agent).await;
+    fire(
+        state,
+        "session-start",
+        &pane,
+        1,
+        json!({ "session_id": format!("s-{pane}"), "source": "startup" }),
+    )
+    .await;
+}
+
+fn prompt_args(
+    target: &str,
+    from_pane: Option<String>,
+    workspace: Option<String>,
+) -> PromptAgentArgs {
+    PromptAgentArgs {
+        agent: target.to_owned(),
+        text: "carry on".to_owned(),
+        from_pane,
+        workspace,
+    }
+}
+
 #[tokio::test]
 async fn a_label_names_the_agent_in_the_callers_own_workspace() {
     let (_dir, state, here) = pane().await;
@@ -200,7 +240,7 @@ async fn with_no_workspace_to_go_on_a_label_in_two_of_them_is_refused() {
     let (_dir, state, here) = pane().await;
     let (_there_root, _there_id, there) = another_workspace(&state).await;
     let alone = labelled(&state, &here, "writer").await;
-    labelled(&state, &here, "reviewer").await;
+    let mine = labelled(&state, &here, "reviewer").await;
     labelled(&state, &there, "reviewer").await;
 
     let refused = found(&state, "reviewer", None).await.unwrap_err();
@@ -209,6 +249,11 @@ async fn with_no_workspace_to_go_on_a_label_in_two_of_them_is_refused() {
             assert_eq!(target, "reviewer");
             assert_eq!(candidates.len(), 2, "{candidates:?}");
             assert!(candidates.iter().any(|one| one.contains("elsewhere")));
+            // Pasted back as a target, a candidate has to be one: whole ids.
+            assert!(
+                candidates.iter().any(|one| one.contains(&mine)),
+                "{candidates:?} should name {mine}"
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -242,4 +287,75 @@ async fn stopping_by_label_stops_the_one_in_the_callers_workspace() {
         found(&state, "reviewer", Some(&there_id)).await.unwrap().id,
         theirs
     );
+}
+
+#[tokio::test]
+async fn two_agents_sharing_a_label_in_one_workspace_resolve_to_the_newest() {
+    // An agent keeps the label it was hired with, so relabelling its pane and
+    // hiring again leaves two `reviewer`s in one workspace. Old data, not an
+    // ambiguous request: naming the workspace could not narrow it, and Dex
+    // has always taken the newest.
+    let (_dir, state, here) = pane().await;
+    let first = labelled(&state, &here, "reviewer").await;
+    let its_pane = pane_of(&state, &first).await;
+    workspace::label_pane(
+        &state,
+        LabelPaneArgs {
+            pane: its_pane,
+            label: Some("reviewer-was".into()),
+        },
+    )
+    .await
+    .unwrap();
+    let second = labelled(&state, &here, "reviewer").await;
+
+    let here_id = workspace_of(&state, &here).await;
+    assert_eq!(
+        found(&state, "reviewer", Some(&here_id)).await.unwrap().id,
+        second,
+        "the newest, not an error the caller cannot act on"
+    );
+}
+
+#[tokio::test]
+async fn prompting_by_label_types_at_the_agent_in_the_callers_workspace() {
+    // Only ours has Claude Code started, so which one was resolved shows in
+    // how the prompt fails: ours gets as far as its pane (which has no shell
+    // in tests), theirs is refused before that.
+    let (_dir, state, here) = pane().await;
+    let (_there_root, there_id, there) = another_workspace(&state).await;
+    let mine = labelled(&state, &here, "reviewer").await;
+    labelled(&state, &there, "reviewer").await;
+    started(&state, &mine).await;
+
+    let ours = prompt(&state, prompt_args("reviewer", Some(here.clone()), None)).await;
+    assert!(
+        matches!(ours, Err(AgentError::Target(_))),
+        "ours was reached, and its pane has no shell: {ours:?}"
+    );
+
+    let theirs = prompt(&state, prompt_args("reviewer", None, Some(there_id))).await;
+    assert!(
+        matches!(theirs, Err(AgentError::NotPromptable(_))),
+        "theirs has not started Claude Code: {theirs:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_workspace_that_does_not_exist_is_said_so_rather_than_ignored() {
+    let (_dir, state, here) = pane().await;
+    let mine = labelled(&state, &here, "reviewer").await;
+
+    let stopped = stop(
+        &state,
+        StopAgentArgs {
+            agent: mine,
+            graceful: false,
+            close_pane: false,
+            from_pane: Some(here),
+            workspace: Some("no-such-workspace".to_owned()),
+        },
+    )
+    .await;
+    assert!(matches!(stopped, Err(AgentError::Target(_))), "{stopped:?}");
 }

@@ -14,6 +14,7 @@ use crate::features::workspace;
 
 mod digest;
 mod log;
+mod messages;
 mod waking;
 
 /// A state with one workspace rooted in a temp directory, and its pane id.

@@ -5,8 +5,6 @@ use dex_protocol::context::{Caller, ListArgs, MessageArgs, NoteArgs, ReadArgs, S
 use dex_protocol::workspace::CreateWorkspaceArgs;
 
 use super::{from, second_pane, start_agent, workspace_at, write_args};
-use crate::app::AppState;
-use crate::features::agent;
 use crate::features::context::model::ContextError;
 use crate::features::context::{events, inbox, list, message_send, note, read, write};
 use crate::features::workspace;
@@ -174,78 +172,6 @@ async fn workspaces_do_not_see_each_others_entries() {
         .await
         .unwrap();
     assert!(entries.entries.is_empty(), "context is workspace-scoped");
-}
-
-#[tokio::test]
-async fn a_message_by_label_goes_to_the_senders_own_workspace() {
-    // Labels are unique per workspace, so `reviewer` can be at work in two of
-    // them; a message must reach the sender's own (issue #59).
-    let (_root, _dir, state, here) = workspace_at().await;
-    let mine = labelled_agent(&state, &here, "reviewer").await;
-
-    let other_root = tempfile::tempdir().unwrap();
-    let created = workspace::create(
-        &state,
-        CreateWorkspaceArgs {
-            name: Some("other".into()),
-            root_path: Some(other_root.path().to_string_lossy().replace('\\', "/")),
-            ..Default::default()
-        },
-    )
-    .await
-    .unwrap();
-    let there = created
-        .workspaces
-        .iter()
-        .find(|ws| ws.name == "other")
-        .unwrap()
-        .panes[0]
-        .id
-        .clone();
-    // Started later: the one the old, workspace-blind lookup would have taken.
-    let theirs = labelled_agent(&state, &there, "reviewer").await;
-
-    message_send(
-        &state,
-        MessageArgs {
-            target_agent: "reviewer".into(),
-            body: "the requirement changed".into(),
-            caller: from(&here),
-        },
-    )
-    .await
-    .unwrap();
-
-    let ours = inbox(&state, ScopeArgs::for_caller(from(&mine)))
-        .await
-        .unwrap();
-    assert_eq!(ours.messages.len(), 1, "our own reviewer read it");
-    let strangers = inbox(&state, ScopeArgs::for_caller(from(&theirs)))
-        .await
-        .unwrap();
-    assert!(
-        strangers.messages.is_empty(),
-        "the other workspace's did not"
-    );
-}
-
-/// Spawns an agent labelled `label` beside `pane`, and returns its pane.
-async fn labelled_agent(state: &AppState, pane: &str, label: &str) -> String {
-    agent::spawn(
-        state,
-        dex_protocol::agent::SpawnArgs {
-            task: format!("be the {label}"),
-            repo: None,
-            worktree: None,
-            label: Some(label.to_owned()),
-            direction: None,
-            pane: Some(pane.to_owned()),
-            workspace: None,
-        },
-    )
-    .await
-    .unwrap()
-    .pane
 }
 
 #[tokio::test]

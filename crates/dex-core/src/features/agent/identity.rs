@@ -107,9 +107,14 @@ pub fn resolve_agent(
         .map(|agent| agent.id))
 }
 
-/// For other slices and commands: the workspace a request speaks from - the
-/// one it named, else the one holding the pane it came from. `None` when it
-/// has neither, which is a `dex` command run outside any pane.
+/// For this slice's commands: the workspace a request speaks from - the one
+/// it named, else the one holding the pane it came from. `None` when it has
+/// neither, which is a `dex` command run outside any pane.
+///
+/// A named workspace wins over the caller's pane, as it does for `context`:
+/// naming one is asking for it. `agent.spawn` reads them the other way round
+/// (`spawn::caller`), because a spawned agent's pane is split from the
+/// caller's, and it must be split where the caller is.
 pub fn caller_workspace(
     conn: &Connection,
     workspace: Option<&str>,
@@ -149,8 +154,12 @@ pub(super) fn find_target(
     if let Some(agent) = store::find_agent(conn, target)? {
         return Ok(Ok(agent));
     }
-    let mut labelled = store::find_live_by_label(conn, target, within)?;
-    if labelled.len() > 1 {
+    let mut labelled = store::list_live_by_label(conn, target, within)?;
+    // Several matches in one workspace is old data, not an ambiguous request:
+    // an agent keeps the label it was hired with, so relabelling its pane and
+    // hiring again leaves two. The newest is what Dex has always taken, and
+    // asking for a workspace would not narrow it.
+    if within.is_none() && labelled.len() > 1 {
         return Ok(Err(in_several_workspaces(conn, target, &labelled)?));
     }
     if let Some(agent) = labelled.pop() {
@@ -175,7 +184,8 @@ fn in_several_workspaces(
     for agent in matched {
         let workspace = workspace::workspace_name(conn, &agent.workspace_id)?
             .unwrap_or_else(|| agent.workspace_id.clone());
-        candidates.push(format!("{} in {workspace}", short_id(&agent.id)));
+        // The whole id: a candidate is meant to be pasted back as a target.
+        candidates.push(format!("{} in {workspace}", agent.id));
     }
     Ok(AgentError::AmbiguousTarget {
         target: target.to_owned(),

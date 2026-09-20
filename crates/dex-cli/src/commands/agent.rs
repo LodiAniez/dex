@@ -33,7 +33,8 @@ pub enum AgentCommand {
     /// Stop an agent: presses Ctrl+C in its pane until Claude Code exits, and
     /// closes the pane if Dex made it for a spawned agent.
     Stop {
-        /// Agent id, or the label or id of its pane.
+        /// Agent id, or the label or id of its pane. A label means an agent in
+        /// this workspace: the pane's, or the one --workspace names.
         target: String,
         /// Ask it to leave with /exit first, so its SessionEnd hook runs;
         /// Ctrl+C only if it is still there a few seconds later.

@@ -153,7 +153,7 @@ pub fn find_live_in_pane(conn: &Connection, pane_id: &str) -> rusqlite::Result<O
 }
 
 /// The newest live agent with this label.
-pub fn find_live_by_label(
+pub fn list_live_by_label(
     conn: &Connection,
     label: &str,
     within: Option<&str>,
@@ -161,7 +161,7 @@ pub fn find_live_by_label(
     let mut stmt = conn.prepare(&format!(
         "SELECT {AGENT_COLUMNS} FROM agent
          WHERE label = ?1 AND status != 'dead' AND (?2 IS NULL OR workspace_id = ?2)
-         ORDER BY started_at DESC, rowid DESC"
+         ORDER BY started_at, rowid"
     ))?;
     let rows = stmt.query_map(params![label, within], agent_from_row)?;
     rows.collect()
