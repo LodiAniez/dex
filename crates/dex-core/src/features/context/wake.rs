@@ -11,7 +11,6 @@
 
 use rusqlite::Connection;
 
-use dex_protocol::agent::AgentStatus;
 use dex_protocol::pane::SendArgs;
 
 use super::logic;
@@ -24,22 +23,27 @@ use crate::features::workspace;
 /// the text, and keeps it short: the message itself is in the inbox.
 pub const NUDGE: &str = "Another agent has sent you a message. Read it with message_inbox and act on it if it changes your task.";
 
-/// Whether to wake this agent now, recorded as taken: the caller types
-/// [`NUDGE`] into its pane. Recorded before the typing, so two hooks racing -
-/// or a message arriving as the agent goes idle - wake it once.
+/// Whether to wake this idle agent now, recorded as taken: the caller types
+/// [`NUDGE`] into its pane. `idle_at` is when it last changed status.
+///
+/// Recorded before the typing, and in one step with the decision, so a message
+/// arriving as the watchdog looks wakes the agent once. A nudge that then
+/// fails to type is spent - the agent still has the message, and a newer one
+/// wakes it again.
 pub fn take_wake(
     conn: &Connection,
     agent_id: &str,
-    status: AgentStatus,
     started: bool,
+    idle_at: i64,
 ) -> rusqlite::Result<bool> {
     let newest = store::newest_unread(conn, agent_id)?;
-    if !logic::wake_for_messages(status, started, newest, store::woken_at(conn, agent_id)?) {
+    let (woken_at, woken_idle_at) = store::woken(conn, agent_id)?;
+    if !logic::wake_for_messages(started, newest, woken_at, woken_idle_at, idle_at) {
         return Ok(false);
     }
     // `newest` is Some: the rule said so.
     if let Some(seq) = newest {
-        store::mark_woken(conn, agent_id, seq)?;
+        store::mark_woken(conn, agent_id, seq, idle_at)?;
     }
     Ok(true)
 }

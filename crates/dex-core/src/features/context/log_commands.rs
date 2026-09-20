@@ -2,6 +2,7 @@
 //! key-value entries: notes, directed messages, and the activity stream
 //! (docs/prd.md §10.1, §10.4).
 
+use dex_protocol::agent::AgentStatus;
 use dex_protocol::context::{
     Appended, ClearEventsArgs, ClearScope, Cleared, DeleteEventArgs, EventList, EventView, Inbox,
     Message, MessageArgs, NoteArgs, ScopeArgs, Sent,
@@ -18,11 +19,6 @@ use crate::platform::clock;
 /// Most events the activity pane asks for at once.
 const DEFAULT_EVENT_LIMIT: u32 = 200;
 
-/// Typed into an idle agent's pane when a message arrives for it, as a prompt.
-///
-/// Digests reach an agent only at its next turn, and an agent sitting idle at
-/// its prompt has no next turn until someone gives it one. Without this, a
-/// message to a finished agent waits forever — which is exactly the case
 /// For the agent slice: records a status change in the workspace log, so the
 /// activity pane shows what the agents are doing and not only what they say
 /// (PRD §10.1). Best-effort — a status change is not worth failing a hook over.
@@ -125,15 +121,18 @@ pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Sent, C
                         created_at: now,
                     },
                 )?;
-                // Idle now: woken to read it. Busy: it sees it at its next
-                // turn, and the hook that ends that turn wakes it if it has
-                // not read it by then (`agent::event`).
+                // Idle now: woken to read it. Busy, or waiting on the owner:
+                // it sees the message at its next turn, and the watchdog wakes
+                // it after that turn if it has still not read it
+                // (`agent::wake_waiting`).
                 let nudge = match agent::whereabouts(conn, &target)? {
                     Some(agent::Whereabouts {
                         pane_id: Some(pane),
-                        status,
+                        status: AgentStatus::Idle,
                         started,
-                    }) if super::take_wake(conn, &target, status, started)? => Some(pane),
+                        asked_owner: false,
+                        idle_at,
+                    }) => super::take_wake(conn, &target, started, idle_at)?.then_some(pane),
                     _ => None,
                 };
                 Ok(Ok((

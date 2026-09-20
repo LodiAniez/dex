@@ -218,7 +218,9 @@ pub struct Sent {
     /// Its position in the log.
     pub seq: i64,
     /// Whether the recipient was idle and has been woken to read it. When
-    /// false it is working, and reads the message at its next turn.
+    /// false it is working, or waiting on the owner, and reads the message at
+    /// its next turn. Defaulted, so an older daemon's reply still parses.
+    #[serde(default)]
     pub woken: bool,
 }
 

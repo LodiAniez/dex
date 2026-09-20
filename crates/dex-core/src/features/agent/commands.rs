@@ -36,8 +36,7 @@ pub async fn event(state: &AppState, args: AgentEventArgs) -> Result<EventOutcom
         return Ok(IGNORED);
     }
     let now = clock::now_millis();
-    let pane = args.pane.clone();
-    let applied = state
+    state
         .db
         .call(move |conn| -> Outcome {
             let Some(workspace_id) = workspace::find_pane_workspace(conn, &args.pane)? else {
@@ -57,29 +56,7 @@ pub async fn event(state: &AppState, args: AgentEventArgs) -> Result<EventOutcom
             }
             Ok(Ok(APPLIED))
         })
-        .await??;
-    // A turn that has just ended leaves the agent idle: if messages came in
-    // while it worked, it is woken to read them now (issue #58).
-    if let Some(pane) = woken(state, pane).await? {
-        context::nudge(state, pane).await;
-    }
-    Ok(applied)
-}
-
-/// The pane to wake for messages waiting, when the hook just applied left its
-/// agent idle with some.
-async fn woken(state: &AppState, pane: String) -> Result<Option<String>, AgentError> {
-    Ok(state
-        .db
-        .call(move |conn| -> rusqlite::Result<Option<String>> {
-            let Some(agent) = store::find_live_in_pane(conn, &pane)? else {
-                return Ok(None);
-            };
-            let started = store::has_session(conn, &agent.id)?;
-            let wake = context::take_wake(conn, &agent.id, agent.status, started)?;
-            Ok(wake.then_some(pane))
-        })
-        .await?)
+        .await?
 }
 
 /// One hook, with everything the handlers below need.

@@ -251,23 +251,39 @@ pub fn newest_unread(conn: &Connection, agent_id: &str) -> rusqlite::Result<Opti
     )
 }
 
-/// The newest message the agent was last woken to read.
-pub fn woken_at(conn: &Connection, agent_id: &str) -> rusqlite::Result<i64> {
+/// The newest message the agent was last woken to read, and the status time
+/// it had then.
+pub fn woken(conn: &Connection, agent_id: &str) -> rusqlite::Result<(i64, i64)> {
     conn.query_row(
-        "SELECT woken_at FROM context_cursor WHERE agent_id = ?1",
+        "SELECT woken_at, woken_idle_at FROM context_cursor WHERE agent_id = ?1",
         [agent_id],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )
     .optional()
-    .map(|found| found.unwrap_or(0))
+    .map(|found| found.unwrap_or((0, 0)))
 }
 
-/// Records that the agent has been woken for everything up to `seq`.
-pub fn mark_woken(conn: &Connection, agent_id: &str, seq: i64) -> rusqlite::Result<()> {
+/// The newest message the agent was last woken to read. For the tests: what
+/// the daemon itself needs is the pair above.
+#[cfg(test)]
+pub fn woken_at(conn: &Connection, agent_id: &str) -> rusqlite::Result<i64> {
+    Ok(woken(conn, agent_id)?.0)
+}
+
+/// Records that the agent has been woken for everything up to `seq`, while it
+/// had been idle since `idle_at`.
+pub fn mark_woken(
+    conn: &Connection,
+    agent_id: &str,
+    seq: i64,
+    idle_at: i64,
+) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO context_cursor (agent_id, woken_at) VALUES (?1, ?2)
-         ON CONFLICT(agent_id) DO UPDATE SET woken_at = MAX(woken_at, excluded.woken_at)",
-        params![agent_id, seq],
+        "INSERT INTO context_cursor (agent_id, woken_at, woken_idle_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(agent_id) DO UPDATE SET
+           woken_at = MAX(woken_at, excluded.woken_at),
+           woken_idle_at = MAX(woken_idle_at, excluded.woken_idle_at)",
+        params![agent_id, seq, idle_at],
     )?;
     Ok(())
 }

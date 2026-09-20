@@ -22,6 +22,15 @@ const IGNORED: EventOutcome = EventOutcome { applied: false };
 /// change only when it made one.
 pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
     let statuses = sweep_statuses(state).await?;
+    // Agents that finished a turn with messages waiting: woken here, a beat
+    // after the turn, rather than in the hooks Claude Code waits on.
+    let woken = super::waking::wake_waiting(state)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!(%err, "could not wake the agents with messages waiting");
+            Vec::new()
+        })
+        .len();
     // Last, because it may take a couple of seconds and announces what it does
     // itself; and never fatal - what the rest of the sweep found still stands.
     let departed = presence::end_the_departed(state)
@@ -30,7 +39,11 @@ pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
             tracing::warn!(%err, "could not look for agents whose Claude Code has gone");
             0
         });
-    Ok(if departed > 0 { APPLIED } else { statuses })
+    Ok(if departed > 0 || woken > 0 {
+        APPLIED
+    } else {
+        statuses
+    })
 }
 
 async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {

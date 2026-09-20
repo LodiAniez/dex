@@ -139,7 +139,7 @@ Schema: `crates/dex-core/migrations/001_init.sql` (PRD §5).
 | Hook no-op path (spawn + early exit) | median 5.7 ms, p95 6.8 ms | Ryzen 5 7600, Defender real-time on, 2026-09-15 |
 | Hook round trip (spawn + pipe request/response, no handshake yet) | median 5.5 ms, p95 6.1 ms | same (M0) |
 | Hook round trip with the real handshake (`dex workspace list --json`) | median 5.5 ms, p95 6.2 ms | same, 2026-09-16 (M4): the handshake adds no measurable cost over process start |
-| `dex event` from a real Claude Code hook in a pane | 10–11 ms per hook, every kind | same, 2026-09-16 (M5), measured by a wrapper around each installed hook |
+| `dex event` from a real Claude Code hook in a pane | 10–11 ms per hook, every kind | same, 2026-09-16 (M5), measured by a wrapper around each installed hook; unchanged since (waking agents for messages is the watchdog's, not the hook's) |
 | 50MB `type` benchmark, backend only (ConPTY → coalescer → instant ack) | 24.2 s (~2 MB/s; ConPTY's own rendering is the bottleneck) | Ryzen 5 7600, 2026-09-15 |
 | 50MB `type` benchmark, end to end in the UI | — owner check pending (M1 gate) | |
 

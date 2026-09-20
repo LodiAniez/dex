@@ -19,6 +19,7 @@ mod stop;
 mod store;
 #[cfg(test)]
 mod tests;
+pub(super) mod waking;
 mod watchdog;
 
 pub use commands::{event, list, pane_exited};

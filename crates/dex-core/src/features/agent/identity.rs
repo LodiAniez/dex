@@ -61,6 +61,11 @@ pub struct Whereabouts {
     /// has been seen). A spawned row is `idle` from birth; until it has a
     /// session that means "not started yet", not "sitting at its prompt".
     pub started: bool,
+    /// Whether its turn ended on a question for the owner: the pane is waiting
+    /// for their answer, and anything typed would be taken as it.
+    pub asked_owner: bool,
+    /// When it last changed status.
+    pub idle_at: i64,
 }
 
 /// For other slices: where an agent is and what it is doing. `None` for an id
@@ -73,6 +78,8 @@ pub fn whereabouts(conn: &Connection, agent_id: &str) -> rusqlite::Result<Option
         pane_id: agent.pane_id,
         status: agent.status,
         started: store::has_session(conn, &agent.id)?,
+        asked_owner: super::asking::asked_the_owner(agent.status_detail.as_deref()),
+        idle_at: agent.status_at,
     }))
 }
 
