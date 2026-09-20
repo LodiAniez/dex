@@ -7,6 +7,7 @@
 mod asking;
 mod commands;
 mod identity;
+mod listing;
 mod logic;
 mod model;
 mod placement;
@@ -19,15 +20,19 @@ mod stop;
 mod store;
 #[cfg(test)]
 mod tests;
-pub(super) mod waking;
+mod waking;
 mod watchdog;
 
-pub use commands::{event, list, pane_exited};
+pub use commands::{event, pane_exited};
 pub use identity::{
     Whereabouts, brief_of, ended_in_workspace, label_of, resolve_agent, siblings, whereabouts,
 };
+pub use listing::list;
 pub use model::AgentError;
 pub use prompt::prompt;
 pub use spawn::spawn;
 pub use stop::stop;
+/// For the context slice's tests: what the sweep does about messages waiting.
+#[cfg(test)]
+pub use waking::wake_waiting;
 pub use watchdog::sweep;

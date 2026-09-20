@@ -4,8 +4,8 @@
 
 use dex_protocol::agent::AgentStatus;
 use dex_protocol::context::{
-    Appended, ClearEventsArgs, ClearScope, Cleared, DeleteEventArgs, EventList, EventView, Inbox,
-    Message, MessageArgs, NoteArgs, ScopeArgs, Sent,
+    Appended, ClearEventsArgs, ClearScope, Cleared, DeleteEventArgs, Delivery, EventList,
+    EventView, Inbox, Message, MessageArgs, NoteArgs, ScopeArgs, Sent,
 };
 
 use super::commands::{author, log, scope};
@@ -15,6 +15,10 @@ use super::store;
 use crate::app::AppState;
 use crate::features::agent;
 use crate::platform::clock;
+
+/// What `message_send` settles in the database: where the message landed, how
+/// it reaches the recipient, and the wake to type if it must be woken.
+type Delivered = (i64, Delivery, Option<super::Wake>);
 
 /// Most events the activity pane asks for at once.
 const DEFAULT_EVENT_LIMIT: u32 = 200;
@@ -97,10 +101,10 @@ pub async fn note(state: &AppState, args: NoteArgs) -> Result<Appended, ContextE
 /// `context.message_send`: a directed note to one sibling agent.
 pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Sent, ContextError> {
     let now = clock::now_millis();
-    let (appended, nudge) = state
+    let (seq, delivery, wake) = state
         .db
         .call(
-            move |conn| -> rusqlite::Result<Result<(Sent, Option<String>), ContextError>> {
+            move |conn| -> rusqlite::Result<Result<Delivered, ContextError>> {
                 let scope = match scope(conn, &args.caller)? {
                     Ok(scope) => scope,
                     Err(err) => return Ok(Err(err)),
@@ -121,34 +125,51 @@ pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Sent, C
                         created_at: now,
                     },
                 )?;
-                // Idle now: woken to read it. Busy, or waiting on the owner:
-                // it sees the message at its next turn, and the watchdog wakes
-                // it after that turn if it has still not read it
-                // (`agent::wake_waiting`).
-                let nudge = match agent::whereabouts(conn, &target)? {
+                // Idle now: woken to read it. Busy: it sees the message at
+                // its next turn, and the watchdog wakes it after that turn if
+                // it has still not read it (`agent::wake_waiting`).
+                let (delivery, wake) = match agent::whereabouts(conn, &target)? {
+                    // Gone, or ending: the message stays in the log, but the
+                    // sender is not left waiting for an answer to it.
+                    None => (Delivery::Ended, None),
                     Some(agent::Whereabouts {
-                        pane_id: Some(pane),
+                        status: AgentStatus::Dead,
+                        ..
+                    }) => (Delivery::Ended, None),
+                    // Idle to Claude Code, but its pane holds a question for
+                    // the owner: the nudge would be typed as their answer.
+                    Some(agent::Whereabouts {
                         status: AgentStatus::Idle,
+                        asked_owner: true,
+                        ..
+                    }) => (Delivery::WaitingOnOwner, None),
+                    Some(agent::Whereabouts {
+                        status: AgentStatus::Idle,
+                        pane_id: Some(pane),
                         started,
-                        asked_owner: false,
                         idle_at,
-                    }) => super::take_wake(conn, &target, started, idle_at)?.then_some(pane),
-                    _ => None,
-                };
-                Ok(Ok((
-                    Sent {
-                        seq,
-                        woken: nudge.is_some(),
+                        ..
+                    }) => match super::take_wake(conn, &target, pane, started, idle_at)? {
+                        Some(wake) => (Delivery::Woken, Some(wake)),
+                        None => (Delivery::NextTurn, None),
                     },
-                    nudge,
-                )))
+                    Some(_) => (Delivery::NextTurn, None),
+                };
+                Ok(Ok((seq, delivery, wake)))
             },
         )
         .await??;
-    if let Some(pane) = nudge {
-        super::nudge(state, pane).await;
-    }
-    Ok(appended)
+    // What the sender is told is what happened: a pane whose shell has gone
+    // cannot be typed into, and then the message waits for a turn like any
+    // other.
+    let delivery = match wake {
+        Some(wake) => match super::wake_up(state, wake).await {
+            true => delivery,
+            false => Delivery::NextTurn,
+        },
+        None => delivery,
+    };
+    Ok(Sent { seq, delivery })
 }
 
 /// `context.delete_event`: removes one event from the workspace log.

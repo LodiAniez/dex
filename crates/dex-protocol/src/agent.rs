@@ -36,7 +36,9 @@ pub struct AgentView {
     pub label: Option<String>,
     /// Messages waiting unread for it: what a sender cannot otherwise see. A
     /// count, not their contents, so it is told to every agent in the
-    /// workspace, unlike `status_detail`.
+    /// workspace, unlike `status_detail`. Defaulted, so a newer client still
+    /// parses an older daemon's reply.
+    #[serde(default)]
     pub unread: usize,
     /// `claude`.
     pub backend: String,

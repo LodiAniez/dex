@@ -210,18 +210,42 @@ pub struct Appended {
     pub seq: i64,
 }
 
-/// Result of `context.message_send`: where it landed in the log, and whether
-/// the recipient was woken to read it (issue #58).
+/// How a message reached the agent it was sent to (issue #58). The sender is
+/// an agent deciding whether to wait for an answer, so "sent" is not enough:
+/// it is told when nothing will read the message any time soon.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum Delivery {
+    /// It had finished its turn, and the nudge typed into its pane has woken
+    /// it to read the message.
+    Woken,
+    /// It is working, or has only just been hired: the message reaches it in
+    /// the delta at its next turn, and the watchdog wakes it after that turn
+    /// if it has still not read it. The default, so an older daemon's reply
+    /// still parses.
+    #[default]
+    NextTurn,
+    /// Its turn ended on a question for the owner, so its pane is waiting for
+    /// an answer and must not be typed at: it reads the message when the owner
+    /// replies, which may be a while.
+    WaitingOnOwner,
+    /// That agent has ended. The message is in the log, but nothing will read
+    /// it.
+    Ended,
+}
+
+/// Result of `context.message_send`: where it landed in the log, and how it
+/// reached the recipient (issue #58).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Sent {
     /// Its position in the log.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub seq: i64,
-    /// Whether the recipient was idle and has been woken to read it. When
-    /// false it is working, or waiting on the owner, and reads the message at
-    /// its next turn. Defaulted, so an older daemon's reply still parses.
+    /// How it reached the recipient.
     #[serde(default)]
-    pub woken: bool,
+    pub delivery: Delivery,
 }
 
 /// Args for `context.inbox` and `context.events`.

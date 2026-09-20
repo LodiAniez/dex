@@ -1,19 +1,20 @@
 //! Waking an agent for messages waiting (issue #58): a message that arrives
 //! while an agent is working is read once that turn ends, not left for ever.
 //!
-//! The waking itself is the watchdog's (`agent::wake_waiting`), a beat after
-//! the turn ends: hooks Claude Code waits on are no place to type into its
-//! pane. No pane has a shell in tests, so the typing fails; what is checked is
-//! the decision and its mark - whom Dex set out to wake, and how often.
+//! The waking itself is the watchdog's (`agent::sweep`), a beat after the turn
+//! ends: hooks Claude Code waits on are no place to type into its pane. No
+//! pane has a shell in tests, so the typing always fails - which is a case
+//! worth pinning, since a nudge that never lands must give its wake back and
+//! leave the sender told the truth.
 
-use dex_protocol::agent::AgentEventArgs;
-use dex_protocol::context::MessageArgs;
+use dex_protocol::agent::{AgentEventArgs, AgentStatus, ListAgentsArgs};
+use dex_protocol::context::{Delivery, MessageArgs, ScopeArgs, Sent};
 use serde_json::json;
 
 use super::{from, second_pane, start_agent, workspace_at};
 use crate::app::AppState;
 use crate::features::agent;
-use crate::features::context::{message_send, store};
+use crate::features::context::{inbox, message_send, take_wake};
 
 async fn hook(state: &AppState, pane: &str, kind: &str, stamp: i64, input: serde_json::Value) {
     agent::event(
@@ -34,7 +35,7 @@ async fn turn(state: &AppState, pane: &str, kind: &str, stamp: i64) {
     hook(state, pane, kind, stamp, json!({ "session_id": "s-child" })).await;
 }
 
-async fn send(state: &AppState, from_pane: &str, to: &str, body: &str) -> i64 {
+async fn send(state: &AppState, from_pane: &str, to: &str, body: &str) -> Sent {
     message_send(
         state,
         MessageArgs {
@@ -45,14 +46,13 @@ async fn send(state: &AppState, from_pane: &str, to: &str, body: &str) -> i64 {
     )
     .await
     .unwrap()
-    .seq
 }
 
-/// What the daemon recorded as the newest message it woke `pane`'s agent for.
-async fn woken_at(state: &AppState, pane: &str) -> i64 {
+/// The agent running in a pane, as clients see it.
+async fn agent_in(state: &AppState, pane: &str) -> dex_protocol::agent::AgentView {
     let listed = agent::list(
         state,
-        dex_protocol::agent::ListAgentsArgs {
+        ListAgentsArgs {
             workspace: None,
             pane: Some(pane.to_owned()),
             include_dead: true,
@@ -60,12 +60,12 @@ async fn woken_at(state: &AppState, pane: &str) -> i64 {
     )
     .await
     .unwrap();
-    let id = listed.agents[0].id.clone();
-    state
-        .db
-        .call(move |conn| store::woken_at(conn, &id))
-        .await
-        .unwrap()
+    // The list is the whole workspace's, whichever pane asked.
+    listed
+        .agents
+        .into_iter()
+        .find(|agent| agent.pane_id.as_deref() == Some(pane))
+        .expect("an agent in that pane")
 }
 
 /// A workspace with a lead and a child, both with Claude Code started.
@@ -87,31 +87,78 @@ async fn pair() -> (
 async fn a_message_to_a_working_agent_waits_and_the_watchdog_wakes_it_after() {
     let (_root, _dir, state, lead, child) = pair().await;
     turn(&state, &child, "prompt", 10).await; // working
-    let seq = send(&state, &lead, &child, "the requirement changed").await;
-    assert_eq!(woken_at(&state, &child).await, 0, "it is working");
+    let sent = send(&state, &lead, &child, "the requirement changed").await;
+    assert_eq!(sent.delivery, Delivery::NextTurn);
+    // Mid-turn it is left alone: the delta carries the message.
+    assert!(agent::wake_waiting(&state).await.unwrap().is_empty());
 
     // Its turn ends. The hook itself types nothing: Claude Code waits on hooks.
     turn(&state, &child, "stop", 20).await;
-    assert_eq!(woken_at(&state, &child).await, 0);
-
     assert_eq!(
-        agent::waking::wake_waiting(&state).await.unwrap(),
-        vec![child.clone()]
+        agent::wake_waiting(&state).await.unwrap(),
+        vec![child.clone()],
+        "the watchdog wakes it once the turn is over"
     );
-    assert_eq!(woken_at(&state, &child).await, seq);
 }
 
 #[tokio::test]
-async fn an_agent_already_idle_with_messages_waiting_is_woken_too() {
-    // What every database upgrading from 0.6.3 looks like: idle, unread, and
-    // no hook coming.
+async fn the_sweep_is_what_wakes_them() {
+    // The one production call site: without it, nothing ever wakes an agent
+    // that finished its turn, which is issue #58 itself.
     let (_root, _dir, state, lead, child) = pair().await;
     turn(&state, &child, "prompt", 10).await;
-    let seq = send(&state, &lead, &child, "one").await;
+    send(&state, &lead, &child, "one").await;
     turn(&state, &child, "stop", 20).await;
 
-    assert_eq!(agent::waking::wake_waiting(&state).await.unwrap().len(), 1);
-    assert_eq!(woken_at(&state, &child).await, seq);
+    assert!(
+        agent::sweep(&state).await.unwrap().applied,
+        "the sweep found an agent to wake"
+    );
+}
+
+#[tokio::test]
+async fn a_nudge_that_never_lands_is_tried_again_next_sweep() {
+    // No pane has a shell here, so every nudge fails. A wake spent on typing
+    // that never happened would leave the message unread for ever.
+    let (_root, _dir, state, lead, child) = pair().await;
+    turn(&state, &child, "prompt", 10).await;
+    send(&state, &lead, &child, "one").await;
+    turn(&state, &child, "stop", 20).await;
+
+    assert_eq!(agent::wake_waiting(&state).await.unwrap().len(), 1);
+    assert_eq!(
+        agent::wake_waiting(&state).await.unwrap().len(),
+        1,
+        "the wake was given back, so it is tried again"
+    );
+}
+
+#[tokio::test]
+async fn the_sender_is_told_the_message_waits_when_the_nudge_cannot_be_typed() {
+    // Idle and started, so it is woken - but the pane runs no shell, so the
+    // typing fails, and "woken" would be a lie to an agent that may be
+    // waiting on the answer.
+    let (_root, _dir, state, lead, child) = pair().await;
+    turn(&state, &child, "prompt", 10).await;
+    turn(&state, &child, "stop", 20).await;
+
+    assert_eq!(
+        send(&state, &lead, &child, "one").await.delivery,
+        Delivery::NextTurn
+    );
+}
+
+#[tokio::test]
+async fn a_message_to_an_agent_that_has_ended_says_so() {
+    let (_root, _dir, state, lead, child) = pair().await;
+    turn(&state, &child, "session-end", 20).await;
+    assert_eq!(agent_in(&state, &child).await.status, AgentStatus::Dead);
+
+    let id = agent_in(&state, &child).await.id;
+    assert_eq!(
+        send(&state, &lead, &id, "one").await.delivery,
+        Delivery::Ended
+    );
 }
 
 #[tokio::test]
@@ -119,7 +166,6 @@ async fn an_agent_that_asked_the_owner_something_is_left_to_them() {
     // Its turn ended on a question; typed text would be the owner's answer.
     let (_root, _dir, state, lead, child) = pair().await;
     turn(&state, &child, "prompt", 10).await;
-    send(&state, &lead, &child, "the requirement changed").await;
     hook(
         &state,
         &child,
@@ -129,36 +175,50 @@ async fn an_agent_that_asked_the_owner_something_is_left_to_them() {
     )
     .await;
 
-    assert!(
-        agent::waking::wake_waiting(&state)
+    assert_eq!(
+        send(&state, &lead, &child, "the requirement changed")
             .await
-            .unwrap()
-            .is_empty()
+            .delivery,
+        Delivery::WaitingOnOwner
     );
-    assert_eq!(woken_at(&state, &child).await, 0);
+    assert!(agent::wake_waiting(&state).await.unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn an_agent_is_woken_once_until_it_has_had_a_turn() {
+    // Against the mark itself: in tests no nudge can land, so this is where
+    // "once per message, however many hooks race" is pinned.
     let (_root, _dir, state, lead, child) = pair().await;
-    let first = send(&state, &lead, &child, "one").await;
-    assert_eq!(woken_at(&state, &child).await, first, "idle: woken at once");
+    turn(&state, &child, "prompt", 10).await;
+    send(&state, &lead, &child, "one").await;
+    turn(&state, &child, "stop", 20).await;
+    let idle = agent_in(&state, &child).await;
+    let (id, pane) = (idle.id.clone(), child.clone());
 
-    // A second message before it has answered the first queues no second prompt.
-    let second = send(&state, &lead, &child, "two").await;
-    assert_eq!(woken_at(&state, &child).await, first);
-    assert!(
-        agent::waking::wake_waiting(&state)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    let (first, again) = state
+        .db
+        .call({
+            let (id, pane) = (id.clone(), pane.clone());
+            move |conn| {
+                let first = take_wake(conn, &id, pane.clone(), true, 20)?.is_some();
+                // The hooks that brought it here racing, or a watchdog sweep
+                // landing on the same moment: no second nudge.
+                let again = take_wake(conn, &id, pane, true, 20)?.is_some();
+                Ok((first, again))
+            }
+        })
+        .await
+        .unwrap();
+    assert_eq!((first, again), (true, false));
 
-    // It takes its turn, and still has not read them: woken again for the newer.
-    turn(&state, &child, "prompt", 30).await;
-    turn(&state, &child, "stop", 40).await;
-    assert_eq!(agent::waking::wake_waiting(&state).await.unwrap().len(), 1);
-    assert_eq!(woken_at(&state, &child).await, second);
+    // A second message, and a turn taken without reading either: woken again.
+    send(&state, &lead, &child, "two").await;
+    let after_a_turn = state
+        .db
+        .call(move |conn| Ok(take_wake(conn, &id, pane, true, 40)?.is_some()))
+        .await
+        .unwrap();
+    assert!(after_a_turn);
 }
 
 #[tokio::test]
@@ -166,19 +226,25 @@ async fn a_message_the_agent_read_leaves_nothing_to_wake_it_for() {
     let (_root, _dir, state, lead, child) = pair().await;
     turn(&state, &child, "prompt", 10).await;
     send(&state, &lead, &child, "one").await;
-    crate::features::context::inbox(
-        &state,
-        dex_protocol::context::ScopeArgs::for_caller(from(&child)),
-    )
-    .await
-    .unwrap();
+    inbox(&state, ScopeArgs::for_caller(from(&child)))
+        .await
+        .unwrap();
     turn(&state, &child, "stop", 20).await;
 
-    assert!(
-        agent::waking::wake_waiting(&state)
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    assert_eq!(woken_at(&state, &child).await, 0);
+    assert!(agent::wake_waiting(&state).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn messages_waiting_show_in_the_recipients_unread_count() {
+    let (_root, _dir, state, lead, child) = pair().await;
+    turn(&state, &child, "prompt", 10).await;
+    send(&state, &lead, &child, "one").await;
+    send(&state, &lead, &child, "two").await;
+    assert_eq!(agent_in(&state, &child).await.unread, 2);
+    assert_eq!(agent_in(&state, &lead).await.unread, 0);
+
+    inbox(&state, ScopeArgs::for_caller(from(&child)))
+        .await
+        .unwrap();
+    assert_eq!(agent_in(&state, &child).await.unread, 0);
 }

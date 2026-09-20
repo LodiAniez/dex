@@ -23,4 +23,4 @@ pub use log_commands::{
 };
 pub use model::ContextError;
 pub use store::unread_counts;
-pub use wake::{nudge, take_wake};
+pub use wake::{Wake, take_wake, wake_up};

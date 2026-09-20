@@ -263,11 +263,22 @@ pub fn woken(conn: &Connection, agent_id: &str) -> rusqlite::Result<(i64, i64)> 
     .map(|found| found.unwrap_or((0, 0)))
 }
 
-/// The newest message the agent was last woken to read. For the tests: what
-/// the daemon itself needs is the pair above.
-#[cfg(test)]
-pub fn woken_at(conn: &Connection, agent_id: &str) -> rusqlite::Result<i64> {
-    Ok(woken(conn, agent_id)?.0)
+/// Puts the wake mark back where it was, for a nudge that never landed: the
+/// only writer allowed to lower it, so the next sweep claims the agent again.
+pub fn set_woken(
+    conn: &Connection,
+    agent_id: &str,
+    woken_at: i64,
+    woken_idle_at: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO context_cursor (agent_id, woken_at, woken_idle_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(agent_id) DO UPDATE SET
+           woken_at = excluded.woken_at,
+           woken_idle_at = excluded.woken_idle_at",
+        params![agent_id, woken_at, woken_idle_at],
+    )?;
+    Ok(())
 }
 
 /// Records that the agent has been woken for everything up to `seq`, while it
