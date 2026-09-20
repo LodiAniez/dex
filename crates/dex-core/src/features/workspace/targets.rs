@@ -77,12 +77,44 @@ pub fn focused_pane(
     }))
 }
 
-/// For other slices: the id of the pane a target names.
-pub fn pane_id(
+/// The id of the pane a target names, anywhere in Dex. Other slices ask
+/// `pane_id_in`, which knows the workspace they are speaking from.
+pub(super) fn pane_id(
     conn: &Connection,
     target: &str,
 ) -> rusqlite::Result<Result<String, WorkspaceError>> {
     Ok(resolve_pane(conn, target)?.map(|pane| pane.id))
+}
+
+/// For other slices: the id of the pane a target names, looked for in one
+/// workspace when the caller has one. Pane labels are unique per workspace,
+/// not across them, so `backend` means the caller's own `backend` (issue #59).
+/// An id still names its pane wherever it is: ids are unique everywhere, and
+/// asking for one is asking for that pane.
+pub fn pane_id_in(
+    conn: &Connection,
+    target: &str,
+    within: Option<&str>,
+) -> rusqlite::Result<Result<String, WorkspaceError>> {
+    let Some(workspace) = within else {
+        return pane_id(conn, target);
+    };
+    if store::find_pane_workspace(conn, target)?.is_some() {
+        return Ok(Ok(target.to_owned()));
+    }
+    let panes = store::list_panes(conn, workspace)?;
+    let candidates: Vec<(&str, Option<&str>)> = panes
+        .iter()
+        .map(|pane| (pane.id.as_str(), pane.label.as_deref()))
+        .collect();
+    Ok(match logic::resolve(target, &candidates) {
+        Resolved::One(index) => Ok(panes[index].id.clone()),
+        Resolved::Nothing => Err(WorkspaceError::NoSuchPane(target.to_owned())),
+        Resolved::Many(indexes) => Err(WorkspaceError::AmbiguousTarget {
+            target: target.to_owned(),
+            candidates: indexes.iter().map(|&i| describe(&panes[i])).collect(),
+        }),
+    })
 }
 
 fn describe(pane: &Pane) -> String {

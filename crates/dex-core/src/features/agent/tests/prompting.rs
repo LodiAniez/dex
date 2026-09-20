@@ -63,6 +63,7 @@ fn args(agent: &str, text: &str) -> PromptAgentArgs {
     PromptAgentArgs {
         agent: agent.into(),
         text: text.into(),
+        workspace: None,
     }
 }
 

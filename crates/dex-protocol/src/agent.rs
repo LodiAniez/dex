@@ -182,6 +182,11 @@ pub struct StopAgentArgs {
     /// a pane with no agent in it - may stop anyone.
     #[serde(default)]
     pub from_pane: Option<String>,
+    /// Which workspace the label means, for a caller with no pane of its own.
+    /// Labels are unique per workspace, so `reviewer` may name an agent in
+    /// each of them; ids need no workspace.
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 /// Args for `agent.prompt`: type the owner's turn into an agent's terminal.
@@ -191,6 +196,11 @@ pub struct PromptAgentArgs {
     pub agent: String,
     /// The prompt. Flattened to one line: in a terminal a newline is Enter.
     pub text: String,
+    /// Which workspace the label means, for a caller with no pane of its own.
+    /// Labels are unique per workspace, so `reviewer` may name an agent in
+    /// each of them; ids need no workspace.
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 /// Result of `agent.prompt`.

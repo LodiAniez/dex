@@ -14,6 +14,7 @@ use crate::features::workspace::{self, WorkspaceError};
 
 mod asking;
 mod briefs;
+mod labels;
 mod launch;
 mod orphans;
 mod placement;
@@ -304,6 +305,7 @@ fn stop_args(target: &str) -> StopAgentArgs {
         graceful: false,
         close_pane: false,
         from_pane: None,
+        workspace: None,
     }
 }
 

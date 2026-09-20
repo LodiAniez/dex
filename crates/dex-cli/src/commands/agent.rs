@@ -123,6 +123,7 @@ pub fn run(
                     "graceful": graceful,
                     "close_pane": close_pane,
                     "from_pane": std::env::var("DEX_PANE_ID").ok().filter(|id| !id.is_empty()),
+                    "workspace": workspace,
                 }),
             )?;
             if format.json {

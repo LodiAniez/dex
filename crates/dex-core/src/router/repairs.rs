@@ -43,6 +43,11 @@ pub(super) fn error_body(err: &CoreError) -> ErrorBody {
             "Run `dex agent list` to see the running agents; target one by its id or its pane's label."
                 .to_owned(),
         ),
+        CoreError::Agent(AgentError::AmbiguousTarget { .. }) => (
+            ErrorCode::InvalidArgs,
+            "That label is at work in more than one workspace, and labels are unique only within one. Say which with `--workspace`, or target the agent by its id (`dex agent list`)."
+                .to_owned(),
+        ),
         CoreError::Agent(AgentError::NotRunning(_)) => (
             ErrorCode::NoSuchAgent,
             "That agent has already ended; `dex agent list` shows the running ones.".to_owned(),

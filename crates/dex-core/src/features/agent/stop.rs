@@ -6,7 +6,7 @@ use dex_protocol::agent::{AgentStatus, StopAgentArgs, Stopped};
 use dex_protocol::pane::{Key, SendArgs, SendKeyArgs};
 use dex_protocol::workspace::PaneArgs;
 
-use super::identity::find_target;
+use super::identity::{self, find_target};
 use super::logic::{self, ExitStep};
 use super::model::AgentError;
 use super::store;
@@ -49,10 +49,19 @@ const EXIT_POLL: Duration = Duration::from_millis(250);
 pub async fn stop(state: &AppState, args: StopAgentArgs) -> Result<Stopped, AgentError> {
     let target = args.agent.clone();
     let from_pane = args.from_pane.clone();
+    let workspace = args.workspace.clone();
     let agent = state
         .db
         .call(move |conn| -> rusqlite::Result<Result<_, AgentError>> {
-            let agent = match find_target(conn, &target)? {
+            // A label names an agent in the caller's workspace (issue #59):
+            // the one it named, else the one its pane is in.
+            let within =
+                match identity::caller_workspace(conn, workspace.as_deref(), from_pane.as_deref())?
+                {
+                    Ok(within) => within,
+                    Err(err) => return Ok(Err(err)),
+                };
+            let agent = match find_target(conn, &target, within.as_deref())? {
                 Ok(agent) => agent,
                 Err(err) => return Ok(Err(err)),
             };
@@ -152,7 +161,7 @@ async fn ask_to_leave(
         let id = agent_id.to_owned();
         let gone = state
             .db
-            .call(move |conn| find_target(conn, &id))
+            .call(move |conn| find_target(conn, &id, None))
             .await?
             .map(|agent| agent.status == AgentStatus::Dead)
             .unwrap_or(true);

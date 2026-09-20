@@ -153,8 +153,18 @@ pub fn find_live_in_pane(conn: &Connection, pane_id: &str) -> rusqlite::Result<O
 }
 
 /// The newest live agent with this label.
-pub fn find_live_by_label(conn: &Connection, label: &str) -> rusqlite::Result<Option<Agent>> {
-    find_one(conn, "label = ?1 AND status != 'dead'", [label])
+pub fn find_live_by_label(
+    conn: &Connection,
+    label: &str,
+    within: Option<&str>,
+) -> rusqlite::Result<Vec<Agent>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {AGENT_COLUMNS} FROM agent
+         WHERE label = ?1 AND status != 'dead' AND (?2 IS NULL OR workspace_id = ?2)
+         ORDER BY started_at DESC, rowid DESC"
+    ))?;
+    let rows = stmt.query_map(params![label, within], agent_from_row)?;
+    rows.collect()
 }
 
 /// Binds an agent to a (possibly new) session id and records the permission mode.

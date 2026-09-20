@@ -141,7 +141,9 @@ pub fn schema(name: &str) -> Value {
         "agents_list" => object(json!({}), &[]),
         "message_send" => object(
             json!({
-                "target_agent": string("The recipient's label, from agents_list."),
+                "target_agent": string(
+                    "The recipient's label, from agents_list. Labels name agents in your own workspace; an id reaches anyone.",
+                ),
                 "body": string("The message."),
             }),
             &["target_agent", "body"],
