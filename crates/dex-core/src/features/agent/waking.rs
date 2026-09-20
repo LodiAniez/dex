@@ -17,8 +17,8 @@ use crate::app::AppState;
 use crate::features::context;
 
 /// Wakes every agent sitting idle with messages it has not been woken for,
-/// and says in which panes it set out to. Never fatal: the messages keep, and
-/// a nudge that could not be typed gives its wake back for the next sweep.
+/// and says in which panes. Never fatal: the messages keep, and a nudge that
+/// could not be typed gives its wake back for the next sweep.
 pub async fn wake_waiting(state: &AppState) -> Result<Vec<String>, AgentError> {
     let claimed = state
         .db
@@ -43,8 +43,11 @@ pub async fn wake_waiting(state: &AppState) -> Result<Vec<String>, AgentError> {
     let mut panes = Vec::new();
     for wake in claimed {
         let pane = wake.pane().to_owned();
-        context::wake_up(state, wake).await;
-        panes.push(pane);
+        // Only the nudges that landed: the sweep says it changed something
+        // (`EventOutcome`) on the strength of this.
+        if context::wake_up(state, wake).await {
+            panes.push(pane);
+        }
     }
     Ok(panes)
 }
@@ -57,7 +60,7 @@ pub async fn wake_waiting(state: &AppState) -> Result<Vec<String>, AgentError> {
 /// nothing - Claude Code queues the text as the next prompt - whereas
 /// `waiting` (a dialog is open, and typed text answers it) and `error` are
 /// left alone, and the dead are never listed.
-fn waits_at_its_prompt(status: AgentStatus) -> bool {
+pub fn waits_at_its_prompt(status: AgentStatus) -> bool {
     matches!(status, AgentStatus::Idle | AgentStatus::Unknown)
 }
 

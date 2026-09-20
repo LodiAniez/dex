@@ -38,6 +38,8 @@ pub struct Wake {
     pane: String,
     /// `(woken_at, woken_idle_at)` as they stood before the claim.
     previous: (i64, i64),
+    /// What the claim wrote, so a wake taken since is not given back over.
+    claimed: (i64, i64),
 }
 
 impl Wake {
@@ -73,22 +75,40 @@ pub fn take_wake(
         agent_id: agent_id.to_owned(),
         pane,
         previous,
+        claimed: (seq, idle_at),
     }))
+}
+
+/// What became of the typing.
+enum Typed {
+    /// In the pane: the agent has been woken.
+    Landed,
+    /// Nothing was written - the pane has no shell to write to.
+    Refused,
+    /// The write is still out there, in a pane that is not reading it.
+    TimedOut,
 }
 
 /// Types the nudge into the agent's pane, and says whether it landed. A pane
 /// whose shell is not running cannot be typed into, and that is no reason to
 /// fail what the caller was doing: the wake is given back instead, so the next
 /// sweep tries again, and the sender is told the message waits for a turn.
+///
+/// A write that timed out keeps the wake. Bytes may yet arrive, and a pane
+/// that blocks its writes would otherwise collect a fresh nudge every sweep,
+/// each one holding the PTY lock, for as long as it stays stuck.
 pub async fn wake_up(state: &AppState, wake: Wake) -> bool {
-    if nudge(state, &wake.pane).await {
-        return true;
+    match nudge(state, &wake.pane).await {
+        Typed::Landed => true,
+        Typed::Refused => {
+            give_back(state, wake).await;
+            false
+        }
+        Typed::TimedOut => false,
     }
-    give_back(state, wake).await;
-    false
 }
 
-async fn nudge(state: &AppState, pane: &str) -> bool {
+async fn nudge(state: &AppState, pane: &str) -> Typed {
     let typing = workspace::send(
         state,
         SendArgs {
@@ -98,26 +118,34 @@ async fn nudge(state: &AppState, pane: &str) -> bool {
         },
     );
     match tokio::time::timeout(TYPING, typing).await {
-        Ok(Ok(_)) => true,
+        Ok(Ok(_)) => Typed::Landed,
         Ok(Err(err)) => {
             tracing::debug!(%pane, %err, "could not wake the idle agent for its messages");
-            false
+            Typed::Refused
         }
         Err(_) => {
             tracing::warn!(%pane, "gave up typing the nudge: the shell is not reading it");
-            false
+            Typed::TimedOut
         }
     }
 }
 
-/// Puts the mark back as it was, so the agent is claimed again next sweep.
+/// Puts the mark back as it was, so the agent is claimed again next sweep -
+/// unless it has been woken for something newer since this wake was claimed,
+/// which is the one case where putting it back would lose a wake.
+///
+/// Best effort, like the nudge itself: a mark that could not be given back
+/// leaves that message waiting for a newer one, and is worth a warning rather
+/// than failing the send or the sweep.
 async fn give_back(state: &AppState, wake: Wake) {
     let given = state
         .db
-        .call(move |conn| store::set_woken(conn, &wake.agent_id, wake.previous.0, wake.previous.1))
+        .call(move |conn| store::set_woken(conn, &wake.agent_id, wake.previous, wake.claimed))
         .await;
-    if let Err(err) = given {
-        tracing::warn!(%err, "could not give back a wake whose nudge never landed");
+    match given {
+        Ok(false) => tracing::debug!("a newer wake was taken while the nudge was being typed"),
+        Ok(true) => {}
+        Err(err) => tracing::warn!(%err, "could not give back a wake whose nudge never landed"),
     }
 }
 

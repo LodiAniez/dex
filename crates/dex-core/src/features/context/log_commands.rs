@@ -20,6 +20,44 @@ use crate::platform::clock;
 /// it reaches the recipient, and the wake to type if it must be woken.
 type Delivered = (i64, Delivery, Option<super::Wake>);
 
+/// How the message will reach this agent, and the wake to type if it is to be
+/// woken now. At its prompt: woken. Busy: it sees the message at its next
+/// turn, and the watchdog wakes it after that turn if it has still not read it
+/// (`agent::wake_waiting`). Which statuses may be typed at is the agent
+/// slice's rule (`agent::waits_at_its_prompt`), asked once here and once
+/// there rather than written down twice.
+fn delivery_for(
+    conn: &rusqlite::Connection,
+    target: &str,
+) -> rusqlite::Result<(Delivery, Option<super::Wake>)> {
+    // Gone, or never there: the message stays in the log, but the sender is
+    // not left waiting for an answer to it.
+    let who: Option<agent::Whereabouts> = agent::whereabouts(conn, target)?;
+    let Some(who) = who else {
+        return Ok((Delivery::Ended, None));
+    };
+    if who.status == AgentStatus::Dead {
+        return Ok((Delivery::Ended, None));
+    }
+    if !agent::waits_at_its_prompt(who.status) {
+        return Ok((Delivery::NextTurn, None));
+    }
+    // At its prompt to Claude Code, but the pane holds a question for the
+    // owner: the nudge would be typed as their answer.
+    if who.asked_owner {
+        return Ok((Delivery::WaitingOnOwner, None));
+    }
+    let Some(pane) = who.pane_id else {
+        return Ok((Delivery::NextTurn, None));
+    };
+    Ok(
+        match super::take_wake(conn, target, pane, who.started, who.idle_at)? {
+            Some(wake) => (Delivery::Woken, Some(wake)),
+            None => (Delivery::NextTurn, None),
+        },
+    )
+}
+
 /// Most events the activity pane asks for at once.
 const DEFAULT_EVENT_LIMIT: u32 = 200;
 
@@ -125,36 +163,7 @@ pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Sent, C
                         created_at: now,
                     },
                 )?;
-                // Idle now: woken to read it. Busy: it sees the message at
-                // its next turn, and the watchdog wakes it after that turn if
-                // it has still not read it (`agent::wake_waiting`).
-                let (delivery, wake) = match agent::whereabouts(conn, &target)? {
-                    // Gone, or ending: the message stays in the log, but the
-                    // sender is not left waiting for an answer to it.
-                    None => (Delivery::Ended, None),
-                    Some(agent::Whereabouts {
-                        status: AgentStatus::Dead,
-                        ..
-                    }) => (Delivery::Ended, None),
-                    // Idle to Claude Code, but its pane holds a question for
-                    // the owner: the nudge would be typed as their answer.
-                    Some(agent::Whereabouts {
-                        status: AgentStatus::Idle,
-                        asked_owner: true,
-                        ..
-                    }) => (Delivery::WaitingOnOwner, None),
-                    Some(agent::Whereabouts {
-                        status: AgentStatus::Idle,
-                        pane_id: Some(pane),
-                        started,
-                        idle_at,
-                        ..
-                    }) => match super::take_wake(conn, &target, pane, started, idle_at)? {
-                        Some(wake) => (Delivery::Woken, Some(wake)),
-                        None => (Delivery::NextTurn, None),
-                    },
-                    Some(_) => (Delivery::NextTurn, None),
-                };
+                let (delivery, wake) = delivery_for(conn, &target)?;
                 Ok(Ok((seq, delivery, wake)))
             },
         )

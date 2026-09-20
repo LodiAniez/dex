@@ -102,8 +102,8 @@ retry or work around - it means do the work yourself.
   how you change a child's task after it has started: send it the new
   requirement. A child that is busy sees it at its next tool call; one that
   has finished and is sitting at its prompt is woken to read it, as is one
-  that finishes with your message still unread (within about 15 seconds of
-  its turn ending). `message_send` says which happened - `woken`,
+  that finishes with your message still unread (within 15-20 seconds of its
+  turn ending). `message_send` says which happened - `woken`,
   `next_turn`, `waiting_on_owner` (its pane holds a question for the owner,
   so nothing may be typed into it) or `ended` (that agent is gone, and
   nothing will read the message) - and `agents_list` says how many messages

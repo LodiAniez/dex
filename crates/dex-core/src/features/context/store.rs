@@ -263,22 +263,24 @@ pub fn woken(conn: &Connection, agent_id: &str) -> rusqlite::Result<(i64, i64)> 
     .map(|found| found.unwrap_or((0, 0)))
 }
 
-/// Puts the wake mark back where it was, for a nudge that never landed: the
+/// Puts the wake mark back to `previous`, for a nudge that never landed: the
 /// only writer allowed to lower it, so the next sweep claims the agent again.
+///
+/// Only while the mark still reads `expected` - what that nudge's own claim
+/// wrote. A wake taken since is newer than this one and stands; `false` says
+/// so. There is no row to insert: a claim wrote one.
 pub fn set_woken(
     conn: &Connection,
     agent_id: &str,
-    woken_at: i64,
-    woken_idle_at: i64,
-) -> rusqlite::Result<()> {
-    conn.execute(
-        "INSERT INTO context_cursor (agent_id, woken_at, woken_idle_at) VALUES (?1, ?2, ?3)
-         ON CONFLICT(agent_id) DO UPDATE SET
-           woken_at = excluded.woken_at,
-           woken_idle_at = excluded.woken_idle_at",
-        params![agent_id, woken_at, woken_idle_at],
+    previous: (i64, i64),
+    expected: (i64, i64),
+) -> rusqlite::Result<bool> {
+    let put_back = conn.execute(
+        "UPDATE context_cursor SET woken_at = ?2, woken_idle_at = ?3
+         WHERE agent_id = ?1 AND woken_at = ?4 AND woken_idle_at = ?5",
+        params![agent_id, previous.0, previous.1, expected.0, expected.1],
     )?;
-    Ok(())
+    Ok(put_back > 0)
 }
 
 /// Records that the agent has been woken for everything up to `seq`, while it

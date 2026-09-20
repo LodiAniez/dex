@@ -60,6 +60,26 @@ fn every_slice_has_mod_and_commands() {
     }
 }
 
+/// The watchdog is the only thing that wakes an agent for messages waiting
+/// (issue #58), and it must end the departed first: an agent whose Claude Code
+/// was quit still looks idle, and its pane is a bare shell that would *run* the
+/// nudge. Neither can be seen from a test over a temp database - no pane there
+/// has a shell, and no process table is read - so both are checked here.
+#[test]
+fn the_sweep_ends_the_departed_before_it_wakes_anyone() {
+    let sweep = fs::read_to_string(src_dir().join("features/agent/watchdog.rs")).unwrap();
+    let departed = sweep
+        .find("presence::end_the_departed")
+        .expect("the sweep ends agents whose Claude Code has gone");
+    let waking = sweep
+        .find("waking::wake_waiting")
+        .expect("the sweep wakes agents with messages waiting (issue #58)");
+    assert!(
+        departed < waking,
+        "the sweep must end the departed before it types at anyone: their pane is a bare shell"
+    );
+}
+
 #[test]
 fn no_utils_files_exist() {
     for file in rust_files(&src_dir()) {

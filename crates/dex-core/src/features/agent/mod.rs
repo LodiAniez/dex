@@ -32,6 +32,7 @@ pub use model::AgentError;
 pub use prompt::prompt;
 pub use spawn::spawn;
 pub use stop::stop;
+pub use waking::waits_at_its_prompt;
 /// For the context slice's tests: what the sweep does about messages waiting.
 #[cfg(test)]
 pub use waking::wake_waiting;

@@ -2,10 +2,16 @@
 //! while an agent is working is read once that turn ends, not left for ever.
 //!
 //! The waking itself is the watchdog's (`agent::sweep`), a beat after the turn
-//! ends: hooks Claude Code waits on are no place to type into its pane. No
-//! pane has a shell in tests, so the typing always fails - which is a case
-//! worth pinning, since a nudge that never lands must give its wake back and
-//! leave the sender told the truth.
+//! ends: hooks Claude Code waits on are no place to type into its pane.
+//!
+//! A pane has no shell here unless the test gives it one, so both halves are
+//! covered: with a shell the nudge lands and the agent is woken, without one
+//! it cannot, and the wake must be given back and the sender told the truth.
+//! That the sweep is what calls the waking, after it ends the departed, is
+//! checked over the source in `tests/structure.rs` - neither can be seen from
+//! here, and neither may be lost.
+
+use std::path::PathBuf;
 
 use dex_protocol::agent::{AgentEventArgs, AgentStatus, ListAgentsArgs};
 use dex_protocol::context::{Delivery, MessageArgs, ScopeArgs, Sent};
@@ -15,6 +21,32 @@ use super::{from, second_pane, start_agent, workspace_at};
 use crate::app::AppState;
 use crate::features::agent;
 use crate::features::context::{inbox, message_send, take_wake};
+use crate::platform::pty::SpawnRequest;
+
+/// Gives the pane a real shell, so a nudge typed into it can land. Without
+/// one there is nothing to write to, which is the other half of these tests.
+fn with_shell(state: &AppState, pane: &str) {
+    let (program, args) = if cfg!(windows) {
+        (PathBuf::from("cmd.exe"), Vec::new())
+    } else {
+        (PathBuf::from("/bin/sh"), Vec::new())
+    };
+    state
+        .pty
+        .spawn(
+            SpawnRequest {
+                pane_id: pane.to_owned(),
+                program,
+                args,
+                cwd: std::env::temp_dir(),
+                env: vec![("DEX_PANE_ID".to_owned(), pane.to_owned())],
+                cols: 120,
+                rows: 30,
+            },
+            Box::new(|_| {}),
+        )
+        .unwrap();
+}
 
 async fn hook(state: &AppState, pane: &str, kind: &str, stamp: i64, input: serde_json::Value) {
     agent::event(
@@ -86,6 +118,7 @@ async fn pair() -> (
 #[tokio::test]
 async fn a_message_to_a_working_agent_waits_and_the_watchdog_wakes_it_after() {
     let (_root, _dir, state, lead, child) = pair().await;
+    with_shell(&state, &child);
     turn(&state, &child, "prompt", 10).await; // working
     let sent = send(&state, &lead, &child, "the requirement changed").await;
     assert_eq!(sent.delivery, Delivery::NextTurn);
@@ -99,38 +132,54 @@ async fn a_message_to_a_working_agent_waits_and_the_watchdog_wakes_it_after() {
         vec![child.clone()],
         "the watchdog wakes it once the turn is over"
     );
+    state.pty.kill(&child).unwrap();
 }
 
 #[tokio::test]
-async fn the_sweep_is_what_wakes_them() {
-    // The one production call site: without it, nothing ever wakes an agent
-    // that finished its turn, which is issue #58 itself.
+async fn an_agent_at_its_prompt_is_woken_as_the_message_is_sent() {
+    // The whole point of the feature, end to end: the nudge is really typed
+    // into a real shell, and the sender is told so.
     let (_root, _dir, state, lead, child) = pair().await;
+    with_shell(&state, &child);
     turn(&state, &child, "prompt", 10).await;
-    send(&state, &lead, &child, "one").await;
     turn(&state, &child, "stop", 20).await;
 
-    assert!(
-        agent::sweep(&state).await.unwrap().applied,
-        "the sweep found an agent to wake"
+    assert_eq!(
+        send(&state, &lead, &child, "the requirement changed")
+            .await
+            .delivery,
+        Delivery::Woken
     );
+    // Woken for it already, and it has not answered: no second nudge.
+    assert_eq!(
+        send(&state, &lead, &child, "and again").await.delivery,
+        Delivery::NextTurn
+    );
+    assert!(agent::wake_waiting(&state).await.unwrap().is_empty());
+    state.pty.kill(&child).unwrap();
 }
 
 #[tokio::test]
 async fn a_nudge_that_never_lands_is_tried_again_next_sweep() {
-    // No pane has a shell here, so every nudge fails. A wake spent on typing
+    // This pane has no shell, so every nudge fails. A wake spent on typing
     // that never happened would leave the message unread for ever.
     let (_root, _dir, state, lead, child) = pair().await;
     turn(&state, &child, "prompt", 10).await;
     send(&state, &lead, &child, "one").await;
     turn(&state, &child, "stop", 20).await;
-
-    assert_eq!(agent::wake_waiting(&state).await.unwrap().len(), 1);
-    assert_eq!(
-        agent::wake_waiting(&state).await.unwrap().len(),
-        1,
-        "the wake was given back, so it is tried again"
+    assert!(
+        agent::wake_waiting(&state).await.unwrap().is_empty(),
+        "nothing was typed, so nobody was woken"
     );
+
+    // The mark is back where it was, so the claim is there to take again.
+    let id = agent_in(&state, &child).await.id;
+    let again = state
+        .db
+        .call(move |conn| Ok(take_wake(conn, &id, "p".to_owned(), true, 20)?.is_some()))
+        .await
+        .unwrap();
+    assert!(again, "the wake was given back");
 }
 
 #[tokio::test]
