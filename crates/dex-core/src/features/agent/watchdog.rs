@@ -22,15 +22,30 @@ const IGNORED: EventOutcome = EventOutcome { applied: false };
 /// change only when it made one.
 pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
     let statuses = sweep_statuses(state).await?;
-    // Last, because it may take a couple of seconds and announces what it does
-    // itself; and never fatal - what the rest of the sweep found still stands.
+    // Before anyone is typed at: an agent whose Claude Code has gone still
+    // looks idle, and its pane is a bare shell that would run the nudge as a
+    // command. It may take a couple of seconds and announces what it does
+    // itself; never fatal - what the rest of the sweep found still stands.
     let departed = presence::end_the_departed(state)
         .await
         .unwrap_or_else(|err| {
             tracing::warn!(%err, "could not look for agents whose Claude Code has gone");
             0
         });
-    Ok(if departed > 0 { APPLIED } else { statuses })
+    // Agents that finished a turn with messages waiting: woken here, a beat
+    // after the turn, rather than in the hooks Claude Code waits on.
+    let woken = super::waking::wake_waiting(state)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!(%err, "could not wake the agents with messages waiting");
+            Vec::new()
+        })
+        .len();
+    Ok(if departed > 0 || woken > 0 {
+        APPLIED
+    } else {
+        statuses
+    })
 }
 
 async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {

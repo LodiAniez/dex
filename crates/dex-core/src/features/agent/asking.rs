@@ -89,6 +89,12 @@ pub fn idle_detail(stop_input: &serde_json::Value) -> Option<String> {
     (!closing.is_empty()).then(|| format!("{SAID}{closing}"))
 }
 
+/// Whether this status detail is a question the agent left the owner: its
+/// pane is waiting for an answer, so nothing else may be typed there.
+pub fn asked_the_owner(detail: Option<&str>) -> bool {
+    detail.is_some_and(|detail| detail.starts_with(ASKED))
+}
+
 /// Whether a detail stays out of the workspace log. The log is the activity
 /// feed, and every finished turn has last words: written there they would bury
 /// what happened under what was said, and the owner already sees them on the

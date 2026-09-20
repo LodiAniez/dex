@@ -1,6 +1,8 @@
 //! Every SQL statement touching `context_entry`, `context_event` and
 //! `context_cursor`. No other module queries them (docs/conventions.md §1.3).
 
+use std::collections::HashMap;
+
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::model::{Entry, Event, NewEvent};
@@ -223,6 +225,80 @@ pub fn unread_messages(conn: &Connection, agent_id: &str) -> rusqlite::Result<Ve
     ))?;
     let rows = stmt.query_map([agent_id], event_from_row)?;
     rows.collect()
+}
+
+/// How many messages wait unread for each agent that has any.
+pub fn unread_counts(conn: &Connection) -> rusqlite::Result<HashMap<String, usize>> {
+    let mut stmt = conn.prepare(
+        "SELECT target_agent, COUNT(*) FROM context_event
+         WHERE kind = 'message' AND read_at IS NULL AND target_agent IS NOT NULL
+         GROUP BY target_agent",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    rows.map(|row| row.map(|(agent, count)| (agent, count as usize)))
+        .collect()
+}
+
+/// The newest message waiting unread for an agent, if any.
+pub fn newest_unread(conn: &Connection, agent_id: &str) -> rusqlite::Result<Option<i64>> {
+    conn.query_row(
+        "SELECT MAX(seq) FROM context_event
+         WHERE kind = 'message' AND target_agent = ?1 AND read_at IS NULL",
+        [agent_id],
+        |row| row.get::<_, Option<i64>>(0),
+    )
+}
+
+/// The newest message the agent was last woken to read, and the status time
+/// it had then.
+pub fn woken(conn: &Connection, agent_id: &str) -> rusqlite::Result<(i64, i64)> {
+    conn.query_row(
+        "SELECT woken_at, woken_idle_at FROM context_cursor WHERE agent_id = ?1",
+        [agent_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .optional()
+    .map(|found| found.unwrap_or((0, 0)))
+}
+
+/// Puts the wake mark back to `previous`, for a nudge that never landed: the
+/// only writer allowed to lower it, so the next sweep claims the agent again.
+///
+/// Only while the mark still reads `expected` - what that nudge's own claim
+/// wrote. A wake taken since is newer than this one and stands; `false` says
+/// so. There is no row to insert: a claim wrote one.
+pub fn set_woken(
+    conn: &Connection,
+    agent_id: &str,
+    previous: (i64, i64),
+    expected: (i64, i64),
+) -> rusqlite::Result<bool> {
+    let put_back = conn.execute(
+        "UPDATE context_cursor SET woken_at = ?2, woken_idle_at = ?3
+         WHERE agent_id = ?1 AND woken_at = ?4 AND woken_idle_at = ?5",
+        params![agent_id, previous.0, previous.1, expected.0, expected.1],
+    )?;
+    Ok(put_back > 0)
+}
+
+/// Records that the agent has been woken for everything up to `seq`, while it
+/// had been idle since `idle_at`.
+pub fn mark_woken(
+    conn: &Connection,
+    agent_id: &str,
+    seq: i64,
+    idle_at: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO context_cursor (agent_id, woken_at, woken_idle_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(agent_id) DO UPDATE SET
+           woken_at = MAX(woken_at, excluded.woken_at),
+           woken_idle_at = MAX(woken_idle_at, excluded.woken_idle_at)",
+        params![agent_id, seq, idle_at],
+    )?;
+    Ok(())
 }
 
 /// Marks messages read. Returns how many changed.

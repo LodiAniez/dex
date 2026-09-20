@@ -153,7 +153,7 @@ pub fn run(
             }
         }
         ContextCommand::Send { target, body } => {
-            let appended: Appended = client.call(
+            let sent: dex_protocol::context::Sent = client.call(
                 "context.message_send",
                 with(
                     json!({ "target_agent": target, "body": body.join(" ") }),
@@ -161,7 +161,9 @@ pub fn run(
                 ),
             )?;
             if format.json {
-                output::json(&appended);
+                output::json(&sent);
+            } else {
+                println!("{}", delivery_line(sent.delivery));
             }
         }
         ContextCommand::Delete { seq } => {
@@ -269,6 +271,20 @@ fn with(mut args: Value, workspace: &Option<String>) -> Value {
         object.insert("workspace".into(), workspace.clone().into());
     }
     args
+}
+
+/// What became of a message just sent: the sender may be waiting on an answer,
+/// so it is told when nothing is about to read it.
+fn delivery_line(delivery: dex_protocol::context::Delivery) -> &'static str {
+    use dex_protocol::context::Delivery;
+    match delivery {
+        Delivery::Woken => "Sent. They had finished their turn, and have been woken to read it.",
+        Delivery::NextTurn => "Sent. They are working; they will see it at their next turn.",
+        Delivery::WaitingOnOwner => {
+            "Sent. They are waiting on you; they will read it when you answer."
+        }
+        Delivery::Ended => "Sent, but that agent has ended: nothing will read it.",
+    }
 }
 
 /// Values can be paragraphs; a table row shows the first line.

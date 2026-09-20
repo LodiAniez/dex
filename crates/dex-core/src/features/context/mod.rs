@@ -14,6 +14,7 @@ mod model;
 mod store;
 #[cfg(test)]
 mod tests;
+mod wake;
 
 pub use commands::{list, read, search, write};
 pub use digest_commands::digest;
@@ -21,3 +22,5 @@ pub use log_commands::{
     clear_events, delete_event, events, inbox, message_send, note, record_event, record_status,
 };
 pub use model::ContextError;
+pub use store::unread_counts;
+pub use wake::{Wake, take_wake, wake_up};

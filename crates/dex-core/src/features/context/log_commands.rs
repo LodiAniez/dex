@@ -4,42 +4,62 @@
 
 use dex_protocol::agent::AgentStatus;
 use dex_protocol::context::{
-    Appended, ClearEventsArgs, ClearScope, Cleared, DeleteEventArgs, EventList, EventView, Inbox,
-    Message, MessageArgs, NoteArgs, ScopeArgs,
+    Appended, ClearEventsArgs, ClearScope, Cleared, DeleteEventArgs, Delivery, EventList,
+    EventView, Inbox, Message, MessageArgs, NoteArgs, ScopeArgs, Sent,
 };
-use dex_protocol::pane::SendArgs;
 
 use super::commands::{author, log, scope};
 use super::logic;
 use super::model::{ContextError, NewEvent};
 use super::store;
 use crate::app::AppState;
-use crate::features::{agent, workspace};
+use crate::features::agent;
 use crate::platform::clock;
+
+/// What `message_send` settles in the database: where the message landed, how
+/// it reaches the recipient, and the wake to type if it must be woken.
+type Delivered = (i64, Delivery, Option<super::Wake>);
+
+/// How the message will reach this agent, and the wake to type if it is to be
+/// woken now. At its prompt: woken. Busy: it sees the message at its next
+/// turn, and the watchdog wakes it after that turn if it has still not read it
+/// (`agent::wake_waiting`). Which statuses may be typed at is the agent
+/// slice's rule (`agent::waits_at_its_prompt`), asked once here and once
+/// there rather than written down twice.
+fn delivery_for(
+    conn: &rusqlite::Connection,
+    target: &str,
+) -> rusqlite::Result<(Delivery, Option<super::Wake>)> {
+    // Gone, or never there: the message stays in the log, but the sender is
+    // not left waiting for an answer to it.
+    let who: Option<agent::Whereabouts> = agent::whereabouts(conn, target)?;
+    let Some(who) = who else {
+        return Ok((Delivery::Ended, None));
+    };
+    if who.status == AgentStatus::Dead {
+        return Ok((Delivery::Ended, None));
+    }
+    if !agent::waits_at_its_prompt(who.status) {
+        return Ok((Delivery::NextTurn, None));
+    }
+    // At its prompt to Claude Code, but the pane holds a question for the
+    // owner: the nudge would be typed as their answer.
+    if who.asked_owner {
+        return Ok((Delivery::WaitingOnOwner, None));
+    }
+    let Some(pane) = who.pane_id else {
+        return Ok((Delivery::NextTurn, None));
+    };
+    Ok(
+        match super::take_wake(conn, target, pane, who.started, who.idle_at)? {
+            Some(wake) => (Delivery::Woken, Some(wake)),
+            None => (Delivery::NextTurn, None),
+        },
+    )
+}
 
 /// Most events the activity pane asks for at once.
 const DEFAULT_EVENT_LIMIT: u32 = 200;
-
-/// Typed into an idle agent's pane when a message arrives for it, as a prompt.
-///
-/// Digests reach an agent only at its next turn, and an agent sitting idle at
-/// its prompt has no next turn until someone gives it one. Without this, a
-/// message to a finished agent waits forever — which is exactly the case
-/// messages exist for: "the requirement changed". This is a prompt, not
-/// injected context, so unlike a digest it may say what to do.
-const NUDGE: &str = "Another agent has sent you a message. Read it with message_inbox and act on it if it changes your task.";
-
-/// Whether a message just stored for an agent should wake it. Only an idle
-/// agent that has actually started: a running one sees the message at its
-/// next tool batch, one waiting on a permission prompt would have the text
-/// land in that dialog, an ended one has no prompt to type into — and a
-/// spawned row is `idle` before Claude Code has started at all, when the pane
-/// may be showing the trust dialog, where typed text plus Enter means
-/// "No, exit". Only the first unread message: a second nudge would queue a
-/// second prompt behind the first.
-fn should_nudge(status: AgentStatus, started: bool, unread_after: usize) -> bool {
-    started && status == AgentStatus::Idle && unread_after == 1
-}
 
 /// For the agent slice: records a status change in the workspace log, so the
 /// activity pane shows what the agents are doing and not only what they say
@@ -117,12 +137,12 @@ pub async fn note(state: &AppState, args: NoteArgs) -> Result<Appended, ContextE
 }
 
 /// `context.message_send`: a directed note to one sibling agent.
-pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Appended, ContextError> {
+pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Sent, ContextError> {
     let now = clock::now_millis();
-    let (appended, nudge) = state
+    let (seq, delivery, wake) = state
         .db
         .call(
-            move |conn| -> rusqlite::Result<Result<(Appended, Option<String>), ContextError>> {
+            move |conn| -> rusqlite::Result<Result<Delivered, ContextError>> {
                 let scope = match scope(conn, &args.caller)? {
                     Ok(scope) => scope,
                     Err(err) => return Ok(Err(err)),
@@ -143,43 +163,22 @@ pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Appende
                         created_at: now,
                     },
                 )?;
-                let nudge = match agent::whereabouts(conn, &target)? {
-                    Some(agent::Whereabouts {
-                        pane_id: Some(pane),
-                        status,
-                        started,
-                    }) if should_nudge(
-                        status,
-                        started,
-                        store::unread_messages(conn, &target)?.len(),
-                    ) =>
-                    {
-                        Some(pane)
-                    }
-                    _ => None,
-                };
-                Ok(Ok((Appended { seq }, nudge)))
+                let (delivery, wake) = delivery_for(conn, &target)?;
+                Ok(Ok((seq, delivery, wake)))
             },
         )
         .await??;
-    if let Some(pane) = nudge {
-        // Best effort, after the message is safely stored: a pane whose shell
-        // is not running yet cannot be typed into, and that is not a reason
-        // to fail the send — the agent still gets the message at its next turn.
-        let typed = workspace::send(
-            state,
-            SendArgs {
-                pane: pane.clone(),
-                text: NUDGE.to_owned(),
-                enter: true,
-            },
-        )
-        .await;
-        if let Err(err) = typed {
-            tracing::debug!(%pane, %err, "could not wake the idle agent for its message");
-        }
-    }
-    Ok(appended)
+    // What the sender is told is what happened: a pane whose shell has gone
+    // cannot be typed into, and then the message waits for a turn like any
+    // other.
+    let delivery = match wake {
+        Some(wake) => match super::wake_up(state, wake).await {
+            true => delivery,
+            false => Delivery::NextTurn,
+        },
+        None => delivery,
+    };
+    Ok(Sent { seq, delivery })
 }
 
 /// `context.delete_event`: removes one event from the workspace log.
@@ -319,35 +318,4 @@ pub async fn events(state: &AppState, args: ScopeArgs) -> Result<EventList, Cont
             },
         )
         .await?
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_an_idle_agent_with_exactly_one_unread_message_is_woken() {
-        // The case that motivated this: a finished child, sitting at its
-        // prompt, sent a requirement change it would otherwise never see.
-        assert!(should_nudge(AgentStatus::Idle, true, 1));
-        // A second message while the first is still unread: the first nudge
-        // is already queued as a prompt; another would queue another.
-        assert!(!should_nudge(AgentStatus::Idle, true, 2));
-        // Running: the next tool batch delivers it without typing anything.
-        assert!(!should_nudge(AgentStatus::Running, true, 1));
-        // Waiting on a permission prompt: typed text would answer that dialog.
-        assert!(!should_nudge(AgentStatus::Waiting, true, 1));
-        assert!(!should_nudge(AgentStatus::Error, true, 1));
-        assert!(!should_nudge(AgentStatus::Dead, true, 1));
-        // Spawned but Claude Code has not started: `idle` from birth, and the
-        // pane may be showing the trust dialog, where Enter means "No, exit".
-        // Seen live: a nudge typed here quit the child.
-        assert!(!should_nudge(AgentStatus::Idle, false, 1));
-    }
-
-    #[test]
-    fn the_nudge_tells_the_agent_how_to_read_the_message() {
-        assert!(NUDGE.contains("message_inbox"));
-        assert!(!NUDGE.contains('\n'), "one line: it is typed as a prompt");
-    }
 }

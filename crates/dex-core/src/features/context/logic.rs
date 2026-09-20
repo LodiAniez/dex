@@ -112,6 +112,29 @@ pub fn clean_tags(tags: Option<&str>) -> Option<String> {
     (!cleaned.is_empty()).then(|| cleaned.join(","))
 }
 
+/// Whether an idle agent should be woken to read messages waiting for it
+/// (issue #58). The caller has decided it is idle and has nothing else to do.
+///
+/// Only an agent that has started: a spawned row is `idle` before Claude Code
+/// is there at all, when the pane may be showing the trust dialog, where typed
+/// text plus Enter means "No, exit".
+///
+/// `woken_at` is the newest message it was last woken for, so an agent that
+/// read nothing is not woken again for the same message, and a message sent
+/// after that wake does wake it. `idle_at` is when the agent last changed
+/// status and `woken_idle_at` what that was at its last wake - both hook
+/// stamps, so on one clock: a second nudge waits until the agent has had a
+/// turn of its own, rather than queueing behind the first.
+pub fn wake_for_messages(
+    started: bool,
+    newest_unread: Option<i64>,
+    woken_at: i64,
+    woken_idle_at: i64,
+    idle_at: i64,
+) -> bool {
+    started && newest_unread.is_some_and(|newest| newest > woken_at) && idle_at > woken_idle_at
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,6 +213,28 @@ mod tests {
             mirror_path(Path::new("C:/ws"), "build.notes"),
             Path::new("C:/ws/.dex/context/build.notes.md")
         );
+    }
+
+    #[test]
+    fn an_idle_agent_is_woken_for_a_message_newer_than_its_last_wake() {
+        assert!(wake_for_messages(true, Some(9), 0, 0, 100));
+        assert!(wake_for_messages(true, Some(9), 8, 50, 100));
+        // Woken for it already, and it read nothing: not again.
+        assert!(!wake_for_messages(true, Some(9), 9, 50, 100));
+        assert!(!wake_for_messages(true, None, 0, 0, 100));
+    }
+
+    #[test]
+    fn a_second_wake_waits_until_the_agent_has_had_a_turn() {
+        // Idle since the same moment as its last wake: it has not answered yet.
+        assert!(!wake_for_messages(true, Some(9), 5, 100, 100));
+        // It took its turn and came back idle: a newer message wakes it.
+        assert!(wake_for_messages(true, Some(9), 5, 100, 110));
+    }
+
+    #[test]
+    fn a_spawned_row_idle_before_claude_code_started_is_not_woken() {
+        assert!(!wake_for_messages(false, Some(9), 0, 0, 100));
     }
 
     #[test]
