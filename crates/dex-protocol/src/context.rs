@@ -210,6 +210,18 @@ pub struct Appended {
     pub seq: i64,
 }
 
+/// Result of `context.message_send`: where it landed in the log, and whether
+/// the recipient was woken to read it (issue #58).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct Sent {
+    /// Its position in the log.
+    pub seq: i64,
+    /// Whether the recipient was idle and has been woken to read it. When
+    /// false it is working, and reads the message at its next turn.
+    pub woken: bool,
+}
+
 /// Args for `context.inbox` and `context.events`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeArgs {

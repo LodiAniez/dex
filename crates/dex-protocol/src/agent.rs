@@ -34,6 +34,8 @@ pub struct AgentView {
     pub workspace_id: String,
     /// Display label.
     pub label: Option<String>,
+    /// Messages waiting unread for it: what a sender cannot otherwise see.
+    pub unread: usize,
     /// `claude`.
     pub backend: String,
     /// Current state.

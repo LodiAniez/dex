@@ -232,7 +232,7 @@ Everything above lands in one store per workspace, kept by Dex in SQLite and mir
 
 - **Notes** — freeform, append-only, timestamped. "Switched the auth module to JWT; tokens expire after 15 minutes."
 - **Entries** — durable facts under lowercase, `/`-namespaced keys, with versions. Two agents writing one key with `--expected-version` get a conflict instead of a silent overwrite.
-- **Messages** — directed at one agent, read once. A message to an agent that has finished its task and is sitting idle wakes it: Dex types a one-line prompt into its pane telling it to read its inbox. That is how a parent changes a child's task after the fact without stopping it and starting another.
+- **Messages** — directed at one agent, read once. A message to an agent that has finished its task and is sitting idle wakes it: Dex types a one-line prompt into its pane telling it to read its inbox. One sent while it is working waits, and wakes it when that turn ends. The sender is told which happened, and `dex agent list --json` (and `agents_list`) says how many messages wait unread for each agent. That is how a parent changes a child's task after the fact without stopping it and starting another.
 
 Agents never see their own events echoed back, and status changes are logged for you (the activity stream) but kept out of other agents' digests — a sibling flipping between idle and running twenty times a turn is not news. Digests are written as plain facts, never as instructions, so they cannot be mistaken for prompt injection.
 

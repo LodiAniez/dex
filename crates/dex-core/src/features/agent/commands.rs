@@ -36,7 +36,8 @@ pub async fn event(state: &AppState, args: AgentEventArgs) -> Result<EventOutcom
         return Ok(IGNORED);
     }
     let now = clock::now_millis();
-    state
+    let pane = args.pane.clone();
+    let applied = state
         .db
         .call(move |conn| -> Outcome {
             let Some(workspace_id) = workspace::find_pane_workspace(conn, &args.pane)? else {
@@ -56,7 +57,29 @@ pub async fn event(state: &AppState, args: AgentEventArgs) -> Result<EventOutcom
             }
             Ok(Ok(APPLIED))
         })
-        .await?
+        .await??;
+    // A turn that has just ended leaves the agent idle: if messages came in
+    // while it worked, it is woken to read them now (issue #58).
+    if let Some(pane) = woken(state, pane).await? {
+        context::nudge(state, pane).await;
+    }
+    Ok(applied)
+}
+
+/// The pane to wake for messages waiting, when the hook just applied left its
+/// agent idle with some.
+async fn woken(state: &AppState, pane: String) -> Result<Option<String>, AgentError> {
+    Ok(state
+        .db
+        .call(move |conn| -> rusqlite::Result<Option<String>> {
+            let Some(agent) = store::find_live_in_pane(conn, &pane)? else {
+                return Ok(None);
+            };
+            let started = store::has_session(conn, &agent.id)?;
+            let wake = context::take_wake(conn, &agent.id, agent.status, started)?;
+            Ok(wake.then_some(pane))
+        })
+        .await?)
 }
 
 /// One hook, with everything the handlers below need.
@@ -333,6 +356,7 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                     (None, None) => None,
                 };
                 let started = store::started_ids(conn)?;
+                let unread = context::unread_counts(conn)?;
                 // An agent asking - one runs in the pane the request came from -
                 // is told that a colleague is waiting, not what for: the reason
                 // can name a file or a command, and is the owner's to see.
@@ -345,7 +369,8 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                     .filter(|agent| scope.as_ref().is_none_or(|id| id == &agent.workspace_id))
                     .map(|agent| {
                         let has_started = started.contains(&agent.id);
-                        let mut seen = view(agent, has_started);
+                        let waiting = unread.get(&agent.id).copied().unwrap_or(0);
+                        let mut seen = view(agent, has_started, waiting);
                         let theirs = asker.as_ref().is_none_or(|id| id == &seen.id);
                         // Nor what a colleague asked the owner: it may quote anything.
                         if !theirs
@@ -379,12 +404,13 @@ pub async fn pane_exited(
     Ok(EventOutcome { applied: ended > 0 })
 }
 
-fn view(agent: Agent, started: bool) -> AgentView {
+fn view(agent: Agent, started: bool, unread: usize) -> AgentView {
     AgentView {
         id: agent.id,
         pane_id: agent.pane_id,
         workspace_id: agent.workspace_id,
         label: agent.label,
+        unread,
         backend: agent.backend,
         status: agent.status,
         status_detail: agent.status_detail,

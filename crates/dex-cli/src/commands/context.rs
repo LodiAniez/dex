@@ -153,7 +153,7 @@ pub fn run(
             }
         }
         ContextCommand::Send { target, body } => {
-            let appended: Appended = client.call(
+            let sent: dex_protocol::context::Sent = client.call(
                 "context.message_send",
                 with(
                     json!({ "target_agent": target, "body": body.join(" ") }),
@@ -161,7 +161,11 @@ pub fn run(
                 ),
             )?;
             if format.json {
-                output::json(&appended);
+                output::json(&sent);
+            } else if sent.woken {
+                println!("Sent. They were idle, and have been woken to read it.");
+            } else {
+                println!("Sent. They are working; they will see it at their next turn.");
             }
         }
         ContextCommand::Delete { seq } => {

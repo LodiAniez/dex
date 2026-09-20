@@ -14,6 +14,7 @@ use crate::features::workspace;
 
 mod digest;
 mod log;
+mod waking;
 
 /// A state with one workspace rooted in a temp directory, and its pane id.
 async fn workspace_at() -> (tempfile::TempDir, tempfile::TempDir, AppState, String) {

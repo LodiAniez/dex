@@ -101,8 +101,10 @@ retry or work around - it means do the work yourself.
 - `message_send` when it matters to one agent and nobody else. This is also
   how you change a child's task after it has started: send it the new
   requirement. A child that is busy sees it at its next tool call; one that
-  has finished and is sitting idle is woken to read it. You do not need to
-  stop it and start another.
+  has finished and is sitting idle is woken to read it, as is one that
+  finishes with your message still unread. `message_send` tells you which
+  happened, and `agents_list` says how many messages wait unread for each
+  agent. You do not need to stop it and start another.
 - `message_inbox` the moment your digest says messages are waiting - the digest
   tells you the count, never the contents.
 

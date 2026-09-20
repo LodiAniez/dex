@@ -77,7 +77,12 @@ fn render(name: &str, data: &Value) -> String {
             data.get("version").and_then(Value::as_i64).unwrap_or(0)
         ),
         "note_append" => "Recorded. Other agents will see it at their next turn.".to_owned(),
-        "message_send" => "Sent.".to_owned(),
+        // Whether it was woken matters to the sender: an agent that is
+        // working reads the message at its next turn, not now.
+        "message_send" => match data.get("woken").and_then(Value::as_bool) {
+            Some(true) => "Sent. They were idle, and have been woken to read it.".to_owned(),
+            _ => "Sent. They are working; they will see it at their next turn.".to_owned(),
+        },
         "message_inbox" => match data.get("messages").and_then(Value::as_array) {
             Some(messages) if messages.is_empty() => "No messages.".to_owned(),
             _ => pretty(data),

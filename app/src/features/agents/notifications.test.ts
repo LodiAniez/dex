@@ -17,6 +17,7 @@ function agent(id: string, status: AgentStatus, extra: Partial<AgentView> = {}):
     pane_id: `pane-${id}`,
     workspace_id: "ws",
     label: id,
+    unread: 0,
     backend: "claude",
     status,
     status_detail: null,

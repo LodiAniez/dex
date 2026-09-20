@@ -22,6 +22,10 @@ workspace_id: string,
  */
 label: string | null, 
 /**
+ * Messages waiting unread for it: what a sender cannot otherwise see.
+ */
+unread: number, 
+/**
  * `claude`.
  */
 backend: string, 

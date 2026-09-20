@@ -11,7 +11,10 @@ use rusqlite::Connection;
 use thiserror::Error;
 
 /// Every migration, in order. Position + 1 is its schema version.
-const MIGRATIONS: &[&str] = &[include_str!("../../migrations/001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../../migrations/001_init.sql"),
+    include_str!("../../migrations/002_wake_mark.sql"),
+];
 
 /// Failures opening or migrating the database.
 #[derive(Debug, Error)]

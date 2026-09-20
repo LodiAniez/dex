@@ -3,6 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
+use dex_protocol::agent::AgentStatus;
+
 use crate::platform::paths;
 
 /// Longest key the store accepts (PRD §10.1).
@@ -112,6 +114,28 @@ pub fn clean_tags(tags: Option<&str>) -> Option<String> {
     (!cleaned.is_empty()).then(|| cleaned.join(","))
 }
 
+/// Whether an agent should be woken to read messages waiting for it: one that
+/// has finished its turn and is sitting idle, with a message newer than the
+/// last wake it was given (issue #58).
+///
+/// Only an agent that has started: a spawned row is `idle` before Claude Code
+/// is there at all, when the pane may be showing the trust dialog, where typed
+/// text plus Enter means "No, exit". A running agent sees the message in its
+/// next delta; one waiting on a permission dialog would have the text land in
+/// the dialog; an ended one has no prompt to type into.
+///
+/// `woken_at` is the newest message it was last woken for, so an agent that
+/// read nothing is not woken again for the same message - and a message sent
+/// after that wake does wake it.
+pub fn wake_for_messages(
+    status: AgentStatus,
+    started: bool,
+    newest_unread: Option<i64>,
+    woken_at: i64,
+) -> bool {
+    started && status == AgentStatus::Idle && newest_unread.is_some_and(|newest| newest > woken_at)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,6 +214,30 @@ mod tests {
             mirror_path(Path::new("C:/ws"), "build.notes"),
             Path::new("C:/ws/.dex/context/build.notes.md")
         );
+    }
+
+    #[test]
+    fn an_idle_agent_is_woken_for_a_message_newer_than_its_last_wake() {
+        assert!(wake_for_messages(AgentStatus::Idle, true, Some(9), 0));
+        assert!(wake_for_messages(AgentStatus::Idle, true, Some(9), 8));
+        // Woken for it already, and it read nothing: not again.
+        assert!(!wake_for_messages(AgentStatus::Idle, true, Some(9), 9));
+        assert!(!wake_for_messages(AgentStatus::Idle, true, None, 0));
+    }
+
+    #[test]
+    fn nobody_else_is_woken() {
+        for status in [
+            AgentStatus::Running,
+            AgentStatus::Waiting,
+            AgentStatus::Error,
+            AgentStatus::Dead,
+            AgentStatus::Unknown,
+        ] {
+            assert!(!wake_for_messages(status, true, Some(9), 0), "{status:?}");
+        }
+        // A spawned row is idle before Claude Code is there at all.
+        assert!(!wake_for_messages(AgentStatus::Idle, false, Some(9), 0));
     }
 
     #[test]
