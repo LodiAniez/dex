@@ -149,7 +149,7 @@ pub(super) fn observe(watches: &Watches, panes: &super::Panes, pane_id: &str, by
     let started = super::spawn_named(format!("pty-answer-{pane}"), move || {
         thread::sleep(answer.settle);
         for key in answer.keys {
-            if super::write_to(&panes, &pane, &key).is_err() {
+            if super::writing::write_to(&panes, &pane, &key).is_err() {
                 return;
             }
             thread::sleep(answer.gap);

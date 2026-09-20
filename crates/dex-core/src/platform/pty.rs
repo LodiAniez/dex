@@ -24,9 +24,9 @@ mod shell;
 #[cfg(test)]
 mod tests;
 mod watch;
+mod writing;
 
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::mpsc::sync_channel;
 use std::sync::{Arc, Mutex};
@@ -134,7 +134,7 @@ pub enum PtyError {
 /// A live pane's handles. Removed from the map when its child exits.
 struct Pane {
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    writer: writing::Writer,
     killer: Box<dyn ChildKiller + Send + Sync>,
     flow: Arc<Flow>,
     /// Where the output goes: the window showing the pane (`relay.rs`).
@@ -219,7 +219,7 @@ impl PtySupervisor {
             id.clone(),
             Pane {
                 master: pair.master,
-                writer,
+                writer: writing::writer(writer),
                 killer,
                 pid,
                 flow,
@@ -246,7 +246,7 @@ impl PtySupervisor {
 
     /// Sends input bytes to a pane's process.
     pub fn write(&self, pane_id: &str, bytes: &[u8]) -> Result<(), PtyError> {
-        write_to(&self.panes, pane_id, bytes)
+        writing::write_to(&self.panes, pane_id, bytes)
     }
 
     /// Wraps a pane's sink so an armed answer sees the output on its way past.
@@ -351,20 +351,6 @@ impl PtySupervisor {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
-}
-
-/// Sends input to a pane, given the map directly. `watch` answers prompts from
-/// its own thread and has no supervisor to call.
-fn write_to(panes: &Panes, pane_id: &str, bytes: &[u8]) -> Result<(), PtyError> {
-    let mut panes = panes
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let pane = panes
-        .get_mut(pane_id)
-        .ok_or_else(|| PtyError::NoSuchPane(pane_id.to_owned()))?;
-    pane.writer.write_all(bytes)?;
-    pane.writer.flush()?;
-    Ok(())
 }
 
 fn command(request: &SpawnRequest) -> CommandBuilder {
