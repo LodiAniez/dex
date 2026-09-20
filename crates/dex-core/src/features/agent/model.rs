@@ -51,6 +51,18 @@ pub enum AgentError {
     /// No agent, and no pane with a live agent, matches the target.
     #[error("no running agent matches {0:?}")]
     NoSuchAgent(String),
+    /// A label at work in more than one workspace, asked for by a caller with
+    /// no workspace of its own (issue #59). Labels are unique per workspace.
+    #[error(
+        "{target:?} is at work in more than one workspace ({}); say which with --workspace",
+        .candidates.join(", ")
+    )]
+    AmbiguousTarget {
+        /// What was asked for.
+        target: String,
+        /// Everything it matched, as "agent in workspace".
+        candidates: Vec<String>,
+    },
     /// The agent has already ended.
     #[error("agent {0} has already ended")]
     NotRunning(String),

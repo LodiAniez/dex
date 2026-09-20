@@ -10,7 +10,7 @@
 use dex_protocol::agent::{AgentStatus, PromptAgentArgs, Prompted};
 use dex_protocol::pane::SendArgs;
 
-use super::identity::find_target;
+use super::identity::{self, find_target};
 use super::model::AgentError;
 use super::store;
 use crate::app::AppState;
@@ -79,10 +79,19 @@ pub async fn prompt(state: &AppState, args: PromptAgentArgs) -> Result<Prompted,
         return Err(AgentError::EmptyPrompt);
     }
     let target = args.agent;
+    let workspace = args.workspace;
+    let from_pane = args.from_pane;
     let (agent, started) = state
         .db
         .call(move |conn| -> rusqlite::Result<Result<_, AgentError>> {
-            let agent = match find_target(conn, &target)? {
+            // A label names an agent in the caller's workspace (issue #59).
+            let within =
+                match identity::caller_workspace(conn, workspace.as_deref(), from_pane.as_deref())?
+                {
+                    Ok(within) => within,
+                    Err(err) => return Ok(Err(err)),
+                };
+            let agent = match find_target(conn, &target, within.as_deref())? {
                 Ok(agent) => agent,
                 Err(err) => return Ok(Err(err)),
             };

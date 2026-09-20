@@ -159,6 +159,7 @@ async fn clocking_out_closes_the_pane_even_of_an_agent_the_owner_started() {
             graceful: true,
             close_pane: true,
             from_pane: None,
+            workspace: None,
         },
     )
     .await

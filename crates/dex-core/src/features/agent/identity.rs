@@ -95,9 +95,41 @@ pub fn ended_in_workspace(conn: &Connection, workspace_id: &str) -> rusqlite::Re
         .collect())
 }
 
-/// For other slices: the id of the agent a target names, or `None`.
-pub fn resolve_agent(conn: &Connection, target: &str) -> rusqlite::Result<Option<String>> {
-    Ok(find_target(conn, target)?.ok().map(|agent| agent.id))
+/// For other slices: the id of the agent a target names, or `None`. `within`
+/// is the caller's workspace, which is where a label is looked for.
+pub fn resolve_agent(
+    conn: &Connection,
+    target: &str,
+    within: Option<&str>,
+) -> rusqlite::Result<Option<String>> {
+    Ok(find_target(conn, target, within)?
+        .ok()
+        .map(|agent| agent.id))
+}
+
+/// For this slice's commands: the workspace a request speaks from - the one
+/// it named, else the one holding the pane it came from. `None` when it has
+/// neither, which is a `dex` command run outside any pane.
+///
+/// A named workspace wins over the caller's pane, as it does for `context`:
+/// naming one is asking for it. `agent.spawn` reads them the other way round
+/// (`spawn::caller`), because a spawned agent's pane is split from the
+/// caller's, and it must be split where the caller is.
+pub fn caller_workspace(
+    conn: &Connection,
+    workspace: Option<&str>,
+    from_pane: Option<&str>,
+) -> rusqlite::Result<Result<Option<String>, AgentError>> {
+    if let Some(target) = workspace {
+        return Ok(match workspace::workspace_id(conn, target)? {
+            Ok(id) => Ok(Some(id)),
+            Err(err) => Err(err.into()),
+        });
+    }
+    let Some(pane) = from_pane else {
+        return Ok(Ok(None));
+    };
+    Ok(Ok(workspace::find_pane_workspace(conn, pane)?))
 }
 
 /// The first block of a uuid, which is enough to tell agents apart by eye.
@@ -107,20 +139,56 @@ fn short_id(id: &str) -> String {
 
 /// The agent a target names: its id, its label, or a pane (id or label) whose
 /// live agent it is.
+///
+/// `within` is the caller's workspace, and labels are looked for inside it:
+/// they are unique per workspace, not across them, so two workspaces may each
+/// have a `reviewer` at work (issue #59). An id is unique everywhere and names
+/// its agent from anywhere. With no workspace to go on - a `dex` command run
+/// outside any pane - a label that matches in several workspaces is refused
+/// rather than guessed at, and the caller is asked to say which.
 pub(super) fn find_target(
     conn: &Connection,
     target: &str,
+    within: Option<&str>,
 ) -> rusqlite::Result<Result<Agent, AgentError>> {
     if let Some(agent) = store::find_agent(conn, target)? {
         return Ok(Ok(agent));
     }
-    if let Some(agent) = store::find_live_by_label(conn, target)? {
+    let mut labelled = store::list_live_by_label(conn, target, within)?;
+    // Several matches in one workspace is old data, not an ambiguous request:
+    // an agent keeps the label it was hired with, so relabelling its pane and
+    // hiring again leaves two. The newest is what Dex has always taken, and
+    // asking for a workspace would not narrow it.
+    if within.is_none() && labelled.len() > 1 {
+        return Ok(Err(in_several_workspaces(conn, target, &labelled)?));
+    }
+    if let Some(agent) = labelled.pop() {
         return Ok(Ok(agent));
     }
     let missing = || AgentError::NoSuchAgent(target.to_owned());
-    Ok(match workspace::pane_id(conn, target)? {
+    Ok(match workspace::pane_id_in(conn, target, within)? {
         Ok(pane) => store::find_live_in_pane(conn, &pane)?.ok_or_else(missing),
         Err(WorkspaceError::NoSuchPane(_)) => Err(missing()),
         Err(err) => Err(err.into()),
+    })
+}
+
+/// Which agents a label matched, and where, so the caller can name one
+/// workspace and mean one agent.
+fn in_several_workspaces(
+    conn: &Connection,
+    target: &str,
+    matched: &[Agent],
+) -> rusqlite::Result<AgentError> {
+    let mut candidates = Vec::new();
+    for agent in matched {
+        let workspace = workspace::workspace_name(conn, &agent.workspace_id)?
+            .unwrap_or_else(|| agent.workspace_id.clone());
+        // The whole id: a candidate is meant to be pasted back as a target.
+        candidates.push(format!("{} in {workspace}", agent.id));
+    }
+    Ok(AgentError::AmbiguousTarget {
+        target: target.to_owned(),
+        candidates,
     })
 }

@@ -147,7 +147,11 @@ pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Sent, C
                     Ok(scope) => scope,
                     Err(err) => return Ok(Err(err)),
                 };
-                let Some(target) = agent::resolve_agent(conn, &args.target_agent)? else {
+                // Within the sender's own workspace: a label names one agent
+                // there, and may name another somewhere else (issue #59).
+                let found =
+                    agent::resolve_agent(conn, &args.target_agent, Some(&scope.workspace_id))?;
+                let Some(target) = found else {
                     return Ok(Err(ContextError::NoSuchAgent(args.target_agent)));
                 };
                 let seq = log(

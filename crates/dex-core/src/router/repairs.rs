@@ -40,8 +40,15 @@ pub(super) fn error_body(err: &CoreError) -> ErrorBody {
         ),
         CoreError::Agent(AgentError::NoSuchAgent(_)) => (
             ErrorCode::NoSuchAgent,
-            "Run `dex agent list` to see the running agents; target one by its id or its pane's label."
+            "Run `dex agent list` to see the running agents; target one by its id or its pane's label. A label names an agent in your own workspace, so one at work in another needs `--workspace <name-or-id>`, or its id."
                 .to_owned(),
+        ),
+        CoreError::Agent(AgentError::AmbiguousTarget { candidates, .. }) => (
+            ErrorCode::AmbiguousTarget,
+            format!(
+                "Labels are unique within a workspace, not across them. Say which with `--workspace`, or target one of these by id: {}.",
+                candidates.join("; ")
+            ),
         ),
         CoreError::Agent(AgentError::NotRunning(_)) => (
             ErrorCode::NoSuchAgent,
@@ -194,7 +201,7 @@ fn context_repair(err: &ContextError) -> (ErrorCode, String) {
         }
         ContextError::NoSuchAgent(_) => (
             ErrorCode::NoSuchAgent,
-            "Run `dex agent list` to see which agents are running, and target one by label."
+            "Run `dex agent list` to see which agents are running, and target one by label. A label names an agent in your own workspace; one working in another is reached by its id."
                 .to_owned(),
         ),
         ContextError::NoWorkspace => (

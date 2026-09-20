@@ -65,7 +65,7 @@ pub(super) fn scope(
     };
     let agent_id = match (&caller.agent, &caller.pane) {
         (Some(id), _) => Some(id.clone()),
-        (None, Some(pane)) => agent::resolve_agent(conn, pane)?,
+        (None, Some(pane)) => agent::resolve_agent(conn, pane, Some(&workspace_id))?,
         (None, None) => None,
     };
     Ok(Ok(Scope {
