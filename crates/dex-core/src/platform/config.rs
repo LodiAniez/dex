@@ -33,14 +33,17 @@ const SETTLE: Duration = Duration::from_millis(250);
 /// anything useful and the agent would be better off with none.
 const MIN_DIGEST: usize = 200;
 
-/// Everything the owner may configure.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+/// Everything the owner may configure. Every default is the field's own:
+/// nothing set means nothing chosen.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// Shell for new panes; the `pwsh`/`powershell`/`cmd` search when unset.
     pub shell: Option<String>,
-    /// Where worktrees are created (PRD §8).
-    pub worktree_base: PathBuf,
+    /// Where worktrees are created (PRD §8). Unset, each goes inside the
+    /// workspace it is for, under `<root>/.dex/worktrees`; set, every worktree
+    /// goes here instead.
+    pub worktree_base: Option<PathBuf>,
     /// Loopback port for the WSL TCP fallback (PRD §6.4). Off when unset.
     pub tcp_port: Option<u16>,
     /// Display flow-control watermarks (PRD §7.1).
@@ -133,22 +136,6 @@ pub struct DigestSettings {
 /// Permission modes Claude Code accepts. `bypassPermissions` is allowed here
 /// but only honoured for an agent in its own worktree (PRD §9.4).
 const PERMISSION_MODES: [&str; 4] = ["default", "acceptEdits", "auto", "bypassPermissions"];
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            shell: None,
-            worktree_base: default_worktree_base(),
-            tcp_port: None,
-            flow: FlowSettings::default(),
-            agents: AgentSettings::default(),
-            digest: DigestSettings::default(),
-            updates: UpdateSettings::default(),
-            ui: UiSettings::default(),
-            keys: BTreeMap::new(),
-        }
-    }
-}
 
 impl Default for FlowSettings {
     fn default() -> Self {
@@ -261,14 +248,6 @@ impl Config {
         }
         problems
     }
-}
-
-/// `%USERPROFILE%\dex\worktrees`, or a relative fallback if there is no home.
-fn default_worktree_base() -> PathBuf {
-    paths::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("dex")
-        .join("worktrees")
 }
 
 /// The live configuration. Cheap to clone; clones share one setting.

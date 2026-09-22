@@ -126,7 +126,7 @@ Click anyone to see their work. If they need you, the panel says what for at the
 
 Names are for reading. Agents still message each other by **label**, which is why the office always shows the label beside the name. The office changes nothing about how agents run; it is another way of looking at what Dex already tracks. Dex remembers the view you last chose; `[ui] view` in the config sets what it opens as before you have chosen.
 
-**Repositories and worktrees.** Register a repo once (`dex repo add <path>`, or `dex repo scan <folder>` to find several). Then any agent — or you — can get a fresh worktree on a new branch under `%USERPROFILE%\dex\worktrees\<repo>\<branch>`, so parallel agents never share a working tree.
+**Repositories and worktrees.** Register a repo once (`dex repo add <path>`, or `dex repo scan <folder>` to find several). Then any agent — or you — can get a fresh worktree on a new branch, so parallel agents never share a working tree. It goes inside the workspace it is for, at `<workspace root>\.dex\worktrees\<repo>\<branch>`, beside the rest of that work; Dex puts a `.gitignore` in `.dex\worktrees` so that, when the workspace's root is the repository itself, the worktrees never show up in its `git status` or get swept into a `git add -A`. A worktree made without a workspace (`dex worktree add` with no `--workspace`) goes under `%USERPROFILE%\dex\worktrees`, where every worktree used to go, and `dex worktree remove` finds a worktree by its branch wherever it was made.
 
 **PowerShell or WSL.** On Windows with WSL installed, choose the terminal Dex opens in: the **gear** in the title bar (*Settings* in the palette), **Terminal** at the top of the setup panel, or `dex pane terminal wsl:Ubuntu` (`dex pane terminal windows` to go back; `dex pane terminal` shows the choices). Everything new then opens there - a new workspace, a split, and every agent spawned, by you or by another agent - and every pane whose shell has not started yet. Panes already running keep their shell: the panel lists them, the ones with nothing running in them ticked, and restarts the ones you leave ticked, each in its folder with its scrollback kept. A pane Dex cannot be sure is idle - an agent, a build, `sudo` in WSL - is left unticked; restarting it ends what runs in it. When Dex starts, every pane opens in the chosen terminal. Panes in WSL say their distro in the header. If the chosen distro is uninstalled, Dex opens in PowerShell again and says so.
 
@@ -169,7 +169,7 @@ Settings live in `%APPDATA%\Dex\config.toml` and are **hot-reloaded** — save t
 
 ```toml
 shell = "C:/Program Files/PowerShell/7/pwsh.exe"   # default: pwsh, then powershell, then cmd
-worktree_base = "D:/work/worktrees"                # default: %USERPROFILE%\dex\worktrees
+worktree_base = "D:/work/worktrees"                # default: inside each workspace, <root>/.dex/worktrees
 
 [agents]
 max_depth = 2                # how deep spawning may go

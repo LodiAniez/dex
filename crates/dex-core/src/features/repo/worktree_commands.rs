@@ -31,55 +31,105 @@ pub async fn add(state: &AppState, args: AddWorktreeArgs) -> Result<WorktreeList
         });
     }
     let repo = resolve(state, &args.repo).await?;
-    let path = logic::worktree_path(&state.worktree_base(), &repo.name, &args.branch);
+    let workspace = match args.workspace.as_deref() {
+        Some(target) => Some(workspace_and_root(state, target).await?),
+        None => None,
+    };
+    let root = workspace.as_ref().and_then(|(_, root)| root.clone());
+    let base = base(state, root.as_deref());
+    let path = logic::worktree_path(&base, &repo.name, &args.branch);
     let repo_path = repo.path.clone();
     let branch = args.branch.clone();
     let created: PathBuf = tokio::task::spawn_blocking(move || {
+        fence_off(&base)?;
         create(Path::new(&repo_path), &path, &branch)?;
         Ok::<PathBuf, RepoError>(path)
     })
     .await
     .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))??;
 
-    if let Some(target) = args.workspace {
+    if let Some((workspace_id, _)) = workspace {
         let normalized = paths::normalize(&created);
         let repo_id = repo.id.clone();
         let branch = args.branch.clone();
         state
             .db
-            .call(move |conn| -> rusqlite::Result<Result<(), RepoError>> {
-                let workspace_id = match workspace::workspace_id(conn, &target)? {
-                    Ok(id) => id,
-                    Err(err) => return Ok(Err(err.into())),
-                };
+            .call(move |conn| {
                 store::attach(
                     conn,
                     &workspace_id,
                     &repo_id,
                     Some(&normalized),
                     Some(&branch),
-                )?;
-                Ok(Ok(()))
+                )
             })
-            .await??;
+            .await?;
     }
     list(state, RepoArgs { repo: repo.path }).await
+}
+
+/// Where a worktree for a workspace rooted at `root` goes: see
+/// `logic::worktree_base`.
+fn base(state: &AppState, root: Option<&str>) -> PathBuf {
+    let configured = state.config.get().worktree_base.clone();
+    logic::worktree_base(
+        configured.as_deref(),
+        root.map(Path::new),
+        paths::home_dir().as_deref(),
+    )
+}
+
+/// The workspace a target names, and its root.
+async fn workspace_and_root(
+    state: &AppState,
+    target: &str,
+) -> Result<(String, Option<String>), RepoError> {
+    let target = target.to_owned();
+    state
+        .db
+        .call(
+            move |conn| -> rusqlite::Result<Result<(String, Option<String>), RepoError>> {
+                let id = match workspace::workspace_id(conn, &target)? {
+                    Ok(id) => id,
+                    Err(err) => return Ok(Err(err.into())),
+                };
+                let root = workspace::workspace_root(conn, &id)?;
+                Ok(Ok((id, root)))
+            },
+        )
+        .await?
+}
+
+/// Makes the worktree directory, and tells git to look away from it
+/// (`logic::IGNORE_EVERYTHING`). A `.gitignore` already there is the owner's,
+/// and is left as it is.
+fn fence_off(base: &Path) -> Result<(), RepoError> {
+    let failed = |err: std::io::Error| RepoError::Git(GitError::Other(err.to_string()));
+    std::fs::create_dir_all(base).map_err(failed)?;
+    let ignore = base.join(".gitignore");
+    if !ignore.exists() {
+        std::fs::write(&ignore, logic::IGNORE_EVERYTHING).map_err(failed)?;
+    }
+    Ok(())
 }
 
 /// `worktree.remove`: take a worktree away and forget it.
 pub async fn remove(state: &AppState, args: RemoveWorktreeArgs) -> Result<WorktreeList, RepoError> {
     let repo = resolve(state, &args.repo).await?;
-    let path = logic::worktree_path(&state.worktree_base(), &repo.name, &args.branch);
     let repo_path = repo.path.clone();
+    let (name, branch) = (repo.name.clone(), args.branch.clone());
     let force = args.force;
     tokio::task::spawn_blocking(move || {
+        let dir = Path::new(&repo_path);
+        let Some(path) = checkout_of(dir, &branch)? else {
+            return Err(RepoError::NoSuchWorktree { repo: name, branch });
+        };
         let mut command = vec!["worktree", "remove"];
         if force {
             command.push("--force");
         }
-        let path = path.to_string_lossy().into_owned();
         command.push(&path);
-        proc::git(Path::new(&repo_path), &command)
+        proc::git(dir, &command).map_err(RepoError::Git)
     })
     .await
     .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))??;
@@ -91,6 +141,19 @@ pub async fn remove(state: &AppState, args: RemoveWorktreeArgs) -> Result<Worktr
         .call(move |conn| store::detach(conn, &repo_id, &branch))
         .await?;
     list(state, RepoArgs { repo: repo.path }).await
+}
+
+/// Where the worktree on `branch` is, asked of git rather than worked out:
+/// worktrees used to go under `~/dex/worktrees` and now go inside their
+/// workspace, and one made either way must still be found. The main checkout
+/// is never one of them.
+fn checkout_of(repo: &Path, branch: &str) -> Result<Option<String>, RepoError> {
+    let listed = proc::git(repo, &["worktree", "list", "--porcelain"])?;
+    Ok(logic::parse_worktrees(&listed.stdout)
+        .into_iter()
+        .skip(1)
+        .find(|(_, on)| on.as_deref() == Some(branch))
+        .map(|(path, _)| path))
 }
 
 /// `worktree.list`: every checkout git knows for a repo, main first.
@@ -186,7 +249,8 @@ fn create_in_wsl(distro: &str, repo: &Path, path: &Path, branch: &str) -> Result
     .map_err(RepoError::Git)
 }
 
-/// For the agent slice: creating a worktree as part of a spawn.
+/// For the agent slice: creating a worktree as part of a spawn, inside the
+/// workspace it is for unless the owner set a base of their own.
 ///
 /// Spawning cannot go through `worktree.add`: it needs the path back, and a
 /// spawn that fell back to the main checkout on failure would put two agents
@@ -196,6 +260,7 @@ pub async fn create_for_spawn(
     repo_target: &str,
     branch: &str,
     runtime: &str,
+    workspace_id: &str,
 ) -> Result<(String, PathBuf), RepoError> {
     if let Err(reason) = logic::check_branch(branch) {
         return Err(RepoError::InvalidBranch {
@@ -204,7 +269,13 @@ pub async fn create_for_spawn(
         });
     }
     let repo = resolve(state, repo_target).await?;
-    let path = logic::worktree_path(&state.worktree_base(), &repo.name, branch);
+    let id = workspace_id.to_owned();
+    let root = state
+        .db
+        .call(move |conn| workspace::workspace_root(conn, &id))
+        .await?;
+    let base = base(state, root.as_deref());
+    let path = logic::worktree_path(&base, &repo.name, branch);
     let repo_path = repo.path.clone();
     let branch = branch.to_owned();
     let made = path.clone();
@@ -213,9 +284,12 @@ pub async fn create_for_spawn(
             err,
         ))
     })?;
-    tokio::task::spawn_blocking(move || match runtime {
-        Runtime::Wsl(distro) => create_in_wsl(&distro, Path::new(&repo_path), &made, &branch),
-        Runtime::Windows => create(Path::new(&repo_path), &made, &branch).map(|_| ()),
+    tokio::task::spawn_blocking(move || {
+        fence_off(&base)?;
+        match runtime {
+            Runtime::Wsl(distro) => create_in_wsl(&distro, Path::new(&repo_path), &made, &branch),
+            Runtime::Windows => create(Path::new(&repo_path), &made, &branch).map(|_| ()),
+        }
     })
     .await
     .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))??;

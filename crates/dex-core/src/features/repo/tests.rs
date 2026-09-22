@@ -7,12 +7,14 @@
 use std::path::Path;
 use std::process::Command;
 
-use dex_protocol::repo::{AddRepoArgs, AddWorktreeArgs, RemoveWorktreeArgs, RepoArgs, ScanArgs};
+use dex_protocol::repo::{AddRepoArgs, AddWorktreeArgs, RepoArgs, ScanArgs};
 
 use super::model::RepoError;
-use super::{add, add_worktree, list, list_worktrees, remove_worktree, scan, status};
+use super::{add, add_worktree, list, list_worktrees, scan, status};
 use crate::app::AppState;
 use crate::platform::proc::GitError;
+
+mod worktrees;
 
 /// A git repository with one commit, so HEAD and branches exist.
 fn repo_at(dir: &Path) {
@@ -169,107 +171,6 @@ async fn status_counts_the_working_tree() {
     assert_eq!(counts.branch.as_deref(), Some("main"));
     assert_eq!(counts.modified, 1);
     assert_eq!(counts.added, 1);
-}
-
-#[tokio::test]
-async fn a_worktree_is_created_on_a_new_branch_and_removed_again() {
-    let work = tempfile::tempdir().unwrap();
-    repo_at(work.path());
-    // `for_tests` puts the worktree base beside the temp database, so this
-    // never writes into the real home.
-    let (_dir, state) = AppState::for_tests();
-    add(
-        &state,
-        AddRepoArgs {
-            path: path_of(work.path()),
-            name: Some("api".into()),
-        },
-    )
-    .await
-    .unwrap();
-
-    let made = add_worktree(
-        &state,
-        AddWorktreeArgs {
-            repo: "api".into(),
-            branch: "fix/login".into(),
-            workspace: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    let branches: Vec<Option<&str>> = made
-        .worktrees
-        .iter()
-        .map(|wt| wt.branch.as_deref())
-        .collect();
-    assert!(branches.contains(&Some("fix/login")), "{branches:?}");
-    assert!(made.worktrees[0].main, "the main checkout is listed first");
-    let on_disk = state
-        .worktree_base()
-        .join("api")
-        .join("fix-login")
-        .join("README.md");
-    assert!(on_disk.exists(), "the worktree has the repo's files");
-
-    let after = remove_worktree(
-        &state,
-        RemoveWorktreeArgs {
-            repo: "api".into(),
-            branch: "fix/login".into(),
-            force: false,
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(after.worktrees.len(), 1, "only the main checkout is left");
-}
-
-#[tokio::test]
-async fn a_worktree_on_an_existing_branch_reuses_it_rather_than_failing() {
-    // An agent coming back to work it started earlier must not be blocked by
-    // `-b` refusing a branch that is already there.
-    let work = tempfile::tempdir().unwrap();
-    repo_at(work.path());
-    let (_dir, state) = AppState::for_tests();
-    add(
-        &state,
-        AddRepoArgs {
-            path: path_of(work.path()),
-            name: Some("api".into()),
-        },
-    )
-    .await
-    .unwrap();
-    let args = || AddWorktreeArgs {
-        repo: "api".into(),
-        branch: "fix/login".into(),
-        workspace: None,
-    };
-
-    add_worktree(&state, args()).await.unwrap();
-    remove_worktree(
-        &state,
-        RemoveWorktreeArgs {
-            repo: "api".into(),
-            branch: "fix/login".into(),
-            force: false,
-        },
-    )
-    .await
-    .unwrap();
-
-    // The branch still exists; the worktree does not.
-    let again = add_worktree(&state, args()).await;
-    assert!(again.is_ok(), "{again:?}");
-    let branches: Vec<Option<String>> = again
-        .unwrap()
-        .worktrees
-        .into_iter()
-        .map(|wt| wt.branch)
-        .collect();
-    assert!(branches.contains(&Some("fix/login".into())), "{branches:?}");
 }
 
 #[tokio::test]

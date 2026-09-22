@@ -168,6 +168,10 @@ fn repo_repair(err: &RepoError) -> (ErrorCode, String) {
             ErrorCode::GitFailed,
             "Commit or discard the work in that worktree, or remove it with --force.".to_owned(),
         ),
+        RepoError::NoSuchWorktree { repo, .. } => (
+            ErrorCode::InvalidArgs,
+            format!("`dex worktree list {repo}` shows its worktrees and the branch each is on."),
+        ),
         RepoError::Git(GitError::Other(_)) => (
             ErrorCode::GitFailed,
             "Run the same git command in the repository to see what it reports.".to_owned(),

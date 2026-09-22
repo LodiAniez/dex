@@ -76,6 +76,31 @@ pub fn branch_dir(branch: &str) -> String {
     branch.replace('/', "-")
 }
 
+/// Where a workspace's worktrees go (PRD §8): the owner's `worktree_base`
+/// when they have set one; otherwise inside the workspace the worktree is for,
+/// under `<root>/.dex/worktrees`, beside the rest of that work; and with no
+/// workspace to go by, `~/dex/worktrees`, where every worktree used to go.
+pub fn worktree_base(
+    configured: Option<&Path>,
+    workspace_root: Option<&Path>,
+    home: Option<&Path>,
+) -> PathBuf {
+    match (configured, workspace_root) {
+        (Some(base), _) => base.to_path_buf(),
+        (None, Some(root)) => root.join(".dex").join("worktrees"),
+        (None, None) => home
+            .unwrap_or_else(|| Path::new("."))
+            .join("dex")
+            .join("worktrees"),
+    }
+}
+
+/// What Dex writes to `.gitignore` in a worktree directory: ignore all of it.
+/// A workspace's root is often the repository itself, and a worktree inside
+/// it would otherwise show there as untracked - and be swept into the next
+/// `git add -A` as an embedded repository.
+pub const IGNORE_EVERYTHING: &str = "*\n";
+
 /// Where a worktree lives: `<base>/<repo>/<branch with dashes>`.
 pub fn worktree_path(base: &Path, repo: &str, branch: &str) -> PathBuf {
     base.join(repo).join(branch_dir(branch))
@@ -165,6 +190,42 @@ pub fn git_version(printed: &str) -> Option<(u32, u32)> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
+    use super::worktree_base;
+
+    #[test]
+    fn a_worktree_goes_inside_the_workspace_it_is_for() {
+        assert_eq!(
+            worktree_base(
+                None,
+                Some(Path::new("C:/code/api")),
+                Some(Path::new("C:/Users/me"))
+            ),
+            PathBuf::from("C:/code/api/.dex/worktrees")
+        );
+    }
+
+    #[test]
+    fn a_base_the_owner_set_is_where_every_worktree_goes() {
+        assert_eq!(
+            worktree_base(
+                Some(Path::new("D:/work/worktrees")),
+                Some(Path::new("C:/code/api")),
+                Some(Path::new("C:/Users/me"))
+            ),
+            PathBuf::from("D:/work/worktrees")
+        );
+    }
+
+    #[test]
+    fn with_no_workspace_to_go_by_it_goes_where_worktrees_always_went() {
+        assert_eq!(
+            worktree_base(None, None, Some(Path::new("C:/Users/me"))),
+            PathBuf::from("C:/Users/me/dex/worktrees")
+        );
+    }
+
     #[test]
     fn a_git_version_is_read_from_either_side() {
         assert_eq!(

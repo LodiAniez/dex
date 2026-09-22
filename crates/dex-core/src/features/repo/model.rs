@@ -55,6 +55,14 @@ pub enum RepoError {
         version: String,
     },
     /// git said no. Translated by `platform::proc`, never raw stderr.
+    /// `worktree.remove` for a branch no worktree of the repository is on.
+    #[error("no worktree of {repo:?} is on branch {branch:?}")]
+    NoSuchWorktree {
+        /// The repository, by name.
+        repo: String,
+        /// The branch asked for.
+        branch: String,
+    },
     #[error(transparent)]
     Git(#[from] GitError),
     /// A workspace argument did not resolve.
