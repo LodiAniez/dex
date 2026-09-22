@@ -170,7 +170,12 @@ fn repo_repair(err: &RepoError) -> (ErrorCode, String) {
         ),
         RepoError::NoSuchWorktree { repo, .. } => (
             ErrorCode::InvalidArgs,
-            format!("`dex worktree list {repo}` shows its worktrees and the branch each is on."),
+            format!("`dex worktree list \"{repo}\"` shows its worktrees and the branch each is on."),
+        ),
+        RepoError::WorktreeDir { .. } => (
+            ErrorCode::InvalidArgs,
+            "A worktree goes inside its workspace's root when that is a plain folder, and in `worktree_base` (config.toml) otherwise. Make sure that folder exists and can be written to, or point `worktree_base` at one that can."
+                .to_owned(),
         ),
         RepoError::Git(GitError::Other(_)) => (
             ErrorCode::GitFailed,

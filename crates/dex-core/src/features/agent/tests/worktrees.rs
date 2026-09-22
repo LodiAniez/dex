@@ -1,5 +1,7 @@
 //! Spawning into a worktree: the child gets a branch and a checkout of its
-//! own, inside its workspace, or no spawn at all.
+//! own, kept apart from everything outside it, or no spawn at all.
+
+use std::path::Path;
 
 use dex_protocol::agent::SpawnArgs;
 use dex_protocol::repo::AddRepoArgs;
@@ -11,52 +13,87 @@ use crate::app::AppState;
 use crate::features::agent::{AgentError, spawn};
 use crate::features::{repo, workspace};
 
-#[tokio::test]
-async fn a_spawn_into_a_worktree_puts_the_child_on_its_own_branch() {
-    let work = tempfile::tempdir().unwrap();
-    repo_at(work.path());
-    let (_dir, state) = AppState::for_tests();
-    let list = workspace::create(&state, CreateWorkspaceArgs::default())
-        .await
-        .unwrap();
+fn path_of(dir: &Path) -> String {
+    dir.to_string_lossy().replace('\\', "/")
+}
+
+/// A workspace rooted at `root` with a parent agent in its first pane, and
+/// the repository at `work` registered as `api`. Returns that first pane.
+/// Never the default root: a bare workspace's root is the real home.
+async fn lead_in(state: &AppState, root: &Path, work: &Path) -> String {
+    let list = workspace::create(
+        state,
+        CreateWorkspaceArgs {
+            root_path: Some(path_of(root)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
     let first = list.workspaces[0].panes[0].id.clone();
     repo::add(
-        &state,
+        state,
         AddRepoArgs {
-            path: work.path().to_string_lossy().replace('\\', "/"),
+            path: path_of(work),
             name: Some("api".into()),
         },
     )
     .await
     .unwrap();
-    parent_agent(&state, &first, "parent").await;
+    parent_agent(state, &first, "parent").await;
+    first
+}
+
+fn into_worktree(branch: &str, task: &str, from: &str) -> SpawnArgs {
+    SpawnArgs {
+        repo: Some("api".into()),
+        worktree: Some(branch.into()),
+        ..brief(task, from)
+    }
+}
+
+#[tokio::test]
+async fn a_spawned_agents_worktree_is_inside_a_plain_workspace() {
+    let (work, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    repo_at(work.path());
+    let (_dir, state) = AppState::for_tests();
+    let first = lead_in(&state, root.path(), work.path()).await;
 
     let child = spawn(
         &state,
-        SpawnArgs {
-            repo: Some("api".into()),
-            worktree: Some("fix/login".into()),
-            ..brief("fix the login form", &first)
-        },
+        into_worktree("fix/login", "fix the login form", &first),
     )
     .await
     .unwrap();
 
     assert_eq!(child.branch.as_deref(), Some("fix/login"));
-    let checkout = state
-        .config
-        .get()
-        .worktree_base
-        .clone()
-        .expect("for_tests sets a base")
-        .join("api")
-        .join("fix-login");
-    assert!(checkout.join("README.md").exists(), "the worktree is real");
+    let checkout = root.path().join(".dex/worktrees/api/fix-login");
     assert_eq!(
         repo::branch_at(&checkout).as_deref(),
         Some("fix/login"),
-        "and the child is on its own branch"
+        "the child's checkout is in its workspace, on its own branch"
     );
+}
+
+#[tokio::test]
+async fn a_spawned_agents_worktree_stays_out_of_the_checkout_it_came_from() {
+    // The usual workspace: rooted at the repository itself. Nested there, the
+    // child would see the project around its worktree.
+    let work = tempfile::tempdir().unwrap();
+    repo_at(work.path());
+    let (_dir, state) = AppState::for_tests();
+    let first = lead_in(&state, work.path(), work.path()).await;
+
+    spawn(
+        &state,
+        into_worktree("fix/login", "fix the login form", &first),
+    )
+    .await
+    .unwrap();
+
+    let checkout = state.worktree_base().join("api").join("fix-login");
+    assert_eq!(repo::branch_at(&checkout).as_deref(), Some("fix/login"));
+    assert!(!work.path().join(".dex").join("worktrees").exists());
 }
 
 #[tokio::test]
@@ -66,34 +103,13 @@ async fn a_worktree_that_cannot_be_made_aborts_the_whole_spawn() {
     let work = tempfile::tempdir().unwrap();
     repo_at(work.path());
     let (_dir, state) = AppState::for_tests();
-    let list = workspace::create(&state, CreateWorkspaceArgs::default())
-        .await
-        .unwrap();
-    let first = list.workspaces[0].panes[0].id.clone();
-    repo::add(
-        &state,
-        AddRepoArgs {
-            path: work.path().to_string_lossy().replace('\\', "/"),
-            name: Some("api".into()),
-        },
-    )
-    .await
-    .unwrap();
-    parent_agent(&state, &first, "parent").await;
+    let first = lead_in(&state, work.path(), work.path()).await;
     let before = workspace::list(&state).await.unwrap().workspaces[0]
         .panes
         .len();
 
-    let refused = spawn(
-        &state,
-        SpawnArgs {
-            repo: Some("api".into()),
-            // Windows cannot store this, so the worktree cannot be created.
-            worktree: Some("con".into()),
-            ..brief("doomed", &first)
-        },
-    )
-    .await;
+    // Windows cannot store this, so the worktree cannot be created.
+    let refused = spawn(&state, into_worktree("con", "doomed", &first)).await;
 
     assert!(matches!(refused, Err(AgentError::Repo(_))), "{refused:?}");
     let after = workspace::list(&state).await.unwrap().workspaces[0]
@@ -101,56 +117,4 @@ async fn a_worktree_that_cannot_be_made_aborts_the_whole_spawn() {
         .len();
     assert_eq!(after, before, "no pane was left behind");
     assert_eq!(agents(&state).await.len(), 1, "and no agent row either");
-}
-
-#[tokio::test]
-async fn a_spawned_agents_worktree_is_inside_its_workspace() {
-    // The owner's setting, as it is: no base of their own. The workspace has
-    // a root of its own, since a bare workspace's root is the real home.
-    let (work, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    repo_at(work.path());
-    let (_dir, state) = AppState::for_tests_with(|config| config.worktree_base = None);
-    let list = workspace::create(
-        &state,
-        CreateWorkspaceArgs {
-            root_path: Some(root.path().to_string_lossy().replace('\\', "/")),
-            ..Default::default()
-        },
-    )
-    .await
-    .unwrap();
-    let first = list.workspaces[0].panes[0].id.clone();
-    repo::add(
-        &state,
-        AddRepoArgs {
-            path: work.path().to_string_lossy().replace('\\', "/"),
-            name: Some("api".into()),
-        },
-    )
-    .await
-    .unwrap();
-    parent_agent(&state, &first, "parent").await;
-
-    spawn(
-        &state,
-        SpawnArgs {
-            repo: Some("api".into()),
-            worktree: Some("fix/login".into()),
-            ..brief("fix the login form", &first)
-        },
-    )
-    .await
-    .unwrap();
-
-    let checkout = root
-        .path()
-        .join(".dex")
-        .join("worktrees")
-        .join("api")
-        .join("fix-login");
-    assert_eq!(
-        repo::branch_at(&checkout).as_deref(),
-        Some("fix/login"),
-        "the child's checkout is in its workspace, on its own branch"
-    );
 }

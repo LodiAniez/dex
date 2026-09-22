@@ -54,8 +54,8 @@ pub enum RepoError {
         /// What `git --version` said.
         version: String,
     },
-    /// git said no. Translated by `platform::proc`, never raw stderr.
-    /// `worktree.remove` for a branch no worktree of the repository is on.
+    /// `worktree.remove` for a branch that neither git nor Dex knows a
+    /// worktree of the repository for.
     #[error("no worktree of {repo:?} is on branch {branch:?}")]
     NoSuchWorktree {
         /// The repository, by name.
@@ -63,6 +63,15 @@ pub enum RepoError {
         /// The branch asked for.
         branch: String,
     },
+    /// The folder a worktree goes in could not be made.
+    #[error("could not make {path}: {reason}")]
+    WorktreeDir {
+        /// The folder.
+        path: String,
+        /// What the file system said.
+        reason: String,
+    },
+    /// git said no. Translated by `platform::proc`, never raw stderr.
     #[error(transparent)]
     Git(#[from] GitError),
     /// A workspace argument did not resolve.

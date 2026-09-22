@@ -76,29 +76,27 @@ pub fn branch_dir(branch: &str) -> String {
     branch.replace('/', "-")
 }
 
-/// Where a workspace's worktrees go (PRD §8): the owner's `worktree_base`
-/// when they have set one; otherwise inside the workspace the worktree is for,
-/// under `<root>/.dex/worktrees`, beside the rest of that work; and with no
-/// workspace to go by, `~/dex/worktrees`, where every worktree used to go.
-pub fn worktree_base(
-    configured: Option<&Path>,
-    workspace_root: Option<&Path>,
-    home: Option<&Path>,
-) -> PathBuf {
-    match (configured, workspace_root) {
-        (Some(base), _) => base.to_path_buf(),
-        (None, Some(root)) => root.join(".dex").join("worktrees"),
-        (None, None) => home
-            .unwrap_or_else(|| Path::new("."))
-            .join("dex")
-            .join("worktrees"),
+/// Where a workspace's worktrees go (PRD §8): inside it, under
+/// `<root>/.dex/worktrees`, when its root is a plain folder - `plain_root`,
+/// which the caller has found is in no git checkout - and otherwise
+/// `outside`, the owner's `worktree_base`.
+///
+/// A worktree is there to be a place of its own. Nested in a checkout, it
+/// would sit below that project's files, and everything that looks up the
+/// folder tree - Claude Code's `CLAUDE.md`, Node's modules, ESLint's configs -
+/// would reach them.
+pub fn worktree_base(outside: &Path, plain_root: Option<&Path>) -> PathBuf {
+    match plain_root {
+        Some(root) => root.join(".dex").join("worktrees"),
+        None => outside.to_path_buf(),
     }
 }
 
-/// What Dex writes to `.gitignore` in a worktree directory: ignore all of it.
-/// A workspace's root is often the repository itself, and a worktree inside
-/// it would otherwise show there as untracked - and be swept into the next
-/// `git add -A` as an embedded repository.
+/// What Dex writes to `.gitignore` in a workspace's `.dex/worktrees`: ignore
+/// all of it. The root is a plain folder when the worktrees go there, but it
+/// may become a repository later (`git init`), and the worktrees would then
+/// show in it as untracked and be swept into the next `git add -A` as
+/// embedded repositories.
 pub const IGNORE_EVERYTHING: &str = "*\n";
 
 /// Where a worktree lives: `<base>/<repo>/<branch with dashes>`.
@@ -195,33 +193,21 @@ mod tests {
     use super::worktree_base;
 
     #[test]
-    fn a_worktree_goes_inside_the_workspace_it_is_for() {
+    fn a_worktree_goes_inside_a_workspace_rooted_in_a_plain_folder() {
         assert_eq!(
             worktree_base(
-                None,
-                Some(Path::new("C:/code/api")),
-                Some(Path::new("C:/Users/me"))
+                Path::new("C:/Users/me/dex/worktrees"),
+                Some(Path::new("C:/code"))
             ),
-            PathBuf::from("C:/code/api/.dex/worktrees")
+            PathBuf::from("C:/code/.dex/worktrees")
         );
     }
 
     #[test]
-    fn a_base_the_owner_set_is_where_every_worktree_goes() {
+    fn otherwise_it_goes_to_the_owners_worktree_base() {
+        // A root inside a checkout, or no workspace at all.
         assert_eq!(
-            worktree_base(
-                Some(Path::new("D:/work/worktrees")),
-                Some(Path::new("C:/code/api")),
-                Some(Path::new("C:/Users/me"))
-            ),
-            PathBuf::from("D:/work/worktrees")
-        );
-    }
-
-    #[test]
-    fn with_no_workspace_to_go_by_it_goes_where_worktrees_always_went() {
-        assert_eq!(
-            worktree_base(None, None, Some(Path::new("C:/Users/me"))),
+            worktree_base(Path::new("C:/Users/me/dex/worktrees"), None),
             PathBuf::from("C:/Users/me/dex/worktrees")
         );
     }
