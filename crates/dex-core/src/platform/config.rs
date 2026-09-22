@@ -43,6 +43,8 @@ pub struct Config {
     /// workspace's root is inside a git checkout, or there is no workspace
     /// (PRD §8). A worktree nested in a checkout would reach that project's
     /// files by walking up the folder tree, which a worktree exists to prevent.
+    /// A workspace rooted at a plain folder - the first-run one, rooted at the
+    /// home folder, included - keeps its worktrees inside it instead.
     pub worktree_base: PathBuf,
     /// Loopback port for the WSL TCP fallback (PRD §6.4). Off when unset.
     pub tcp_port: Option<u16>,

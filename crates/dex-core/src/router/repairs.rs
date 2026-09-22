@@ -174,7 +174,7 @@ fn repo_repair(err: &RepoError) -> (ErrorCode, String) {
         ),
         RepoError::WorktreeDir { .. } => (
             ErrorCode::InvalidArgs,
-            "A worktree goes inside its workspace's root when that is a plain folder, and in `worktree_base` (config.toml) otherwise. Make sure that folder exists and can be written to, or point `worktree_base` at one that can."
+            "Worktrees that cannot go inside their workspace go to `worktree_base` in config.toml: make sure that folder can be written to, or point `worktree_base` at one that can."
                 .to_owned(),
         ),
         RepoError::Git(GitError::Other(_)) => (

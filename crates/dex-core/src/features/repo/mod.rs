@@ -7,6 +7,7 @@
 mod commands;
 mod logic;
 mod model;
+mod placement;
 mod store;
 #[cfg(test)]
 mod tests;

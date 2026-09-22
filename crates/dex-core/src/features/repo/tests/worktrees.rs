@@ -5,13 +5,13 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use dex_protocol::repo::{AddRepoArgs, AddWorktreeArgs, RemoveWorktreeArgs};
+use dex_protocol::repo::{AddRepoArgs, AddWorktreeArgs, RemoveWorktreeArgs, ScanArgs};
 use dex_protocol::workspace::CreateWorkspaceArgs;
 
 use super::{path_of, repo_at};
 use crate::app::AppState;
 use crate::features::repo::model::RepoError;
-use crate::features::repo::{add, add_worktree, remove_worktree};
+use crate::features::repo::{add, add_worktree, remove_worktree, scan};
 use crate::features::workspace;
 
 /// Registers the repository at `dir` as `api`.
@@ -28,7 +28,8 @@ async fn registered(state: &AppState, dir: &Path) {
 }
 
 /// A workspace rooted at `root`, by name. Never the default root: a bare
-/// workspace's root is the real home.
+/// workspace's root is the real home. (The plain-root tests take the system's
+/// temp folder to be in no git checkout, which is true of a stock machine.)
 async fn workspace_at(state: &AppState, root: &Path) -> String {
     workspace::create(
         state,
@@ -172,6 +173,10 @@ async fn a_workspace_rooted_in_a_checkout_keeps_its_worktrees_outside_it() {
         !repo.path().join(".dex").exists(),
         "and nothing in the checkout"
     );
+    assert!(
+        !state.worktree_base().join(".gitignore").exists(),
+        "and the owner's worktree_base is not fenced"
+    );
     assert_eq!(git(repo.path(), &["status", "--porcelain"]), "");
 }
 
@@ -270,4 +275,126 @@ async fn removing_a_worktree_nobody_knows_of_says_so() {
         matches!(missing, Err(RepoError::NoSuchWorktree { ref branch, .. }) if branch == "main"),
         "{missing:?}"
     );
+}
+
+#[tokio::test]
+async fn a_folder_below_a_stale_git_file_is_not_plain() {
+    // A project moved away from its repository keeps the `.git` file its
+    // worktree had, and git then calls it "not a git repository" - of a folder
+    // with a whole project in it. The folders are asked too.
+    let (repo, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    repo_at(repo.path());
+    std::fs::write(
+        root.path().join(".git"),
+        "gitdir: C:/gone/away/.git/worktrees/x\n",
+    )
+    .unwrap();
+    let project = root.path().join("app");
+    std::fs::create_dir_all(&project).unwrap();
+    let (_dir, state) = AppState::for_tests();
+    registered(&state, repo.path()).await;
+    let workspace = workspace_at(&state, &project).await;
+
+    add_worktree(&state, on_branch("fix/login", Some(workspace)))
+        .await
+        .unwrap();
+
+    assert!(state.worktree_base().join("api/fix-login").exists());
+    assert!(!project.join(".dex").exists());
+}
+
+#[tokio::test]
+async fn a_bare_repository_is_not_a_plain_folder() {
+    // No `.git` in it or above it - it is the git directory itself - so this
+    // one only git can tell.
+    let (repo, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    repo_at(repo.path());
+    git(root.path(), &["init", "--bare"]);
+    let (_dir, state) = AppState::for_tests();
+    registered(&state, repo.path()).await;
+    let workspace = workspace_at(&state, root.path()).await;
+
+    add_worktree(&state, on_branch("fix/login", Some(workspace)))
+        .await
+        .unwrap();
+
+    assert!(state.worktree_base().join("api/fix-login").exists());
+    assert!(!root.path().join(".dex").exists());
+}
+
+#[tokio::test]
+async fn a_worktree_git_and_the_disk_have_both_lost_is_forgotten() {
+    let (repo, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    repo_at(repo.path());
+    let (_dir, state) = AppState::for_tests();
+    registered(&state, repo.path()).await;
+    let workspace = workspace_at(&state, root.path()).await;
+    add_worktree(&state, on_branch("fix/login", Some(workspace)))
+        .await
+        .unwrap();
+    let checkout = root.path().join(".dex/worktrees/api/fix-login");
+    // Taken away by hand, behind Dex's back.
+    git(
+        repo.path(),
+        &["worktree", "remove", "--force", &path_of(&checkout)],
+    );
+
+    let after = remove_worktree(&state, removing("fix/login")).await;
+    assert!(after.is_ok(), "all that was left was the record: {after:?}");
+    // And the record is gone with it.
+    let again = remove_worktree(&state, removing("fix/login")).await;
+    assert!(
+        matches!(again, Err(RepoError::NoSuchWorktree { .. })),
+        "{again:?}"
+    );
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_worktree_is_found_however_its_workspace_root_was_written() {
+    // The root as someone typed it, in other letters; git prints the folder's
+    // own. The worktree has left its branch, so only the record finds it.
+    let (repo, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    repo_at(repo.path());
+    let (_dir, state) = AppState::for_tests();
+    registered(&state, repo.path()).await;
+    let typed = path_of(root.path()).to_lowercase();
+    let workspace = workspace_at(&state, Path::new(&typed)).await;
+    add_worktree(&state, on_branch("fix/login", Some(workspace)))
+        .await
+        .unwrap();
+    let checkout = root.path().join(".dex/worktrees/api/fix-login");
+    git(&checkout, &["checkout", "--detach"]);
+
+    let after = remove_worktree(&state, removing("fix/login"))
+        .await
+        .unwrap();
+
+    assert_eq!(after.worktrees.len(), 1, "taken away, not merely forgotten");
+    assert!(!checkout.exists());
+}
+
+#[tokio::test]
+async fn scanning_a_workspace_does_not_take_its_worktrees_for_repositories() {
+    let (repo, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    repo_at(repo.path());
+    let (_dir, state) = AppState::for_tests();
+    registered(&state, repo.path()).await;
+    let workspace = workspace_at(&state, root.path()).await;
+    add_worktree(&state, on_branch("fix/login", Some(workspace)))
+        .await
+        .unwrap();
+
+    let found = scan(
+        &state,
+        ScanArgs {
+            path: path_of(root.path()),
+            depth: Some(6),
+        },
+    )
+    .await
+    .unwrap();
+
+    let paths: Vec<&str> = found.repos.iter().map(|r| r.path.as_str()).collect();
+    assert!(!paths.iter().any(|p| p.contains(".dex")), "{paths:?}");
 }

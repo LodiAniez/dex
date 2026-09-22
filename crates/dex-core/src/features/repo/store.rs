@@ -1,7 +1,7 @@
 //! Every SQL statement touching `repo` and `workspace_repo`. No other module
 //! queries them (docs/conventions.md §1.3).
 
-use rusqlite::{Connection, OptionalExtension, Row, params};
+use rusqlite::{Connection, Row, params};
 
 use super::model::Repo;
 
@@ -52,19 +52,19 @@ pub fn attach(
     Ok(())
 }
 
-/// Where Dex recorded the worktree it made for `branch` of a repo, if it did.
-pub fn worktree_of(
+/// Everywhere Dex recorded making a worktree for `branch` of a repo: one
+/// place per workspace that used it, so more than one is possible.
+pub fn worktrees_of(
     conn: &Connection,
     repo_id: &str,
     branch: &str,
-) -> rusqlite::Result<Option<String>> {
-    conn.query_row(
+) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
         "SELECT worktree_path FROM workspace_repo
-         WHERE repo_id = ?1 AND branch = ?2 AND worktree_path IS NOT NULL LIMIT 1",
-        params![repo_id, branch],
-        |row| row.get(0),
-    )
-    .optional()
+         WHERE repo_id = ?1 AND branch = ?2 AND worktree_path IS NOT NULL",
+    )?;
+    let rows = stmt.query_map(params![repo_id, branch], |row| row.get(0))?;
+    rows.collect()
 }
 
 /// Forgets a workspace's use of a repo.
