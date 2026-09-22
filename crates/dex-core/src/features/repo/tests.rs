@@ -14,6 +14,7 @@ use super::{add, add_worktree, list, list_worktrees, scan, status};
 use crate::app::AppState;
 use crate::platform::proc::GitError;
 
+mod worktree_removal;
 mod worktrees;
 
 /// A git repository with one commit, so HEAD and branches exist.

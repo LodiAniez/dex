@@ -172,6 +172,12 @@ fn repo_repair(err: &RepoError) -> (ErrorCode, String) {
             ErrorCode::InvalidArgs,
             format!("`dex worktree list \"{repo}\"` shows its worktrees and the branch each is on."),
         ),
+        RepoError::WorktreeLeftBehind { path } => (
+            ErrorCode::GitFailed,
+            format!(
+                "Removing it failed part-way, which usually means something still had a file in it open. Close whatever is using {path}, look through it for anything you want to keep - git no longer knows about it - then delete the folder and run the remove again."
+            ),
+        ),
         RepoError::WorktreeDir { .. } => (
             ErrorCode::InvalidArgs,
             "Worktrees that cannot go inside their workspace go to `worktree_base` in config.toml: make sure that folder can be written to, or point `worktree_base` at one that can."

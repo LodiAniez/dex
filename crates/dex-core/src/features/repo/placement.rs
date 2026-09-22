@@ -86,10 +86,17 @@ fn plain_root(root: Option<&str>, made_by: MadeBy) -> Option<PathBuf> {
 }
 
 /// Whether a folder is on a WSL distro's side, through `\\wsl.localhost` or
-/// `\\wsl$`.
+/// `\\wsl$` - as written, or as the file system resolves it, which catches a
+/// drive letter mapped to one.
 fn in_wsl(dir: &Path) -> bool {
-    let normal = paths::normalize(dir).to_ascii_lowercase();
-    normal.starts_with("//wsl.localhost/") || normal.starts_with("//wsl$/")
+    let through_wsl = |path: &Path| {
+        let normal = paths::normalize(path).to_ascii_lowercase();
+        let normal = normal
+            .strip_prefix("//?/unc/")
+            .map_or(normal.clone(), |rest| format!("//{rest}"));
+        normal.starts_with("//wsl.localhost/") || normal.starts_with("//wsl$/")
+    };
+    through_wsl(dir) || std::fs::canonicalize(dir).is_ok_and(|real| through_wsl(&real))
 }
 
 /// Makes a workspace's worktree folder and tells git to look away from it
@@ -142,6 +149,7 @@ mod tests {
     fn a_folder_through_wsl_localhost_is_on_the_distros_side() {
         assert!(in_wsl(Path::new(r"\\wsl.localhost\Ubuntu\home\me\code")));
         assert!(in_wsl(Path::new("//wsl$/Ubuntu/home/me")));
+        assert!(in_wsl(Path::new(r"\\?\UNC\wsl.localhost\Ubuntu\home")));
         assert!(!in_wsl(Path::new("C:/code")));
     }
 

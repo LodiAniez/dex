@@ -63,6 +63,13 @@ pub enum RepoError {
         /// The branch asked for.
         branch: String,
     },
+    /// A worktree git no longer tracks, whose folder is still on disk: a
+    /// removal that failed part-way, usually on a file something held open.
+    #[error("git no longer tracks the worktree at {path}, but its folder is still there")]
+    WorktreeLeftBehind {
+        /// The folder.
+        path: String,
+    },
     /// The folder a worktree goes in could not be made.
     #[error("could not make {path}: {reason}")]
     WorktreeDir {

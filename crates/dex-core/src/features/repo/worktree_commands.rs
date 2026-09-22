@@ -101,16 +101,20 @@ pub async fn remove(state: &AppState, args: RemoveWorktreeArgs) -> Result<Worktr
     let (branch, force) = (args.branch.clone(), args.force);
     tokio::task::spawn_blocking(move || {
         let dir = Path::new(&repo_path);
-        match checkout_of(dir, &branch, &recorded)? {
-            Some(path) => take_away(dir, &path, force),
-            // Git has lost it and so has the disk - deleted and pruned by
-            // hand - so all that is left is Dex's record, forgotten below. A
-            // folder still there that git does not know is not Dex's to drop.
-            None if !recorded.is_empty() && recorded.iter().all(|at| !Path::new(at).exists()) => {
-                Ok(())
-            }
-            None => Err(RepoError::NoSuchWorktree { repo: name, branch }),
+        if let Some(path) = checkout_of(dir, &branch, &recorded)? {
+            return take_away(dir, &path, force);
         }
+        // Git has lost it. A folder still there may hold work git no longer
+        // knows of, so it is not Dex's to delete: the owner is told where it
+        // is. With the folders gone too - deleted and pruned by hand - all
+        // that is left is Dex's record, forgotten below.
+        if let Some(left) = recorded.iter().find(|at| Path::new(at).exists()) {
+            return Err(RepoError::WorktreeLeftBehind { path: left.clone() });
+        }
+        if recorded.is_empty() {
+            return Err(RepoError::NoSuchWorktree { repo: name, branch });
+        }
+        Ok(())
     })
     .await
     .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))??;
