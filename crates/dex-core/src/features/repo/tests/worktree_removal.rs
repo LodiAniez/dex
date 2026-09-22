@@ -1,7 +1,7 @@
 //! Removing a worktree: found wherever it was made and however it has moved
 //! on since, and forgotten only once nothing of it is left.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::worktrees::{git, on_branch, registered, removing, workspace_at};
 use super::{path_of, repo_at};
@@ -106,7 +106,7 @@ async fn a_worktree_is_found_however_its_workspace_root_was_written() {
     let (_dir, state) = AppState::for_tests();
     registered(&state, repo.path()).await;
     let typed = path_of(root.path()).to_lowercase();
-    let workspace = workspace_at(&state, Path::new(&typed)).await;
+    let workspace = workspace_at(&state, std::path::Path::new(&typed)).await;
     add_worktree(&state, on_branch("fix/login", Some(workspace)))
         .await
         .unwrap();
