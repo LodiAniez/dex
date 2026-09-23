@@ -5,7 +5,7 @@
 use dex_protocol::agent::{AgentStatus, EventOutcome};
 
 use super::model::AgentError;
-use super::{logic, presence, store};
+use super::{presence, silence, store};
 use crate::app::AppState;
 use crate::platform::clock;
 
@@ -68,7 +68,7 @@ async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
                 .pane_id
                 .as_deref()
                 .and_then(|pane| state.pty.last_output_at(pane));
-            logic::is_silent(agent.status, agent.last_event_at, output, now, WATCHDOG_MS)
+            silence::is_silent(agent.status, agent.last_event_at, output, now, WATCHDOG_MS)
         })
         .map(|agent| agent.id)
         .collect();

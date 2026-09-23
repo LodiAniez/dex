@@ -4,7 +4,7 @@
 use dex_protocol::agent::{AgentList, AgentStatus, AgentView, ListAgentsArgs};
 
 use super::model::{Agent, AgentError};
-use super::{logic, store};
+use super::{silence, store};
 use crate::app::AppState;
 use crate::features::{context, workspace};
 use crate::platform::clock;
@@ -48,7 +48,7 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                         let has_started = started.contains(&agent.id);
                         let waiting = unread.get(&agent.id).copied().unwrap_or(0);
                         let quiet =
-                            logic::quiet_for(agent.status, agent.last_event_at, now, quiet_after);
+                            silence::quiet_for(agent.status, agent.last_event_at, now, quiet_after);
                         let mut seen = view(agent, has_started, waiting, quiet);
                         let theirs = asker.as_ref().is_none_or(|id| id == &seen.id);
                         // Nor what a colleague asked the owner: it may quote anything.

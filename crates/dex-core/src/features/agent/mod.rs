@@ -15,6 +15,7 @@ mod presence;
 mod prompt;
 mod reason;
 mod session;
+mod silence;
 mod spawn;
 mod stop;
 mod store;
