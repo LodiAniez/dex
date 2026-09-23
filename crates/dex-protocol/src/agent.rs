@@ -49,6 +49,14 @@ pub struct AgentView {
     /// When the current state began, unix millis.
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub status_at: i64,
+    /// How long it has been working without a hook, in millis, once that is
+    /// long enough to be worth saying (`[agents] quiet_after_seconds`). Hooks
+    /// fire at every tool batch, so this is one tool call taking all that
+    /// time: a long build, or one that will never come back (issue #67).
+    /// Shown, never acted on. `None` for every other status.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub quiet_for_ms: Option<i64>,
     /// Claude Code's permission mode, as its hooks last reported it.
     pub permission_mode: Option<String>,
     /// What it was spawned to do.

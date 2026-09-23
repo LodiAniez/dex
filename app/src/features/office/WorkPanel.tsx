@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { request } from "../../platform/daemon";
 import { showError } from "../../platform/notices";
 import { useActivity } from "../activity";
-import { AgentStatusDot, STATUS_WORDS, askedYou, lastSaid, seenAs } from "../agents";
+import { AgentStatusDot, STATUS_WORDS, askedYou, lastSaid, quietWords, seenAs } from "../agents";
 import { Avatar } from "./Avatar";
 import { useAgentActions } from "./agentActions";
 import { memoArgs } from "./hire";
@@ -77,6 +77,7 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
   };
 
   const attention = needsYou(agent.status, agent.status_detail);
+  const quiet = quietWords(agent.quiet_for_ms);
   const said = lastSaid(agent);
   const { prompt, clockOut, leaving } = useAgentActions(employee);
 
@@ -109,6 +110,9 @@ export function WorkPanel({ workspaceId, employee, staff, who, screen, onGoToPan
         {STATUS_WORDS[seenAs(agent)]}
         {/* What they asked or said has its own line below; here, only why they wait or stopped. */}
         {agent.status_detail && said === null && askedYou(agent) === null && ` · ${agent.status_detail}`}
+        {/* Working, and nothing from its hooks in a while: one tool call has
+            been running all that time, and may never come back (issue #67). */}
+        {quiet && <span className="office-panel-quiet"> · {quiet}</span>}
       </div>
       {/* How their turn ended, in their words: spotting a question is a guess, and this is the evidence. */}
       {said !== null && <div className="office-panel-said">“{said}”</div>}

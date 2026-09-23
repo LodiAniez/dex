@@ -140,6 +140,20 @@ pub fn is_silent(
         && now - last_output_at.unwrap_or(0) >= quiet_ms
 }
 
+/// How long a running agent has gone without a hook, when that is long enough
+/// to be worth saying (issue #67). Hooks fire at every prompt and every tool
+/// batch, so a gap means the agent has not finished a tool call in all that
+/// time: a long build, or a command that will never come back.
+///
+/// Only said, never acted on. From here the two look alike, and the one thing
+/// worse than a stuck agent is Dex ending a working one. It is the watchdog's
+/// `is_silent` that acts, and it cannot see this: Claude Code redraws its own
+/// screen while it waits, so the pane is never quiet even when the agent is.
+pub fn quiet_for(status: AgentStatus, last_event_at: i64, now: i64, after_ms: i64) -> Option<i64> {
+    let quiet = now - last_event_at;
+    (status == AgentStatus::Running && quiet >= after_ms).then_some(quiet)
+}
+
 /// The stored name of a status.
 pub fn status_name(status: AgentStatus) -> &'static str {
     match status {
@@ -204,6 +218,51 @@ pub fn exit_plan(status: AgentStatus, started: bool) -> Vec<ExitStep> {
 
 #[cfg(test)]
 mod tests {
+    use super::quiet_for;
+    use dex_protocol::agent::AgentStatus;
+
+    const AFTER: i64 = 5 * 60_000;
+
+    #[test]
+    fn a_running_agent_that_has_not_hooked_for_a_while_is_worth_saying_so() {
+        assert_eq!(
+            quiet_for(AgentStatus::Running, 0, AFTER, AFTER),
+            Some(AFTER)
+        );
+        assert_eq!(
+            quiet_for(AgentStatus::Running, 1_000, AFTER + 61_000, AFTER),
+            Some(AFTER + 60_000)
+        );
+    }
+
+    #[test]
+    fn a_tool_call_shorter_than_the_threshold_is_just_work() {
+        assert_eq!(quiet_for(AgentStatus::Running, 0, AFTER - 1, AFTER), None);
+    }
+
+    #[test]
+    fn only_a_running_agent_is_quiet_rather_than_finished_or_waiting() {
+        // Idle has ended its turn; waiting is waiting on the owner, who knows
+        // it; unknown is the watchdog already saying this louder.
+        for status in [
+            AgentStatus::Idle,
+            AgentStatus::Waiting,
+            AgentStatus::Error,
+            AgentStatus::Unknown,
+            AgentStatus::Dead,
+        ] {
+            assert_eq!(quiet_for(status, 0, AFTER * 10, AFTER), None, "{status:?}");
+        }
+    }
+
+    #[test]
+    fn a_hook_stamped_ahead_of_the_clock_is_not_a_long_silence() {
+        assert_eq!(
+            quiet_for(AgentStatus::Running, AFTER * 2, AFTER, AFTER),
+            None
+        );
+    }
+
     use serde_json::json;
 
     use super::*;

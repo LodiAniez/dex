@@ -310,6 +310,12 @@ body,
 .agent-badge.waiting .agent-state { color: #8fb4ff; }
 .agent-badge.error .agent-state { color: #ff8f8c; }
 
+.agent-quiet {
+  color: #d8a657;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .agent-elapsed {
   color: var(--text-dim);
 }

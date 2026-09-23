@@ -52,14 +52,22 @@ impl AppState {
     /// A state over a fresh temp database at `<dir>/dex.db`. Keep the
     /// returned directory alive for the whole test.
     pub fn for_tests() -> (tempfile::TempDir, Self) {
+        Self::for_tests_with(|_| {})
+    }
+
+    /// `for_tests`, with the settings changed first.
+    pub fn for_tests_with(
+        change: impl FnOnce(&mut crate::platform::config::Config),
+    ) -> (tempfile::TempDir, Self) {
         use crate::platform::config::Config;
 
         let (dir, conn) = crate::platform::db::test_db();
         // Worktrees land beside the test database, never in the real home.
-        let config = Config {
+        let mut config = Config {
             worktree_base: dir.path().join("worktrees"),
             ..Config::default()
         };
+        change(&mut config);
         (
             dir,
             Self::with_db(Db::from_connection(conn), ConfigHandle::fixed(config)),

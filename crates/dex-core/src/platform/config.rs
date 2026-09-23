@@ -33,6 +33,10 @@ const SETTLE: Duration = Duration::from_millis(250);
 /// anything useful and the agent would be better off with none.
 const MIN_DIGEST: usize = 200;
 
+/// Below this, an ordinary tool call would be called quiet and the line would
+/// mean nothing.
+const MIN_QUIET_SECONDS: u64 = 60;
+
 /// Everything the owner may configure.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -123,6 +127,12 @@ pub struct AgentSettings {
     /// Whether spawned agents may connect to Claude in Chrome. Off: each one
     /// that does brings claude.ai up in the owner's browser.
     pub spawn_chrome: bool,
+    /// How long a working agent may go without a hook before Dex says so
+    /// (issue #67), in seconds. Hooks fire at every tool batch, so a gap this
+    /// long means one tool call has been running all that time. Said, never
+    /// acted on, so it is a matter of taste: lower it to hear about a stuck
+    /// agent sooner, raise it if long builds make it noise.
+    pub quiet_after_seconds: u64,
 }
 
 /// Digest budgets, in characters.
@@ -172,6 +182,9 @@ impl Default for AgentSettings {
             max_concurrent: 10,
             spawn_permission_mode: "auto".into(),
             spawn_chrome: false,
+            // Long enough that an ordinary build or a CI wait passes without
+            // a word, short enough to catch a stuck agent while it matters.
+            quiet_after_seconds: 300,
         }
     }
 }
@@ -232,6 +245,13 @@ impl Config {
                 self.agents.max_concurrent
             ));
             self.agents.max_concurrent = 1;
+        }
+        if self.agents.quiet_after_seconds < MIN_QUIET_SECONDS {
+            problems.push(format!(
+                "agents.quiet_after_seconds ({}) must be at least {MIN_QUIET_SECONDS}; using {}",
+                self.agents.quiet_after_seconds, defaults.agents.quiet_after_seconds
+            ));
+            self.agents.quiet_after_seconds = defaults.agents.quiet_after_seconds;
         }
         if !PERMISSION_MODES.contains(&self.agents.spawn_permission_mode.as_str()) {
             problems.push(format!(

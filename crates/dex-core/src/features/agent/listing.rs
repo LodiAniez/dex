@@ -4,13 +4,17 @@
 use dex_protocol::agent::{AgentList, AgentStatus, AgentView, ListAgentsArgs};
 
 use super::model::{Agent, AgentError};
-use super::store;
+use super::{logic, store};
 use crate::app::AppState;
 use crate::features::{context, workspace};
+use crate::platform::clock;
 
 /// `agent.list`: agents newest first, optionally including ended ones and
 /// limited to one workspace (by id or name).
 pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, AgentError> {
+    // The owner's taste for how long a working agent may go quiet before Dex
+    // says so; read once, so every agent in one listing is judged alike.
+    let quiet_after_ms = (state.config.get().agents.quiet_after_seconds as i64) * 1_000;
     state
         .db
         .call(
@@ -28,6 +32,7 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                     (None, None) => None,
                 };
                 let started = store::started_ids(conn)?;
+                let (now, quiet_after) = (clock::now_millis(), quiet_after_ms);
                 let unread = context::unread_counts(conn)?;
                 // An agent asking - one runs in the pane the request came from -
                 // is told that a colleague is waiting, not what for: the reason
@@ -42,7 +47,9 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                     .map(|agent| {
                         let has_started = started.contains(&agent.id);
                         let waiting = unread.get(&agent.id).copied().unwrap_or(0);
-                        let mut seen = view(agent, has_started, waiting);
+                        let quiet =
+                            logic::quiet_for(agent.status, agent.last_event_at, now, quiet_after);
+                        let mut seen = view(agent, has_started, waiting, quiet);
                         let theirs = asker.as_ref().is_none_or(|id| id == &seen.id);
                         // Nor what a colleague asked the owner: it may quote anything.
                         if !theirs
@@ -62,7 +69,7 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
         .await?
 }
 
-fn view(agent: Agent, started: bool, unread: usize) -> AgentView {
+fn view(agent: Agent, started: bool, unread: usize, quiet_for_ms: Option<i64>) -> AgentView {
     AgentView {
         id: agent.id,
         pane_id: agent.pane_id,
@@ -73,6 +80,7 @@ fn view(agent: Agent, started: bool, unread: usize) -> AgentView {
         status: agent.status,
         status_detail: agent.status_detail,
         status_at: agent.status_at,
+        quiet_for_ms,
         permission_mode: agent.permission_mode,
         task_brief: agent.task_brief,
         started,

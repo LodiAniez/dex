@@ -185,10 +185,46 @@ fn status_text(agent: &AgentView) -> String {
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_default();
+    // A working agent that has sent no hook for a while is inside one long
+    // tool call, which is worth knowing and is nobody's fault (issue #67).
+    let quiet = match agent.quiet_for_ms {
+        Some(ms) => format!(", quiet {}", quiet_span(ms)),
+        None => String::new(),
+    };
     match &agent.status_detail {
         // What an idle agent said last is for the office; what it asked is worth a column.
-        Some(detail) if detail.starts_with("said: ") => name,
-        Some(detail) => format!("{name} ({detail})"),
-        None => name,
+        Some(detail) if detail.starts_with("said: ") => format!("{name}{quiet}"),
+        Some(detail) => format!("{name} ({detail}){quiet}"),
+        None => format!("{name}{quiet}"),
+    }
+}
+
+/// How long a silence has lasted: `40s`, `12m`, `1h 3m`.
+fn quiet_span(ms: i64) -> String {
+    let seconds = ms.max(0) / 1_000;
+    if seconds < 60 {
+        return format!("{seconds}s");
+    }
+    let minutes = seconds / 60;
+    if minutes < 60 {
+        return format!("{minutes}m");
+    }
+    format!("{}h {}m", minutes / 60, minutes % 60)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::quiet_span;
+
+    #[test]
+    fn a_silence_is_counted_in_seconds_then_minutes_then_hours() {
+        assert_eq!(quiet_span(40_000), "40s");
+        assert_eq!(quiet_span(12 * 60_000), "12m");
+        assert_eq!(quiet_span(63 * 60_000), "1h 3m");
+    }
+
+    #[test]
+    fn a_silence_never_reads_as_negative_whatever_the_clocks_say() {
+        assert_eq!(quiet_span(-5_000), "0s");
     }
 }
