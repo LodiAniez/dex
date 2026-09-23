@@ -169,14 +169,17 @@ async fn a_workspace_rooted_in_a_checkout_keeps_its_worktrees_inside_it_too() {
         "and nothing new to git"
     );
     let exclude = std::fs::read_to_string(repo.path().join(".git/info/exclude")).unwrap();
-    assert!(
-        exclude.lines().any(|line| line == "/.dex/worktrees/"),
-        "{exclude}"
-    );
+    assert!(exclude.lines().any(|line| line == "**/.dex/"), "{exclude}");
     assert!(
         repo.path().join(".dex/worktrees/README.txt").exists(),
         "and a note saying what is in there"
     );
+
+    // Everything Dex keeps in the workspace, not only the worktrees: the
+    // context mirror writes here too, and would show for ever otherwise.
+    std::fs::create_dir_all(repo.path().join(".dex/context")).unwrap();
+    std::fs::write(repo.path().join(".dex/context/notes.md"), "hello\n").unwrap();
+    assert_eq!(git(repo.path(), &["status", "--porcelain"]), "");
 }
 
 #[tokio::test]
@@ -219,9 +222,60 @@ async fn a_root_in_a_subfolder_of_a_checkout_keeps_them_in_that_root() {
         .unwrap();
 
     assert!(docs.join(".dex/worktrees/api/fix-login/README.md").exists());
-    // The exclude belongs to the repository holding the root, not the root.
+    // The exclude belongs to the repository holding the root, not the root,
+    // and says nothing about where in it the worktrees are: an anchored
+    // `/.dex/worktrees/` matched nothing from one folder down (review).
     let exclude = std::fs::read_to_string(repo.path().join(".git/info/exclude")).unwrap();
-    assert!(exclude.contains("/.dex/worktrees/"), "{exclude}");
+    assert!(exclude.lines().any(|line| line == "**/.dex/"), "{exclude}");
+    assert_eq!(git(repo.path(), &["status", "--porcelain"]), "");
+
+    // Which has to hold once clean has taken the fence inside the folder.
+    git(repo.path(), &["clean", "-fdx"]);
+    assert_eq!(git(repo.path(), &["status", "--porcelain"]), "");
+    assert!(docs.join(".dex/worktrees/api/fix-login/README.md").exists());
+}
+
+#[tokio::test]
+async fn a_root_that_is_itself_a_worktree_tells_the_repository_they_share() {
+    // `--git-common-dir`, not `--git-dir`: a checkout's own git directory is
+    // inside the main repository's, and only the shared one is read by every
+    // checkout of it.
+    let repo = tempfile::tempdir().unwrap();
+    repo_at(repo.path());
+    let elsewhere = tempfile::tempdir().unwrap();
+    let other = elsewhere.path().join("other");
+    git(
+        repo.path(),
+        &["worktree", "add", &path_of(&other), "-b", "other/work"],
+    );
+    let (_dir, state) = AppState::for_tests();
+    registered(&state, repo.path()).await;
+    let workspace = workspace_at(&state, &other).await;
+
+    add_worktree(&state, on_branch("fix/login", Some(workspace)))
+        .await
+        .unwrap();
+
+    let exclude = std::fs::read_to_string(repo.path().join(".git/info/exclude")).unwrap();
+    assert!(exclude.lines().any(|line| line == "**/.dex/"), "{exclude}");
+    assert_eq!(git(&other, &["status", "--porcelain"]), "");
+}
+
+#[tokio::test]
+async fn a_repository_with_no_info_folder_is_given_one() {
+    // `git init --template=` leaves none, and the exclude lives in it.
+    let repo = tempfile::tempdir().unwrap();
+    repo_at(repo.path());
+    std::fs::remove_dir_all(repo.path().join(".git/info")).unwrap();
+    let (_dir, state) = AppState::for_tests();
+    registered(&state, repo.path()).await;
+    let workspace = workspace_at(&state, repo.path()).await;
+
+    add_worktree(&state, on_branch("fix/login", Some(workspace)))
+        .await
+        .unwrap();
+
+    assert!(repo.path().join(".dex/worktrees/api/fix-login").exists());
     assert_eq!(git(repo.path(), &["status", "--porcelain"]), "");
 }
 

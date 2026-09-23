@@ -97,9 +97,15 @@ pub fn worktree_base(outside: &Path, root: Option<&Path>) -> PathBuf {
 pub const IGNORE_EVERYTHING: &str = "*\n";
 
 /// What Dex writes to the `info/exclude` of the repository whose checkout
-/// holds a workspace's root: the same as `IGNORE_EVERYTHING`, said where
-/// `git clean` cannot delete it.
-pub const EXCLUDE_WORKTREES: &str = "/.dex/worktrees/";
+/// holds a workspace's root: everything Dex keeps in a workspace, said where
+/// `git clean` cannot delete it, unlike `IGNORE_EVERYTHING`.
+///
+/// Not anchored, because a workspace's root can be any folder of a checkout,
+/// not only its top (review found `/.dex/worktrees/` matching nothing for a
+/// root one folder down). And all of `.dex/`, not only the worktrees: the
+/// context mirror is Dex's too, and left untold it shows in that checkout's
+/// `git status` for ever.
+pub const EXCLUDE_DEX: &str = "**/.dex/";
 
 /// Where a worktree lives: `<base>/<repo>/<branch with dashes>`.
 pub fn worktree_path(base: &Path, repo: &str, branch: &str) -> PathBuf {

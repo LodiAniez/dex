@@ -8,10 +8,12 @@
 //! A root is often the repository itself, so the worktree usually sits inside
 //! a checkout of its own repo, and that is known and accepted:
 //!
-//! - Git is told to look away twice, in `.dex/worktrees/.gitignore` and in the
-//!   containing repository's `info/exclude`, so the worktrees never show in
-//!   its `git status` and are never taken into a `git add -A` as embedded
-//!   repositories. The second is the one `git clean` cannot delete.
+//! - Git is told to look away twice: in `.dex/worktrees/.gitignore`, and in
+//!   the containing repository's `info/exclude`, which is the one `git clean`
+//!   cannot delete. So the worktrees never show in that checkout's
+//!   `git status` and are never taken into a `git add -A` as embedded
+//!   repositories. A root whose repository will not take the second is not
+//!   used at all: the worktree goes to `worktree_base`.
 //! - `git clean -ffdx` in that checkout still deletes them, uncommitted work
 //!   and all - no ignore or lock stops a second `-f` - so the folder carries a
 //!   note saying so.
@@ -74,6 +76,11 @@ pub fn place(
 /// folder the git making the worktree can work in.
 fn inside(root: Option<&str>, made_by: MadeBy) -> Option<PathBuf> {
     let root = Path::new(root?);
+    // Windows git cannot work in a worktree on the distro's side of
+    // `\\wsl.localhost`: to it, a folder there is not local and not its own.
+    if made_by == MadeBy::Windows && in_wsl(root) {
+        return None;
+    }
     if !root.is_dir() {
         return None;
     }
@@ -83,11 +90,6 @@ fn inside(root: Option<&str>, made_by: MadeBy) -> Option<PathBuf> {
         paths::home_dir().as_deref() != Some(root),
         "a test was about to put a worktree in the real home"
     );
-    // Windows git cannot work in a worktree on the distro's side of
-    // `\\wsl.localhost`: to it, a folder there is not local and not its own.
-    if made_by == MadeBy::Windows && in_wsl(root) {
-        return None;
-    }
     Some(root.to_path_buf())
 }
 
@@ -114,22 +116,53 @@ fn in_wsl(dir: &Path) -> bool {
 /// the root says the same thing where clean cannot reach. A `.gitignore`
 /// already there is the owner's, and is left as it is.
 fn fence_off(base: &Path, root: &Path) -> Result<(), RepoError> {
+    if let Some(exclude) = exclude_file(root) {
+        // First, and fatal: the fence inside the folder cannot be relied on -
+        // `git clean -fdx` deletes it, being ignored by its own rule - so a
+        // worktree that cannot be excluded is a worktree that does not go
+        // here. `place` sends it to `worktree_base` instead.
+        tell_git_to_ignore_dex(&exclude)?;
+    }
     make_dir(base)?;
     write_once(&base.join(".gitignore"), logic::IGNORE_EVERYTHING)?;
     write_once(&base.join("README.txt"), NOTE)?;
-    if let Some(exclude) = exclude_file(root) {
-        let line = logic::EXCLUDE_WORKTREES;
-        let current = std::fs::read_to_string(&exclude).unwrap_or_default();
-        if !current.lines().any(|had| had.trim() == line) {
-            let ending = if current.is_empty() || current.ends_with('\n') {
-                ""
-            } else {
-                "\n"
-            };
-            let _ = std::fs::write(&exclude, format!("{current}{ending}{line}\n"));
-        }
-    }
     Ok(())
+}
+
+/// Appends `logic::EXCLUDE_DEX` to a repository's `info/exclude`, once.
+///
+/// Appended rather than rewritten: the file is the owner's, and another Dex
+/// making a worktree at the same moment - or the owner in an editor - must not
+/// have their line truncated away. Two appends at once would leave the line
+/// twice, which git reads as once.
+fn tell_git_to_ignore_dex(exclude: &Path) -> Result<(), RepoError> {
+    let told = |err: std::io::Error| RepoError::WorktreeDir {
+        path: paths::normalize(exclude),
+        reason: err.to_string(),
+    };
+    let current = std::fs::read_to_string(exclude).unwrap_or_default();
+    if current.lines().any(|had| had.trim() == logic::EXCLUDE_DEX) {
+        return Ok(());
+    }
+    if let Some(info) = exclude.parent() {
+        // `info/` is missing from a repository made with an empty template.
+        std::fs::create_dir_all(info).map_err(told)?;
+    }
+    let ending = if current.is_empty() || current.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(exclude)
+        .map_err(told)?;
+    std::io::Write::write_all(
+        &mut file,
+        format!("{ending}{}\n", logic::EXCLUDE_DEX).as_bytes(),
+    )
+    .map_err(told)
 }
 
 /// Writes a file the first time only: what is there afterwards is the owner's.
@@ -194,6 +227,22 @@ mod tests {
         assert!(in_wsl(Path::new("//wsl$/Ubuntu/home/me")));
         assert!(in_wsl(Path::new(r"\\?\UNC\wsl.localhost\Ubuntu\home")));
         assert!(!in_wsl(Path::new("C:/code")));
+    }
+
+    #[test]
+    fn a_root_windows_git_cannot_work_in_sends_the_worktree_outside() {
+        let outside = Path::new("C:/Users/me/dex/worktrees");
+        let wsl = "//wsl.localhost/Ubuntu/home/me/code";
+        assert_eq!(
+            super::place(
+                outside,
+                Some(wsl),
+                super::MadeBy::Windows,
+                "api",
+                "fix/login"
+            ),
+            outside.join("api").join("fix-login")
+        );
     }
 
     #[test]

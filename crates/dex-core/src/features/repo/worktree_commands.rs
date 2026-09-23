@@ -144,10 +144,13 @@ fn take_away(repo: &Path, path: &str, force: bool) -> Result<(), RepoError> {
 /// went inside its workspace or to `worktree_base` depending on the
 /// workspace's root, and everything made before went to `worktree_base`.
 ///
-/// Where Dex recorded making it comes first, if git still has it there: the
-/// agent may have switched branch since, or be mid-rebase with none. Compared
-/// as places, not as strings - a root written `c:\code\.` records a path git
-/// prints as `C:/code`. The branch after. The main checkout is never one.
+/// The branch comes first, and where Dex recorded making the worktree after:
+/// that agent may have switched branch since, or be mid-rebase with none, and
+/// then only the record finds it - but if something else is on the branch now,
+/// that is what was asked for (review: the other way round removed a worktree
+/// whose agent had moved on, and left the new one unrecorded). Recorded places
+/// are compared as places, not as strings: a root written `c:\code\.` records
+/// a path git prints as `C:/code`. The main checkout is never one of them.
 fn checkout_of(
     repo: &Path,
     branch: &str,
@@ -158,17 +161,17 @@ fn checkout_of(
         .into_iter()
         .skip(1)
         .collect();
-    let at_recorded = worktrees.iter().find(|(path, _)| {
-        recorded
-            .iter()
-            .any(|at| placement::same_place(Path::new(path), Path::new(at)))
-    });
-    let on_branch = || {
-        worktrees
-            .iter()
-            .find(|(_, on)| on.as_deref() == Some(branch))
+    let on_branch = worktrees
+        .iter()
+        .find(|(_, on)| on.as_deref() == Some(branch));
+    let at_recorded = || {
+        worktrees.iter().find(|(path, _)| {
+            recorded
+                .iter()
+                .any(|at| placement::same_place(Path::new(path), Path::new(at)))
+        })
     };
-    Ok(at_recorded.or_else(on_branch).map(|(path, _)| path.clone()))
+    Ok(on_branch.or_else(at_recorded).map(|(path, _)| path.clone()))
 }
 
 /// `worktree.list`: every checkout git knows for a repo, main first.
