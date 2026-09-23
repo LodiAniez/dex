@@ -168,6 +168,21 @@ fn repo_repair(err: &RepoError) -> (ErrorCode, String) {
             ErrorCode::GitFailed,
             "Commit or discard the work in that worktree, or remove it with --force.".to_owned(),
         ),
+        RepoError::NoSuchWorktree { repo, .. } => (
+            ErrorCode::InvalidArgs,
+            format!("`dex worktree list \"{repo}\"` shows its worktrees and the branch each is on."),
+        ),
+        RepoError::WorktreeLeftBehind { path } => (
+            ErrorCode::GitFailed,
+            format!(
+                "Removing it failed part-way, which usually means something still had a file in it open. Close whatever is using {path}, look through it for anything you want to keep - git no longer knows about it - then delete the folder and run the remove again."
+            ),
+        ),
+        RepoError::WorktreeDir { .. } => (
+            ErrorCode::InvalidArgs,
+            "The error says which folder. A worktree goes in its workspace's own `.dex\\worktrees`, and in `worktree_base` (config.toml) when it has no workspace: make sure the one named can be written to."
+                .to_owned(),
+        ),
         RepoError::Git(GitError::Other(_)) => (
             ErrorCode::GitFailed,
             "Run the same git command in the repository to see what it reports.".to_owned(),

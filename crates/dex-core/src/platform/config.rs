@@ -39,7 +39,12 @@ const MIN_DIGEST: usize = 200;
 pub struct Config {
     /// Shell for new panes; the `pwsh`/`powershell`/`cmd` search when unset.
     pub shell: Option<String>,
-    /// Where worktrees are created (PRD §8).
+    /// Where a worktree goes when there is no workspace to go inside
+    /// (PRD §8): `dex worktree add` without `--workspace`, a root Windows git
+    /// could not work in, or one whose repository will not be told to ignore
+    /// it. A workspace's worktrees live in its own root, under
+    /// `.dex/worktrees`; a workspace made without a root is rooted at the home
+    /// folder, so there that is `~/.dex/worktrees`.
     pub worktree_base: PathBuf,
     /// Loopback port for the WSL TCP fallback (PRD §6.4). Off when unset.
     pub tcp_port: Option<u16>,

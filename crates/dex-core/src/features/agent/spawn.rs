@@ -73,7 +73,8 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
     // back to the main checkout would put two agents in one working tree.
     let (repo_id, cwd, branch) = match (&args.repo, &args.worktree) {
         (Some(repo), Some(branch)) => {
-            let (repo_id, path) = repo::create_for_spawn(state, repo, branch, &runtime).await?;
+            let (repo_id, path) =
+                repo::create_for_spawn(state, repo, branch, &runtime, &caller.workspace_id).await?;
             (
                 Some(repo_id),
                 crate::platform::paths::normalize(&path),

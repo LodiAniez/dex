@@ -76,6 +76,37 @@ pub fn branch_dir(branch: &str) -> String {
     branch.replace('/', "-")
 }
 
+/// Where a workspace's worktrees go (PRD §8): inside it, under
+/// `<root>/.dex/worktrees`, beside the context mirror - and `outside`, the
+/// owner's `worktree_base`, only when there is no workspace to put them in
+/// (`placement` says when that is).
+pub fn worktree_base(outside: &Path, root: Option<&Path>) -> PathBuf {
+    match root {
+        Some(root) => root.join(".dex").join("worktrees"),
+        None => outside.to_path_buf(),
+    }
+}
+
+/// What Dex writes to `.gitignore` in a workspace's `.dex/worktrees`: ignore
+/// all of it. A workspace's root is often a repository, and its worktrees
+/// would otherwise show there as untracked and be swept into the next
+/// `git add -A` as embedded repositories.
+///
+/// A `.gitignore` ignored by its own rule is deleted by `git clean -fdx`, so
+/// `EXCLUDE_WORKTREES` says the same where clean cannot reach.
+pub const IGNORE_EVERYTHING: &str = "*\n";
+
+/// What Dex writes to the `info/exclude` of the repository whose checkout
+/// holds a workspace's root: everything Dex keeps in a workspace, said where
+/// `git clean` cannot delete it, unlike `IGNORE_EVERYTHING`.
+///
+/// Not anchored, because a workspace's root can be any folder of a checkout,
+/// not only its top (review found `/.dex/worktrees/` matching nothing for a
+/// root one folder down). And all of `.dex/`, not only the worktrees: the
+/// context mirror is Dex's too, and left untold it shows in that checkout's
+/// `git status` for ever.
+pub const EXCLUDE_DEX: &str = "**/.dex/";
+
 /// Where a worktree lives: `<base>/<repo>/<branch with dashes>`.
 pub fn worktree_path(base: &Path, repo: &str, branch: &str) -> PathBuf {
     base.join(repo).join(branch_dir(branch))
@@ -165,6 +196,30 @@ pub fn git_version(printed: &str) -> Option<(u32, u32)> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
+    use super::worktree_base;
+
+    #[test]
+    fn a_worktree_goes_inside_a_workspace_rooted_in_a_plain_folder() {
+        assert_eq!(
+            worktree_base(
+                Path::new("C:/Users/me/dex/worktrees"),
+                Some(Path::new("C:/code"))
+            ),
+            PathBuf::from("C:/code/.dex/worktrees")
+        );
+    }
+
+    #[test]
+    fn otherwise_it_goes_to_the_owners_worktree_base() {
+        // A root inside a checkout, or no workspace at all.
+        assert_eq!(
+            worktree_base(Path::new("C:/Users/me/dex/worktrees"), None),
+            PathBuf::from("C:/Users/me/dex/worktrees")
+        );
+    }
+
     #[test]
     fn a_git_version_is_read_from_either_side() {
         assert_eq!(

@@ -54,6 +54,30 @@ pub enum RepoError {
         /// What `git --version` said.
         version: String,
     },
+    /// `worktree.remove` for a branch that neither git nor Dex knows a
+    /// worktree of the repository for.
+    #[error("no worktree of {repo:?} is on branch {branch:?}")]
+    NoSuchWorktree {
+        /// The repository, by name.
+        repo: String,
+        /// The branch asked for.
+        branch: String,
+    },
+    /// A worktree git no longer tracks, whose folder is still on disk: a
+    /// removal that failed part-way, usually on a file something held open.
+    #[error("git no longer tracks the worktree at {path}, but its folder is still there")]
+    WorktreeLeftBehind {
+        /// The folder.
+        path: String,
+    },
+    /// The folder a worktree goes in could not be made.
+    #[error("could not make {path}: {reason}")]
+    WorktreeDir {
+        /// The folder.
+        path: String,
+        /// What the file system said.
+        reason: String,
+    },
     /// git said no. Translated by `platform::proc`, never raw stderr.
     #[error(transparent)]
     Git(#[from] GitError),

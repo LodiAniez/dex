@@ -47,6 +47,13 @@ pub struct Output {
 pub fn git(dir: &Path, args: &[&str]) -> Result<Output, GitError> {
     let mut command = Command::new("git");
     command.args(args).current_dir(dir);
+    // The directory decides which repository, never the environment: an
+    // inherited `GIT_DIR` would have git answer for - and, where a caller
+    // writes what git names (`repo::placement`), write into - another one.
+    command
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_WORK_TREE");
     // A Mac app started from the Finder has a bare PATH (`login_env.rs`).
     if let Some(path) = super::login_env::login_path() {
         command.env("PATH", path);

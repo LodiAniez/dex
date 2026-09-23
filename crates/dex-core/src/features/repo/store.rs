@@ -52,6 +52,21 @@ pub fn attach(
     Ok(())
 }
 
+/// Everywhere Dex recorded making a worktree for `branch` of a repo: one
+/// place per workspace that used it, so more than one is possible.
+pub fn worktrees_of(
+    conn: &Connection,
+    repo_id: &str,
+    branch: &str,
+) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT worktree_path FROM workspace_repo
+         WHERE repo_id = ?1 AND branch = ?2 AND worktree_path IS NOT NULL",
+    )?;
+    let rows = stmt.query_map(params![repo_id, branch], |row| row.get(0))?;
+    rows.collect()
+}
+
 /// Forgets a workspace's use of a repo.
 pub fn detach(conn: &Connection, repo_id: &str, branch: &str) -> rusqlite::Result<usize> {
     conn.execute(

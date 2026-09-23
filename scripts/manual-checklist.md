@@ -20,7 +20,9 @@ Windows on PATH:
    of the first prompt; `dex agent list` in another terminal shows it.
 5. In Claude Code, ask it to start another agent on a small task with a
    worktree. Expect: a new pane appears, a worktree exists under
-   `%USERPROFILE%\dex\worktrees`, and the child gets past the folder-trust
+   `<workspace root>\.dex\worktrees` (the first-run workspace's root is your
+   home folder, so `%USERPROFILE%\.dex\worktrees`), `git status` in the
+   repository shows nothing new, and the child gets past the folder-trust
    dialog and begins work with no keypress from you.
 6. Repeat step 5 twice more from different panes. Expect: four agents, four
    status dots, the title bar counting them, and the activity pane

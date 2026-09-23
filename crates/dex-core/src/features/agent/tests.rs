@@ -25,6 +25,7 @@ mod sessions;
 mod spawn;
 mod stopping;
 mod waiting;
+mod worktrees;
 
 /// A state with one workspace; returns its first pane's id.
 async fn pane() -> (tempfile::TempDir, AppState, String) {

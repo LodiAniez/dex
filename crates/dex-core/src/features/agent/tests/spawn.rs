@@ -7,15 +7,13 @@ use std::process::Command;
 use dex_protocol::agent::{AgentEventArgs, SpawnArgs};
 use dex_protocol::context::{Caller, DigestArgs};
 use dex_protocol::pane::TerminalArgs;
-use dex_protocol::repo::AddRepoArgs;
-use dex_protocol::workspace::CreateWorkspaceArgs;
 
 use super::{agents, pane};
 use crate::app::AppState;
 use crate::features::agent::{AgentError, event, spawn};
-use crate::features::{context, repo, workspace};
+use crate::features::{context, workspace};
 
-fn brief(task: &str, pane: &str) -> SpawnArgs {
+pub(super) fn brief(task: &str, pane: &str) -> SpawnArgs {
     SpawnArgs {
         task: task.into(),
         repo: None,
@@ -84,7 +82,7 @@ async fn a_distro_that_is_not_installed_cannot_be_chosen() {
 }
 
 /// A git repository with one commit.
-fn repo_at(dir: &std::path::Path) {
+pub(super) fn repo_at(dir: &std::path::Path) {
     let run = |args: &[&str]| {
         let out = Command::new("git")
             .args(args)
@@ -102,7 +100,7 @@ fn repo_at(dir: &std::path::Path) {
 }
 
 /// Registers a live parent agent in a pane, as a `SessionStart` hook would.
-async fn parent_agent(state: &AppState, pane: &str, session: &str) {
+pub(super) async fn parent_agent(state: &AppState, pane: &str, session: &str) {
     event(
         state,
         AgentEventArgs {
@@ -309,89 +307,4 @@ async fn a_spawn_with_nothing_to_do_or_no_repo_to_branch_is_refused() {
         spawn(&state, orphan_worktree).await,
         Err(AgentError::WorktreeWithoutRepo)
     ));
-}
-
-#[tokio::test]
-async fn a_spawn_into_a_worktree_puts_the_child_on_its_own_branch() {
-    let work = tempfile::tempdir().unwrap();
-    repo_at(work.path());
-    let (_dir, state) = AppState::for_tests();
-    let list = workspace::create(&state, CreateWorkspaceArgs::default())
-        .await
-        .unwrap();
-    let first = list.workspaces[0].panes[0].id.clone();
-    repo::add(
-        &state,
-        AddRepoArgs {
-            path: work.path().to_string_lossy().replace('\\', "/"),
-            name: Some("api".into()),
-        },
-    )
-    .await
-    .unwrap();
-    parent_agent(&state, &first, "parent").await;
-
-    let child = spawn(
-        &state,
-        SpawnArgs {
-            repo: Some("api".into()),
-            worktree: Some("fix/login".into()),
-            ..brief("fix the login form", &first)
-        },
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(child.branch.as_deref(), Some("fix/login"));
-    let checkout = state.worktree_base().join("api").join("fix-login");
-    assert!(checkout.join("README.md").exists(), "the worktree is real");
-    assert_eq!(
-        repo::branch_at(&checkout).as_deref(),
-        Some("fix/login"),
-        "and the child is on its own branch"
-    );
-}
-
-#[tokio::test]
-async fn a_worktree_that_cannot_be_made_aborts_the_whole_spawn() {
-    // Falling back to the main checkout would put two agents in one working
-    // tree, which is the failure worktrees exist to prevent (PRD §9.4).
-    let work = tempfile::tempdir().unwrap();
-    repo_at(work.path());
-    let (_dir, state) = AppState::for_tests();
-    let list = workspace::create(&state, CreateWorkspaceArgs::default())
-        .await
-        .unwrap();
-    let first = list.workspaces[0].panes[0].id.clone();
-    repo::add(
-        &state,
-        AddRepoArgs {
-            path: work.path().to_string_lossy().replace('\\', "/"),
-            name: Some("api".into()),
-        },
-    )
-    .await
-    .unwrap();
-    parent_agent(&state, &first, "parent").await;
-    let before = workspace::list(&state).await.unwrap().workspaces[0]
-        .panes
-        .len();
-
-    let refused = spawn(
-        &state,
-        SpawnArgs {
-            repo: Some("api".into()),
-            // Windows cannot store this, so the worktree cannot be created.
-            worktree: Some("con".into()),
-            ..brief("doomed", &first)
-        },
-    )
-    .await;
-
-    assert!(matches!(refused, Err(AgentError::Repo(_))), "{refused:?}");
-    let after = workspace::list(&state).await.unwrap().workspaces[0]
-        .panes
-        .len();
-    assert_eq!(after, before, "no pane was left behind");
-    assert_eq!(agents(&state).await.len(), 1, "and no agent row either");
 }

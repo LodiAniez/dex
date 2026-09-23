@@ -21,7 +21,17 @@ use crate::platform::{clock, ids, paths};
 /// How deep `repo.scan` looks when the caller does not say.
 const DEFAULT_SCAN_DEPTH: u32 = 3;
 /// Directories never worth descending into while scanning.
-const SKIP: [&str; 6] = ["node_modules", "target", ".git", "dist", "build", ".venv"];
+const SKIP: [&str; 7] = [
+    "node_modules",
+    "target",
+    ".git",
+    "dist",
+    "build",
+    ".venv",
+    // Dex's own: a workspace's agent worktrees live in `.dex/worktrees`, and
+    // scanning the workspace must not register each of them as a repository.
+    ".dex",
+];
 
 /// `repo.add`: register an existing git repository.
 pub async fn add(state: &AppState, args: AddRepoArgs) -> Result<RepoList, RepoError> {
