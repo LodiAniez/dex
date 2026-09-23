@@ -1,6 +1,6 @@
-//! Worktrees: made on a branch, found again by it, and kept apart from
-//! everything outside them - inside their workspace when its root is a plain
-//! folder, and at `worktree_base` when the root is inside a git checkout.
+//! Worktrees: made on a branch, and kept inside the workspace they are for -
+//! `<root>/.dex/worktrees/<repo>/<branch>` - with the git around that root
+//! told to look away from them, twice over.
 
 use std::path::Path;
 use std::process::Command;
@@ -126,7 +126,7 @@ async fn a_worktree_on_an_existing_branch_reuses_it_rather_than_failing() {
 }
 
 #[tokio::test]
-async fn a_workspace_rooted_in_a_plain_folder_keeps_its_worktrees_inside_it() {
+async fn a_workspace_rooted_in_a_folder_of_its_own_keeps_its_worktrees_inside_it() {
     let (repo, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     repo_at(repo.path());
     let (_dir, state) = AppState::for_tests();
@@ -142,15 +142,15 @@ async fn a_workspace_rooted_in_a_plain_folder_keeps_its_worktrees_inside_it() {
     assert_eq!(
         std::fs::read_to_string(root.path().join(".dex/worktrees/.gitignore")).unwrap(),
         "*\n",
-        "fenced off from git, should the root become a repository"
+        "fenced off from the git around it, whether or not there is any"
     );
 }
 
 #[tokio::test]
-async fn a_workspace_rooted_in_a_checkout_keeps_its_worktrees_outside_it() {
-    // The worktree must see nothing of the project around it: nested in a
-    // checkout, everything that looks up the folder tree would reach that
-    // project's files, and `git clean -ffdx` there would delete it.
+async fn a_workspace_rooted_in_a_checkout_keeps_its_worktrees_inside_it_too() {
+    // The usual workspace: rooted at the repository itself. The worktree goes
+    // in it all the same, and git is told to look away from it twice - in
+    // `.dex/worktrees/.gitignore`, and where `git clean` cannot reach.
     let repo = tempfile::tempdir().unwrap();
     repo_at(repo.path());
     let (_dir, state) = AppState::for_tests();
@@ -161,27 +161,51 @@ async fn a_workspace_rooted_in_a_checkout_keeps_its_worktrees_outside_it() {
         .await
         .unwrap();
 
+    let checkout = repo.path().join(".dex/worktrees/api/fix-login");
+    assert!(checkout.join("README.md").exists(), "inside the workspace");
+    assert_eq!(
+        git(repo.path(), &["status", "--porcelain"]),
+        "",
+        "and nothing new to git"
+    );
+    let exclude = std::fs::read_to_string(repo.path().join(".git/info/exclude")).unwrap();
     assert!(
-        state
-            .worktree_base()
-            .join("api/fix-login/README.md")
+        exclude.lines().any(|line| line == "/.dex/worktrees/"),
+        "{exclude}"
+    );
+    assert!(
+        repo.path().join(".dex/worktrees/README.txt").exists(),
+        "and a note saying what is in there"
+    );
+}
+
+#[tokio::test]
+async fn git_cleaning_the_checkout_does_not_expose_the_worktrees_again() {
+    // `git clean -fdx` deletes the `.gitignore` inside the folder - it is
+    // ignored by its own rule - and skips the worktree itself as a repository
+    // of its own. The `info/exclude` line is what keeps git quiet afterwards.
+    let repo = tempfile::tempdir().unwrap();
+    repo_at(repo.path());
+    let (_dir, state) = AppState::for_tests();
+    registered(&state, repo.path()).await;
+    let workspace = workspace_at(&state, repo.path()).await;
+    add_worktree(&state, on_branch("fix/login", Some(workspace)))
+        .await
+        .unwrap();
+
+    git(repo.path(), &["clean", "-fdx"]);
+
+    assert!(
+        repo.path()
+            .join(".dex/worktrees/api/fix-login/README.md")
             .exists(),
-        "at worktree_base"
-    );
-    assert!(
-        !repo.path().join(".dex").exists(),
-        "and nothing in the checkout"
-    );
-    assert!(
-        !state.worktree_base().join(".gitignore").exists(),
-        "and the owner's worktree_base is not fenced"
+        "the worktree is a checkout of its own, which one -f leaves alone"
     );
     assert_eq!(git(repo.path(), &["status", "--porcelain"]), "");
 }
 
 #[tokio::test]
-async fn anywhere_inside_a_checkout_counts_as_inside_it() {
-    // A root in a subfolder of a repository is still within its reach.
+async fn a_root_in_a_subfolder_of_a_checkout_keeps_them_in_that_root() {
     let repo = tempfile::tempdir().unwrap();
     repo_at(repo.path());
     let docs = repo.path().join("docs");
@@ -194,8 +218,11 @@ async fn anywhere_inside_a_checkout_counts_as_inside_it() {
         .await
         .unwrap();
 
-    assert!(state.worktree_base().join("api/fix-login").exists());
-    assert!(!docs.join(".dex").exists());
+    assert!(docs.join(".dex/worktrees/api/fix-login/README.md").exists());
+    // The exclude belongs to the repository holding the root, not the root.
+    let exclude = std::fs::read_to_string(repo.path().join(".git/info/exclude")).unwrap();
+    assert!(exclude.contains("/.dex/worktrees/"), "{exclude}");
+    assert_eq!(git(repo.path(), &["status", "--porcelain"]), "");
 }
 
 #[tokio::test]
@@ -214,51 +241,6 @@ async fn a_gitignore_already_in_the_worktree_folder_is_left_alone() {
         .unwrap();
 
     assert_eq!(std::fs::read_to_string(&ignore).unwrap(), "# mine\n*\n");
-}
-
-#[tokio::test]
-async fn a_folder_below_a_stale_git_file_is_not_plain() {
-    // A project moved away from its repository keeps the `.git` file its
-    // worktree had, and git then calls it "not a git repository" - of a folder
-    // with a whole project in it. The folders are asked too.
-    let (repo, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    repo_at(repo.path());
-    std::fs::write(
-        root.path().join(".git"),
-        "gitdir: C:/gone/away/.git/worktrees/x\n",
-    )
-    .unwrap();
-    let project = root.path().join("app");
-    std::fs::create_dir_all(&project).unwrap();
-    let (_dir, state) = AppState::for_tests();
-    registered(&state, repo.path()).await;
-    let workspace = workspace_at(&state, &project).await;
-
-    add_worktree(&state, on_branch("fix/login", Some(workspace)))
-        .await
-        .unwrap();
-
-    assert!(state.worktree_base().join("api/fix-login").exists());
-    assert!(!project.join(".dex").exists());
-}
-
-#[tokio::test]
-async fn a_bare_repository_is_not_a_plain_folder() {
-    // No `.git` in it or above it - it is the git directory itself - so this
-    // one only git can tell.
-    let (repo, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    repo_at(repo.path());
-    git(root.path(), &["init", "--bare"]);
-    let (_dir, state) = AppState::for_tests();
-    registered(&state, repo.path()).await;
-    let workspace = workspace_at(&state, root.path()).await;
-
-    add_worktree(&state, on_branch("fix/login", Some(workspace)))
-        .await
-        .unwrap();
-
-    assert!(state.worktree_base().join("api/fix-login").exists());
-    assert!(!root.path().join(".dex").exists());
 }
 
 #[tokio::test]
@@ -287,8 +269,9 @@ async fn scanning_a_workspace_does_not_take_its_worktrees_for_repositories() {
 }
 
 #[tokio::test]
-async fn a_plain_root_that_cannot_hold_worktrees_sends_them_outside() {
-    // Something already sits where the worktree folder would go.
+async fn a_root_that_cannot_hold_worktrees_sends_them_to_worktree_base() {
+    // Something already sits where the worktree folder would go, so the
+    // worktree goes to `worktree_base`: further away is never wrong.
     let (repo, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     repo_at(repo.path());
     std::fs::create_dir_all(root.path().join(".dex")).unwrap();

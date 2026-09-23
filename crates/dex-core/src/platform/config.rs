@@ -39,12 +39,10 @@ const MIN_DIGEST: usize = 200;
 pub struct Config {
     /// Shell for new panes; the `pwsh`/`powershell`/`cmd` search when unset.
     pub shell: Option<String>,
-    /// Where a worktree goes when it cannot go inside its workspace: the
-    /// workspace's root is inside a git checkout, or there is no workspace
-    /// (PRD §8). A worktree nested in a checkout would reach that project's
-    /// files by walking up the folder tree, which a worktree exists to prevent.
-    /// A workspace rooted at a plain folder - the first-run one, rooted at the
-    /// home folder, included - keeps its worktrees inside it instead.
+    /// Where a worktree goes when there is no workspace to go inside
+    /// (PRD §8): `dex worktree add` without `--workspace`, or a root Windows
+    /// git could not work in. A workspace's worktrees live in its own root,
+    /// under `.dex/worktrees`.
     pub worktree_base: PathBuf,
     /// Loopback port for the WSL TCP fallback (PRD §6.4). Off when unset.
     pub tcp_port: Option<u16>,

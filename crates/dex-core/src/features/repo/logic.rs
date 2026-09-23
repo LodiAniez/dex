@@ -77,27 +77,29 @@ pub fn branch_dir(branch: &str) -> String {
 }
 
 /// Where a workspace's worktrees go (PRD §8): inside it, under
-/// `<root>/.dex/worktrees`, when its root is a plain folder - `plain_root`,
-/// which the caller has found is in no git checkout - and otherwise
-/// `outside`, the owner's `worktree_base`.
-///
-/// A worktree is there to be a place of its own. Nested in a checkout, it
-/// would sit below that project's files, and everything that looks up the
-/// folder tree - Claude Code's `CLAUDE.md`, Node's modules, ESLint's configs -
-/// would reach them.
-pub fn worktree_base(outside: &Path, plain_root: Option<&Path>) -> PathBuf {
-    match plain_root {
+/// `<root>/.dex/worktrees`, beside the context mirror - and `outside`, the
+/// owner's `worktree_base`, only when there is no workspace to put them in
+/// (`placement` says when that is).
+pub fn worktree_base(outside: &Path, root: Option<&Path>) -> PathBuf {
+    match root {
         Some(root) => root.join(".dex").join("worktrees"),
         None => outside.to_path_buf(),
     }
 }
 
 /// What Dex writes to `.gitignore` in a workspace's `.dex/worktrees`: ignore
-/// all of it. The root is a plain folder when the worktrees go there, but it
-/// may become a repository later (`git init`), and the worktrees would then
-/// show in it as untracked and be swept into the next `git add -A` as
-/// embedded repositories.
+/// all of it. A workspace's root is often a repository, and its worktrees
+/// would otherwise show there as untracked and be swept into the next
+/// `git add -A` as embedded repositories.
+///
+/// A `.gitignore` ignored by its own rule is deleted by `git clean -fdx`, so
+/// `EXCLUDE_WORKTREES` says the same where clean cannot reach.
 pub const IGNORE_EVERYTHING: &str = "*\n";
+
+/// What Dex writes to the `info/exclude` of the repository whose checkout
+/// holds a workspace's root: the same as `IGNORE_EVERYTHING`, said where
+/// `git clean` cannot delete it.
+pub const EXCLUDE_WORKTREES: &str = "/.dex/worktrees/";
 
 /// Where a worktree lives: `<base>/<repo>/<branch with dashes>`.
 pub fn worktree_path(base: &Path, repo: &str, branch: &str) -> PathBuf {

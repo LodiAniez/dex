@@ -53,7 +53,7 @@ fn into_worktree(branch: &str, task: &str, from: &str) -> SpawnArgs {
 }
 
 #[tokio::test]
-async fn a_spawned_agents_worktree_is_inside_a_plain_workspace() {
+async fn a_spawned_agents_worktree_is_inside_its_workspace() {
     let (work, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     repo_at(work.path());
     let (_dir, state) = AppState::for_tests();
@@ -76,9 +76,8 @@ async fn a_spawned_agents_worktree_is_inside_a_plain_workspace() {
 }
 
 #[tokio::test]
-async fn a_spawned_agents_worktree_stays_out_of_the_checkout_it_came_from() {
-    // The usual workspace: rooted at the repository itself. Nested there, the
-    // child would see the project around its worktree.
+async fn a_spawned_agents_worktree_is_inside_the_workspace_even_when_that_is_the_repo() {
+    // The usual workspace: rooted at the repository itself.
     let work = tempfile::tempdir().unwrap();
     repo_at(work.path());
     let (_dir, state) = AppState::for_tests();
@@ -91,9 +90,12 @@ async fn a_spawned_agents_worktree_stays_out_of_the_checkout_it_came_from() {
     .await
     .unwrap();
 
-    let checkout = state.worktree_base().join("api").join("fix-login");
+    let checkout = work.path().join(".dex/worktrees/api/fix-login");
     assert_eq!(repo::branch_at(&checkout).as_deref(), Some("fix/login"));
-    assert!(!work.path().join(".dex").join("worktrees").exists());
+    assert!(
+        !state.worktree_base().join("api").exists(),
+        "not outside it"
+    );
 }
 
 #[tokio::test]
