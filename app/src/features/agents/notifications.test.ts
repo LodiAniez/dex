@@ -22,6 +22,7 @@ function agent(id: string, status: AgentStatus, extra: Partial<AgentView> = {}):
     status,
     status_detail: null,
     status_at: 0,
+    last_event_at: 0,
     quiet_for_ms: null,
     permission_mode: "auto",
     task_brief: null,

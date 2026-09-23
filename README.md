@@ -178,7 +178,7 @@ max_depth = 2                # how deep spawning may go
 max_concurrent = 10          # live agents per workspace
 spawn_permission_mode = "auto"   # what spawned agents run with
 spawn_chrome = false         # true lets spawned agents connect to Claude in Chrome
-quiet_after_seconds = 300    # how long a working agent may go without a hook before Dex says so
+quiet_after_seconds = 300    # how long a working agent may go without a hook before Dex says so (60s to a day)
 
 [digest]
 full_chars = 2000            # budget for an agent's opening briefing (its task brief comes on top, whole)

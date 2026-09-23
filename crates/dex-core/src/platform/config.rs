@@ -11,6 +11,7 @@
 //! holds only overrides, because the defaults are the frontend's and duplicating
 //! them in Rust would give the same table two owners.
 
+mod repair;
 #[cfg(test)]
 mod tests;
 mod watch;
@@ -28,14 +29,6 @@ use super::pty::FlowLimits;
 /// Edits that land within this of each other count as one change. Editors write
 /// a config file in several operations; reloading on each would reload garbage.
 const SETTLE: Duration = Duration::from_millis(250);
-
-/// The smallest digest budget worth building; below this a digest cannot say
-/// anything useful and the agent would be better off with none.
-const MIN_DIGEST: usize = 200;
-
-/// Below this, an ordinary tool call would be called quiet and the line would
-/// mean nothing.
-const MIN_QUIET_SECONDS: u64 = 60;
 
 /// Everything the owner may configure.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -131,7 +124,8 @@ pub struct AgentSettings {
     /// (issue #67), in seconds. Hooks fire at every tool batch, so a gap this
     /// long means one tool call has been running all that time. Said, never
     /// acted on, so it is a matter of taste: lower it to hear about a stuck
-    /// agent sooner, raise it if long builds make it noise.
+    /// agent sooner, raise it if long builds make it noise. Between a minute
+    /// (below that, ordinary tool calls are called quiet) and a day.
     pub quiet_after_seconds: u64,
 }
 
@@ -216,75 +210,10 @@ impl Config {
         }
     }
 
-    /// Replaces values that make no sense with their defaults, and says which.
+    /// Replaces values that make no sense with their defaults, and says which
+    /// (`repair.rs`, where the bounds live).
     fn repair(&mut self) -> Vec<String> {
-        let mut problems = Vec::new();
-        let defaults = Self::default();
-
-        // Watermarks that cross would pause the PTY and never resume it.
-        if self.flow.low_bytes >= self.flow.high_bytes || self.flow.high_bytes == 0 {
-            problems.push(format!(
-                "flow.low_bytes ({}) must be below flow.high_bytes ({}); using {} and {}",
-                self.flow.low_bytes,
-                self.flow.high_bytes,
-                defaults.flow.low_bytes,
-                defaults.flow.high_bytes
-            ));
-            self.flow = defaults.flow;
-        }
-        if self.agents.max_depth < 1 {
-            problems.push(format!(
-                "agents.max_depth ({}) must be at least 1; using 1",
-                self.agents.max_depth
-            ));
-            self.agents.max_depth = 1;
-        }
-        if self.agents.max_concurrent < 1 {
-            problems.push(format!(
-                "agents.max_concurrent ({}) must be at least 1; using 1",
-                self.agents.max_concurrent
-            ));
-            self.agents.max_concurrent = 1;
-        }
-        if self.agents.quiet_after_seconds < MIN_QUIET_SECONDS {
-            problems.push(format!(
-                "agents.quiet_after_seconds ({}) must be at least {MIN_QUIET_SECONDS}; using {}",
-                self.agents.quiet_after_seconds, defaults.agents.quiet_after_seconds
-            ));
-            self.agents.quiet_after_seconds = defaults.agents.quiet_after_seconds;
-        }
-        if !PERMISSION_MODES.contains(&self.agents.spawn_permission_mode.as_str()) {
-            problems.push(format!(
-                "agents.spawn_permission_mode \"{}\" is not one of {}; using \"{}\"",
-                self.agents.spawn_permission_mode,
-                PERMISSION_MODES.join(", "),
-                defaults.agents.spawn_permission_mode
-            ));
-            self.agents.spawn_permission_mode = defaults.agents.spawn_permission_mode.clone();
-        }
-        if self.digest.full_chars < MIN_DIGEST || self.digest.delta_chars < MIN_DIGEST {
-            problems.push(format!(
-                "digest budgets must be at least {MIN_DIGEST} characters; using {} and {}",
-                defaults.digest.full_chars, defaults.digest.delta_chars
-            ));
-            self.digest = defaults.digest;
-        }
-        if self.ui.view == REMOVED_VIEW.0 {
-            problems.push(format!(
-                "ui.view \"{}\": the cards view was removed; using \"{}\"",
-                REMOVED_VIEW.0, REMOVED_VIEW.1
-            ));
-            self.ui.view = REMOVED_VIEW.1.into();
-        } else if !VIEWS.contains(&self.ui.view.as_str()) {
-            problems.push(format!(
-                "ui.view \"{}\" is not one of {}; using \"{}\"",
-                self.ui.view,
-                VIEWS.join(", "),
-                defaults.ui.view
-            ));
-            self.ui = defaults.ui;
-        }
-        problems
+        repair::everything_unusable(self)
     }
 }
 

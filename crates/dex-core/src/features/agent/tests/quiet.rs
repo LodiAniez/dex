@@ -7,8 +7,9 @@
 
 use dex_protocol::agent::AgentStatus;
 use dex_protocol::workspace::CreateWorkspaceArgs;
+use serde_json::json;
 
-use super::{fire, only_agent, session};
+use super::{fire, only_agent, session, store, sweep};
 use crate::app::AppState;
 use crate::features::workspace;
 
@@ -43,7 +44,14 @@ async fn a_working_agent_past_the_threshold_says_how_long_it_has_been_quiet() {
     let agent = only_agent(&state).await;
 
     assert_eq!(agent.status, AgentStatus::Running);
-    assert!(agent.quiet_for_ms.is_some(), "{agent:?}");
+    // Counted from the hook a moment ago, not from nothing: measuring the
+    // silence against the wrong clock would read as zero for ever (review).
+    let quiet = agent.quiet_for_ms.expect("a silence to report");
+    assert!((0..5_000).contains(&quiet), "{quiet}ms since its last hook");
+    assert!(
+        agent.last_event_at > 0,
+        "and the view says when that hook was, so a client can go on counting"
+    );
 }
 
 #[tokio::test]
@@ -64,4 +72,67 @@ async fn an_agent_that_has_finished_its_turn_is_not_quiet_but_idle() {
 
     assert_eq!(agent.status, AgentStatus::Idle);
     assert_eq!(agent.quiet_for_ms, None, "idle is not a silence to report");
+}
+
+#[tokio::test]
+async fn the_sweep_tells_the_app_to_look_again_while_an_agent_is_quiet() {
+    // Crossing the threshold changes nothing in the database, so without this
+    // the app would go on showing the listing it already had, and the line
+    // would never appear where the owner is looking (review).
+    let (_dir, state, _pane) = working(Some(0)).await;
+    let mut changes = state.bus.subscribe();
+
+    sweep(&state).await.unwrap();
+
+    let told = changes.try_recv().expect("the app is told to re-read");
+    assert_eq!(told.topic, "agents");
+}
+
+#[tokio::test]
+async fn a_busy_agent_that_has_just_hooked_makes_no_noise_on_the_bus() {
+    let (_dir, state, _pane) = working(None).await;
+    let mut changes = state.bus.subscribe();
+
+    sweep(&state).await.unwrap();
+
+    assert!(
+        changes.try_recv().is_err(),
+        "nothing to say, so nothing said"
+    );
+}
+
+#[tokio::test]
+async fn a_subagents_hook_keeps_its_parent_from_looking_quiet() {
+    // The parent is inside one `Task` call while its subagent works, so its
+    // own hooks stop - but Dex hears the subagent's, and they carry the
+    // parent's session (review of issue #67).
+    let (_dir, state, pane) = working(None).await;
+    let id = only_agent(&state).await.id;
+    let long_ago = id.clone();
+    state
+        .db
+        .call(move |conn| store::touch(conn, &long_ago, None, 1))
+        .await
+        .unwrap();
+    assert!(
+        only_agent(&state).await.quiet_for_ms.is_some(),
+        "quiet, until the subagent is heard from"
+    );
+
+    fire(
+        &state,
+        "stop",
+        &pane,
+        3,
+        json!({ "session_id": "s1", "agent_id": "sub-1", "agent_type": "Explore" }),
+    )
+    .await;
+
+    let agent = only_agent(&state).await;
+    assert_eq!(
+        agent.status,
+        AgentStatus::Running,
+        "a subagent finishing moves no status"
+    );
+    assert_eq!(agent.quiet_for_ms, None, "but its parent was heard from");
 }

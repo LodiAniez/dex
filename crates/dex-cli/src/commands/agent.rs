@@ -199,7 +199,8 @@ fn status_text(agent: &AgentView) -> String {
     }
 }
 
-/// How long a silence has lasted: `40s`, `12m`, `1h 3m`.
+/// How long a silence has lasted: `40s`, `12m`, `1h 3m`. The app counts the
+/// same silence on from `last_event_at`; here one listing is one moment.
 fn quiet_span(ms: i64) -> String {
     let seconds = ms.max(0) / 1_000;
     if seconds < 60 {
@@ -214,7 +215,40 @@ fn quiet_span(ms: i64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::quiet_span;
+    use super::{quiet_span, status_text};
+    use dex_protocol::agent::{AgentStatus, AgentView};
+
+    fn agent(status: AgentStatus, quiet_for_ms: Option<i64>) -> AgentView {
+        AgentView {
+            id: "a".into(),
+            pane_id: None,
+            workspace_id: "w".into(),
+            label: None,
+            unread: 0,
+            backend: "claude".into(),
+            status,
+            status_detail: None,
+            status_at: 0,
+            last_event_at: 0,
+            quiet_for_ms,
+            permission_mode: None,
+            task_brief: None,
+            started: true,
+            parent_id: None,
+            depth: 0,
+            started_at: 0,
+            ended_at: None,
+        }
+    }
+
+    #[test]
+    fn a_working_agent_that_has_gone_quiet_says_so_beside_its_status() {
+        assert_eq!(
+            status_text(&agent(AgentStatus::Running, Some(12 * 60_000))),
+            "running, quiet 12m"
+        );
+        assert_eq!(status_text(&agent(AgentStatus::Running, None)), "running");
+    }
 
     #[test]
     fn a_silence_is_counted_in_seconds_then_minutes_then_hours() {

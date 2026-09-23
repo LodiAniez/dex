@@ -14,7 +14,8 @@ use crate::platform::clock;
 pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, AgentError> {
     // The owner's taste for how long a working agent may go quiet before Dex
     // says so; read once, so every agent in one listing is judged alike.
-    let quiet_after_ms = (state.config.get().agents.quiet_after_seconds as i64) * 1_000;
+    let quiet_after_ms =
+        (state.config.get().agents.quiet_after_seconds as i64).saturating_mul(1_000);
     state
         .db
         .call(
@@ -32,7 +33,7 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                     (None, None) => None,
                 };
                 let started = store::started_ids(conn)?;
-                let (now, quiet_after) = (clock::now_millis(), quiet_after_ms);
+                let now = clock::now_millis();
                 let unread = context::unread_counts(conn)?;
                 // An agent asking - one runs in the pane the request came from -
                 // is told that a colleague is waiting, not what for: the reason
@@ -47,8 +48,12 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                     .map(|agent| {
                         let has_started = started.contains(&agent.id);
                         let waiting = unread.get(&agent.id).copied().unwrap_or(0);
-                        let quiet =
-                            silence::quiet_for(agent.status, agent.last_event_at, now, quiet_after);
+                        let quiet = silence::quiet_for(
+                            agent.status,
+                            agent.last_event_at,
+                            now,
+                            quiet_after_ms,
+                        );
                         let mut seen = view(agent, has_started, waiting, quiet);
                         let theirs = asker.as_ref().is_none_or(|id| id == &seen.id);
                         // Nor what a colleague asked the owner: it may quote anything.
@@ -71,6 +76,7 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
 
 fn view(agent: Agent, started: bool, unread: usize, quiet_for_ms: Option<i64>) -> AgentView {
     AgentView {
+        last_event_at: agent.last_event_at,
         id: agent.id,
         pane_id: agent.pane_id,
         workspace_id: agent.workspace_id,

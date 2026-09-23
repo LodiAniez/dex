@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { AgentStatus } from "../../platform/generated/AgentStatus";
 import type { AgentView } from "../../platform/generated/AgentView";
 import { seenAs } from "./attention";
-import { quietWords } from "./quiet";
+import { quietSince, quietSpan } from "./quiet";
 
 /** What each status means to the person looking at it. */
 export const STATUS_WORDS: Record<AgentStatus, string> = {
@@ -27,9 +27,10 @@ export function AgentBadge({ agent }: { agent: AgentView }) {
   const detail = agent.status === "error" && agent.status_detail ? ` (${agent.status_detail})` : "";
   const mode = agent.permission_mode && agent.permission_mode !== "default" ? agent.permission_mode : null;
   // Working, but nothing from its hooks in a while: one long tool call, which
-  // looks the same as a stuck one from here (issue #67).
-  const quiet = quietWords(agent.quiet_for_ms);
-  const title = `${agent.backend}: ${STATUS_WORDS[shown]}${detail}${quiet ? ` · ${quiet}` : ""}`;
+  // looks the same as a stuck one from here (issue #67). Short in the header,
+  // where there is little room; the whole of it in the tooltip.
+  const quiet = quietSince(agent, now);
+  const title = `${agent.backend}: ${STATUS_WORDS[shown]}${detail}${quiet ? ` · nothing for ${quiet}` : ""}`;
   return (
     <span className={`agent-badge ${shown}`} title={title}>
       <AgentStatusDot status={shown} />
@@ -37,8 +38,8 @@ export function AgentBadge({ agent }: { agent: AgentView }) {
         {STATUS_WORDS[shown]}
         {detail}
       </span>
-      <span className="agent-elapsed">{elapsed(now - agent.status_at)}</span>
-      {quiet && <span className="agent-quiet">{quiet}</span>}
+      <span className="agent-elapsed">{quietSpan(now - agent.status_at)}</span>
+      {quiet && <span className="agent-quiet">quiet {quiet}</span>}
       {mode && <span className="agent-mode">{mode}</span>}
     </span>
   );
@@ -54,10 +55,4 @@ function useNow(ms: number): number {
   return now;
 }
 
-function elapsed(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
+

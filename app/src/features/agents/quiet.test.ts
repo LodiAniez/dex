@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quietSpan, quietWords } from "./quiet";
+import { quietSince, quietSpan } from "./quiet";
 
 describe("quietSpan", () => {
   it("counts seconds, then minutes, then hours and minutes", () => {
@@ -13,18 +13,20 @@ describe("quietSpan", () => {
   });
 });
 
-describe("quietWords", () => {
-  it("says how long the agent has been quiet", () => {
-    expect(quietWords(12 * 60_000)).toBe("nothing for 12m");
-  });
-
-  it("says nothing when the daemon sent nothing", () => {
+describe("quietSince", () => {
+  it("says nothing unless the daemon called the silence worth mentioning", () => {
     // Every status but `running`, and silences short enough to be work.
-    expect(quietWords(null)).toBeNull();
-    expect(quietWords(undefined)).toBeNull();
+    expect(quietSince({ quiet_for_ms: null, last_event_at: 0 }, 60 * 60_000)).toBeNull();
   });
 
-  it("says something for a silence of zero, which is a threshold of zero", () => {
-    expect(quietWords(0)).toBe("nothing for 0s");
+  it("goes on counting from the last hook, not from what the daemon last said", () => {
+    const agent = { quiet_for_ms: 5 * 60_000, last_event_at: 1_000 };
+    // Two minutes after that listing: the line has moved on with the clock.
+    expect(quietSince(agent, 1_000 + 7 * 60_000)).toBe("7m");
+  });
+
+  it("never falls below what the daemon said, however the clocks disagree", () => {
+    const agent = { quiet_for_ms: 6 * 60_000, last_event_at: 10 * 60_000 };
+    expect(quietSince(agent, 11 * 60_000)).toBe("6m");
   });
 });

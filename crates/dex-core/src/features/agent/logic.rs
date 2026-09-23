@@ -190,7 +190,6 @@ pub fn exit_plan(status: AgentStatus, started: bool) -> Vec<ExitStep> {
 
 #[cfg(test)]
 mod tests {
-
     use serde_json::json;
 
     use super::*;

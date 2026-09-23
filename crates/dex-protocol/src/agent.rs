@@ -49,6 +49,12 @@ pub struct AgentView {
     /// When the current state began, unix millis.
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub status_at: i64,
+    /// When Dex last heard from its hooks, unix millis. What `quiet_for_ms` is
+    /// measured from, so a client can go on counting the silence between one
+    /// listing and the next.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub last_event_at: i64,
     /// How long it has been working without a hook, in millis, once that is
     /// long enough to be worth saying (`[agents] quiet_after_seconds`). Hooks
     /// fire at every tool batch, so this is one tool call taking all that

@@ -33,6 +33,25 @@ fn a_misspelled_key_is_reported_rather_than_ignored() {
 }
 
 #[test]
+fn a_quiet_threshold_too_low_or_too_high_falls_back_to_the_default() {
+    // Under a minute, every ordinary tool call would be called quiet; over a
+    // day it could never be said at all, and a number large enough to overflow
+    // the millis it becomes would turn the rule inside out.
+    for text in [
+        "[agents]\nquiet_after_seconds = 30\n",
+        "[agents]\nquiet_after_seconds = 9300000000000000\n",
+    ] {
+        let (config, problems) = parse(text);
+        assert_eq!(
+            config.agents.quiet_after_seconds,
+            Config::default().agents.quiet_after_seconds
+        );
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("quiet_after_seconds"), "{problems:?}");
+    }
+}
+
+#[test]
 fn crossed_watermarks_fall_back_to_the_defaults() {
     // low above high would pause the PTY at the high mark and never resume.
     let (config, problems) = parse("[flow]\nhigh_bytes = 1000\nlow_bytes = 2000\n");

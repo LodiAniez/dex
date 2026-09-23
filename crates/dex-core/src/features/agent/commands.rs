@@ -28,7 +28,11 @@ pub async fn event(state: &AppState, args: AgentEventArgs) -> Result<EventOutcom
     };
     let input = logic::read_input(&args.input);
     if input.from_subagent {
-        return Ok(IGNORED);
+        // A subagent's hooks move no status - the pane's agent is what the
+        // owner sees - but they are the parent being heard from: it is inside
+        // one `Task` call, and without this it would look quiet while its
+        // subagent works (review of issue #67).
+        return heard_from(state, &args.pane).await;
     }
     // /clear: the session ends, the agent does not (a SessionStart follows).
     if kind == HookKind::SessionEnd && !session::ends_the_agent(input.end_reason.as_deref()) {
@@ -310,6 +314,22 @@ fn register(conn: &Connection, hook: &Hook<'_>, status: AgentStatus) -> rusqlite
     };
     store::insert_agent(conn, &agent, hook.session())?;
     Ok(agent)
+}
+
+/// A hook that says nothing about status, only that the pane's agent is still
+/// there: the last-heard-from clock moves, and nothing else.
+async fn heard_from(state: &AppState, pane: &str) -> Result<EventOutcome, AgentError> {
+    let (pane, now) = (pane.to_owned(), clock::now_millis());
+    state
+        .db
+        .call(move |conn| -> rusqlite::Result<()> {
+            if let Some(agent) = store::find_live_in_pane(conn, &pane)? {
+                store::touch(conn, &agent.id, None, now)?;
+            }
+            Ok(())
+        })
+        .await?;
+    Ok(IGNORED)
 }
 
 /// `agent.pane_exited`: a pane's process exited, so whatever agent ran in it
