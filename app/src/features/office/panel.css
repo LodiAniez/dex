@@ -59,6 +59,10 @@
   font-size: 14px;
 }
 
+.office-panel-quiet {
+  color: #d8a657;
+}
+
 .office-panel-status {
   display: flex;
   align-items: center;

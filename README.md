@@ -112,7 +112,7 @@ dex doctor            # the table above
 - **diff** — a repository's uncommitted changes, unstaged or staged, following the working tree as it changes (**Show git diff** in the palette);
 - **markdown** — a rendered file that updates as it's written, for agents' notes and plans (`dex pane create --kind markdown --path notes.md`).
 
-**Agents.** Run `claude` in any pane. Within a few seconds its header shows a status dot — running, waiting on you, idle, error, or dead — and the title bar counts them across all workspaces. When an agent in a pane you are not looking at stops or needs input, you get a Windows toast; clicking it brings you to that pane.
+**Agents.** Run `claude` in any pane. Within a few seconds its header shows a status dot — running, waiting on you, idle, error, or dead — and the title bar counts them across all workspaces. An agent that has been working without a word from its hooks for five minutes (`[agents] quiet_after_seconds`) also says **nothing for 12m** beside its status, in the pane header and in the office panel: hooks arrive at every tool call, so one long silence is one long command — a build, or one that will never come back, which otherwise looks exactly like work. Dex only says it; deciding what to do is yours. When an agent in a pane you are not looking at stops or needs input, you get a Windows toast; clicking it brings you to that pane.
 
 ### Two views
 
@@ -178,6 +178,7 @@ max_depth = 2                # how deep spawning may go
 max_concurrent = 10          # live agents per workspace
 spawn_permission_mode = "auto"   # what spawned agents run with
 spawn_chrome = false         # true lets spawned agents connect to Claude in Chrome
+quiet_after_seconds = 300    # how long a working agent may go without a hook before Dex says so (60s to a day)
 
 [digest]
 full_chars = 2000            # budget for an agent's opening briefing (its task brief comes on top, whole)

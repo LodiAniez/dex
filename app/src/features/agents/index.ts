@@ -9,4 +9,5 @@ export {
   workspaceAttention,
 } from "./agentStore";
 export { askedYou, lastSaid, seenAs } from "./attention";
+export { quietSince, quietSpan } from "./quiet";
 export { notifyTransitions, type PaneContext } from "./notifications";

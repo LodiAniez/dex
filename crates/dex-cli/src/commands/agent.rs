@@ -185,10 +185,80 @@ fn status_text(agent: &AgentView) -> String {
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_default();
+    // A working agent that has sent no hook for a while is inside one long
+    // tool call, which is worth knowing and is nobody's fault (issue #67).
+    let quiet = match agent.quiet_for_ms {
+        Some(ms) => format!(", quiet {}", quiet_span(ms)),
+        None => String::new(),
+    };
     match &agent.status_detail {
         // What an idle agent said last is for the office; what it asked is worth a column.
-        Some(detail) if detail.starts_with("said: ") => name,
-        Some(detail) => format!("{name} ({detail})"),
-        None => name,
+        Some(detail) if detail.starts_with("said: ") => format!("{name}{quiet}"),
+        Some(detail) => format!("{name} ({detail}){quiet}"),
+        None => format!("{name}{quiet}"),
+    }
+}
+
+/// How long a silence has lasted: `40s`, `12m`, `1h 3m`. The app counts the
+/// same silence on from `last_event_at`; here one listing is one moment.
+fn quiet_span(ms: i64) -> String {
+    let seconds = ms.max(0) / 1_000;
+    if seconds < 60 {
+        return format!("{seconds}s");
+    }
+    let minutes = seconds / 60;
+    if minutes < 60 {
+        return format!("{minutes}m");
+    }
+    format!("{}h {}m", minutes / 60, minutes % 60)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{quiet_span, status_text};
+    use dex_protocol::agent::{AgentStatus, AgentView};
+
+    fn agent(status: AgentStatus, quiet_for_ms: Option<i64>) -> AgentView {
+        AgentView {
+            id: "a".into(),
+            pane_id: None,
+            workspace_id: "w".into(),
+            label: None,
+            unread: 0,
+            backend: "claude".into(),
+            status,
+            status_detail: None,
+            status_at: 0,
+            last_event_at: 0,
+            quiet_for_ms,
+            permission_mode: None,
+            task_brief: None,
+            started: true,
+            parent_id: None,
+            depth: 0,
+            started_at: 0,
+            ended_at: None,
+        }
+    }
+
+    #[test]
+    fn a_working_agent_that_has_gone_quiet_says_so_beside_its_status() {
+        assert_eq!(
+            status_text(&agent(AgentStatus::Running, Some(12 * 60_000))),
+            "running, quiet 12m"
+        );
+        assert_eq!(status_text(&agent(AgentStatus::Running, None)), "running");
+    }
+
+    #[test]
+    fn a_silence_is_counted_in_seconds_then_minutes_then_hours() {
+        assert_eq!(quiet_span(40_000), "40s");
+        assert_eq!(quiet_span(12 * 60_000), "12m");
+        assert_eq!(quiet_span(63 * 60_000), "1h 3m");
+    }
+
+    #[test]
+    fn a_silence_never_reads_as_negative_whatever_the_clocks_say() {
+        assert_eq!(quiet_span(-5_000), "0s");
     }
 }

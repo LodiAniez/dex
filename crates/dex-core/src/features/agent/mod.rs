@@ -2,7 +2,8 @@
 //! Tables: `agent`.
 //! Commands: `agent.event` (hooks), `agent.list`, `agent.stop`, `agent.prompt`, `agent.pane_exited`,
 //! `agent.sweep` (the watchdog, in `watchdog.rs`).
-//! Which hook means what, and how a status moves, is pure and lives in `logic.rs`.
+//! Which hook means what, and how a status moves, is pure and lives in `logic.rs`;
+//! when an agent has gone quiet, and what is said about it, in `silence.rs`.
 
 mod asking;
 mod commands;
@@ -15,6 +16,7 @@ mod presence;
 mod prompt;
 mod reason;
 mod session;
+mod silence;
 mod spawn;
 mod stop;
 mod store;

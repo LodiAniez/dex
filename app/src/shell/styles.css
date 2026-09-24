@@ -300,6 +300,10 @@ body,
   align-items: center;
   gap: 6px;
   flex: none;
+  /* The quiet line can be long; without this the badge sizes to its content
+     and pushes the pane's own buttons off the right edge (review). */
+  min-width: 0;
+  max-width: 60%;
   padding-right: 4px;
 }
 
@@ -309,6 +313,14 @@ body,
 
 .agent-badge.waiting .agent-state { color: #8fb4ff; }
 .agent-badge.error .agent-state { color: #ff8f8c; }
+
+.agent-quiet {
+  color: #d8a657;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .agent-elapsed {
   color: var(--text-dim);

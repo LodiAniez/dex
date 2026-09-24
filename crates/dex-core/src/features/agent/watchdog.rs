@@ -5,7 +5,7 @@
 use dex_protocol::agent::{AgentStatus, EventOutcome};
 
 use super::model::AgentError;
-use super::{logic, presence, store};
+use super::{presence, silence, store};
 use crate::app::AppState;
 use crate::platform::clock;
 
@@ -22,6 +22,13 @@ const IGNORED: EventOutcome = EventOutcome { applied: false };
 /// change only when it made one.
 pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
     let statuses = sweep_statuses(state).await?;
+    // Crossing the quiet threshold changes nothing in the database, so nothing
+    // else would tell the app about it and the line would never appear
+    // (review). Said every sweep while it lasts: a re-read is cheap, the bus
+    // is lossy by design, and the alternative is remembering across sweeps.
+    if quiet_agents(state).await? {
+        state.bus.publish("agents");
+    }
     // Before anyone is typed at: an agent whose Claude Code has gone still
     // looks idle, and its pane is a bare shell that would run the nudge as a
     // command. It may take a couple of seconds and announces what it does
@@ -48,6 +55,21 @@ pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
     })
 }
 
+/// Whether any agent is working and has gone quiet, by the owner's threshold:
+/// what `AgentView.quiet_for_ms` will say, asked here only to know that the
+/// app should look again (issue #67).
+async fn quiet_agents(state: &AppState) -> Result<bool, AgentError> {
+    let after_ms = (state.config.get().agents.quiet_after_seconds as i64).saturating_mul(1_000);
+    let now = clock::now_millis();
+    let running = state
+        .db
+        .call(|conn| store::list_by_status(conn, AgentStatus::Running))
+        .await?;
+    Ok(running.iter().any(|agent| {
+        silence::quiet_for(agent.status, agent.last_event_at, now, after_ms).is_some()
+    }))
+}
+
 async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
     let now = clock::now_millis();
     // Orphans first: a pane closed from the UI, or lost with a crashed
@@ -68,7 +90,7 @@ async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
                 .pane_id
                 .as_deref()
                 .and_then(|pane| state.pty.last_output_at(pane));
-            logic::is_silent(agent.status, agent.last_event_at, output, now, WATCHDOG_MS)
+            silence::is_silent(agent.status, agent.last_event_at, output, now, WATCHDOG_MS)
         })
         .map(|agent| agent.id)
         .collect();

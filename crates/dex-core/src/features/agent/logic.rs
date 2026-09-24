@@ -126,20 +126,6 @@ pub fn revived(status: AgentStatus, ended_at: Option<i64>, stamp: i64) -> bool {
     status == AgentStatus::Dead && ended_at.is_some_and(|ended| stamp > ended)
 }
 
-/// The watchdog's verdict: a running agent with no hook event and no pane
-/// output for `quiet_ms` has gone silent and is shown as `unknown`.
-pub fn is_silent(
-    status: AgentStatus,
-    last_event_at: i64,
-    last_output_at: Option<i64>,
-    now: i64,
-    quiet_ms: i64,
-) -> bool {
-    status == AgentStatus::Running
-        && now - last_event_at >= quiet_ms
-        && now - last_output_at.unwrap_or(0) >= quiet_ms
-}
-
 /// The stored name of a status.
 pub fn status_name(status: AgentStatus) -> &'static str {
     match status {
@@ -318,24 +304,6 @@ mod tests {
         // Only the dead are revived, and only when Dex recorded an end.
         assert!(!revived(Running, Some(100), 101));
         assert!(!revived(Dead, None, 101));
-    }
-
-    #[test]
-    fn the_watchdog_flags_only_silent_running_agents() {
-        let quiet = 120_000;
-        assert!(is_silent(AgentStatus::Running, 0, None, quiet, quiet));
-        assert!(
-            !is_silent(AgentStatus::Running, 0, Some(quiet - 1), quiet, quiet),
-            "recent output"
-        );
-        assert!(
-            !is_silent(AgentStatus::Running, 1, None, quiet, quiet),
-            "recent hook"
-        );
-        assert!(
-            !is_silent(AgentStatus::Waiting, 0, None, quiet, quiet),
-            "waiting on a human is fine"
-        );
     }
 
     #[test]

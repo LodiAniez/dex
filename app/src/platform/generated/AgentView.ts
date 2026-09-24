@@ -45,6 +45,20 @@ status_detail: string | null,
  */
 status_at: number, 
 /**
+ * When Dex last heard from its hooks, unix millis. What `quiet_for_ms` is
+ * measured from, so a client can go on counting the silence between one
+ * listing and the next.
+ */
+last_event_at: number, 
+/**
+ * How long it has been working without a hook, in millis, once that is
+ * long enough to be worth saying (`[agents] quiet_after_seconds`). Hooks
+ * fire at every tool batch, so this is one tool call taking all that
+ * time: a long build, or one that will never come back (issue #67).
+ * Shown, never acted on. `None` for every other status.
+ */
+quiet_for_ms: number | null, 
+/**
  * Claude Code's permission mode, as its hooks last reported it.
  */
 permission_mode: string | null, 

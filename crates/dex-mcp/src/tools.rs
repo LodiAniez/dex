@@ -78,7 +78,7 @@ read. Example: context_list(tag: \"api\").",
         description: "\
 Show the other agents working in this workspace: what each is doing and whether \
 it is running, idle, or waiting on a human. Use it before sending a message, \
-and when deciding whether to take on work someone else may already be doing.",
+and when deciding whether to take on work someone else may already be doing. quiet_for_ms, when it is set, is how long a working agent has gone without a hook: one tool call has been running all that time, which may be a long build or may be stuck. It is there to be read, not acted on - whether to interrupt someone is the owner's call.",
     },
     Tool {
         name: "message_send",
