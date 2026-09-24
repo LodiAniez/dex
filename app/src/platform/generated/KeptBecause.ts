@@ -4,4 +4,4 @@
  * Why a worktree was left where it is. Every one of these is a reason to
  * believe the worktree may still hold work, or that Dex could not tell.
  */
-export type KeptBecause = "in_use" | "uncommitted" | "unmerged" | "detached" | "unknown" | "refused";
+export type KeptBecause = "in_use" | "uncommitted" | "missing" | "unmerged" | "detached" | "unknown" | "refused";

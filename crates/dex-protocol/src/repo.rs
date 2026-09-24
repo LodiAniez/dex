@@ -148,6 +148,11 @@ pub enum KeptBecause {
     InUse,
     /// Its working tree has changes git has not been told to keep.
     Uncommitted,
+    /// Its folder is not there, or not reachable from here - a worktree on a
+    /// distro that is not running. Git still has a record of it, and clearing
+    /// those is `git worktree prune`'s job, which Dex will not run for you: a
+    /// folder that is only unreachable is not a folder that is gone.
+    Missing,
     /// Its branch has commits the main checkout's branch does not.
     Unmerged,
     /// No branch is checked out, so there is nothing to compare.

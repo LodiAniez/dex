@@ -136,6 +136,25 @@ async fn a_pane_whose_shell_has_gone_does_not_keep_its_worktree() {
 }
 
 #[tokio::test]
+async fn a_worktree_whose_folder_has_gone_is_named_not_pruned() {
+    // Deleted by hand, or on a distro that is not running: `git status` in a
+    // folder that is not there fails, and reading that as uncommitted work
+    // would tell the owner their empty folder holds an afternoon's work.
+    let (_repo, _root, _data, state, checkout) = with_a_worktree("feat/vanished").await;
+    std::fs::remove_dir_all(&checkout).unwrap();
+
+    let pruned = prune_worktrees(&state, pruning()).await.unwrap();
+
+    assert!(pruned.taken.is_empty(), "{:?}", pruned.taken);
+    assert_eq!(pruned.kept.len(), 1, "{pruned:?}");
+    assert_eq!(
+        pruned.kept[0].because,
+        KeptBecause::Missing,
+        "not uncommitted work: there is no work and no folder"
+    );
+}
+
+#[tokio::test]
 async fn a_dry_run_says_what_would_go_and_takes_nothing() {
     let (_repo, _root, _data, state, checkout) = with_a_worktree("feat/done").await;
 

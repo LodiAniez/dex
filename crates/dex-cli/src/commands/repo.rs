@@ -78,6 +78,11 @@ pub enum WorktreeCommand {
     /// A worktree goes only when no pane has a shell running in it, its tree
     /// is clean, and its branch has nothing the main checkout's branch has
     /// not. Everything else is left where it is, with the reason why.
+    ///
+    /// Ignored files go with the folder, as they do for `git worktree remove`:
+    /// installed dependencies and build output, and anything else gitignored
+    /// that only exists there - a hand-written `.env`, most likely. Run it with
+    /// --dry-run first.
     Prune {
         /// Repo name, id, or path.
         repo: String,
@@ -232,6 +237,7 @@ fn why(because: KeptBecause) -> &'static str {
     match because {
         KeptBecause::InUse => "a shell is running in it",
         KeptBecause::Uncommitted => "uncommitted work",
+        KeptBecause::Missing => "its folder is not there",
         KeptBecause::Unmerged => "commits the main branch has not",
         KeptBecause::Detached => "no branch checked out",
         KeptBecause::Unknown => "git could not compare its branch",
@@ -303,6 +309,7 @@ mod tests {
         for because in [
             KeptBecause::InUse,
             KeptBecause::Uncommitted,
+            KeptBecause::Missing,
             KeptBecause::Unmerged,
             KeptBecause::Detached,
             KeptBecause::Unknown,

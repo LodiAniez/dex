@@ -35,7 +35,7 @@ pub async fn prune(state: &AppState, args: PruneWorktreesArgs) -> Result<Pruned,
         .await
         .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))??;
     if !pruned.dry_run {
-        forget(state, &repo.id, &pruned.taken).await?;
+        forget(state, &repo.id, &pruned.taken).await;
     }
     Ok(pruned)
 }
@@ -107,21 +107,30 @@ fn take(repo: &Path, mut worktree: WorktreeView, dry_run: bool, pruned: &mut Pru
 /// Forgets Dex's record of the worktrees that went, so the next spawn on one of
 /// those branches makes a fresh worktree instead of being sent to a folder that
 /// is no longer there.
-async fn forget(state: &AppState, repo_id: &str, taken: &[WorktreeView]) -> Result<(), RepoError> {
+///
+/// Best effort: the folders are already gone, and a record left behind is a
+/// spawn that has to make its worktree again, which is worth a warning rather
+/// than an error that hides what the prune just did.
+async fn forget(state: &AppState, repo_id: &str, taken: &[WorktreeView]) {
     for branch in taken.iter().filter_map(|worktree| worktree.branch.clone()) {
         let repo_id = repo_id.to_owned();
-        state
+        let forgotten = state
             .db
             .call(move |conn| store::detach(conn, &repo_id, &branch))
-            .await?;
+            .await;
+        if let Err(err) = forgotten {
+            tracing::warn!(%err, "a worktree went but Dex could not forget its record");
+        }
     }
-    Ok(())
 }
 
 /// What a worktree's path, branch and tree say about taking it away.
 pub struct Facts {
     /// A pane whose shell is running has its folder inside it.
     pub in_use: bool,
+    /// Its folder is there to look at. A worktree on a distro that is not
+    /// running is not, and nothing can be judged about it from here.
+    pub present: bool,
     /// Its working tree holds changes git has not been told to keep - or git
     /// would not say, which counts the same.
     pub dirty: bool,
@@ -139,6 +148,11 @@ pub struct Facts {
 pub fn keep(facts: &Facts) -> Option<KeptBecause> {
     if facts.in_use {
         return Some(KeptBecause::InUse);
+    }
+    // Before anything git is asked, because git cannot be asked: with the
+    // folder away, `status` fails and that would read as uncommitted work.
+    if !facts.present {
+        return Some(KeptBecause::Missing);
     }
     if facts.dirty {
         return Some(KeptBecause::Uncommitted);
@@ -161,11 +175,13 @@ fn facts_of(
     base: Option<&str>,
 ) -> Facts {
     let dir = Path::new(path);
+    let present = dir.is_dir();
     Facts {
         in_use: busy
             .iter()
             .any(|cwd| placement::inside_place(dir, Path::new(cwd))),
-        dirty: is_dirty(dir),
+        present,
+        dirty: present && is_dirty(dir),
         ahead: branch
             .as_deref()
             .zip(base)
@@ -207,6 +223,7 @@ mod tests {
     fn spent() -> Facts {
         Facts {
             in_use: false,
+            present: true,
             dirty: false,
             branch: Some("feat/done".into()),
             ahead: Some(0),
@@ -233,6 +250,7 @@ mod tests {
         // merged and whose tree is clean is still an agent working in it.
         let working = Facts {
             in_use: true,
+            present: true,
             dirty: false,
             branch: Some("feat/done".into()),
             ahead: Some(0),
@@ -265,6 +283,29 @@ mod tests {
             ..spent()
         };
         assert_eq!(keep(&detached), Some(KeptBecause::Detached));
+    }
+
+    #[test]
+    fn a_worktree_whose_folder_has_gone_is_kept_and_named_as_that() {
+        // Not as uncommitted work: with the folder away `git status` fails,
+        // and saying "uncommitted" of a folder that is not there sends the
+        // owner looking for work that is not in it. On Windows this is every
+        // worktree on a distro that has been shut down.
+        let gone = Facts {
+            present: false,
+            ..spent()
+        };
+        assert_eq!(keep(&gone), Some(KeptBecause::Missing));
+    }
+
+    #[test]
+    fn a_shell_running_in_it_still_wins_over_a_folder_that_seems_gone() {
+        let odd = Facts {
+            in_use: true,
+            present: false,
+            ..spent()
+        };
+        assert_eq!(keep(&odd), Some(KeptBecause::InUse));
     }
 
     #[test]
