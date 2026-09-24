@@ -103,6 +103,7 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "worktree.add" => encode(repo::add_worktree(state, args(req)?).await?),
         "worktree.remove" => encode(repo::remove_worktree(state, args(req)?).await?),
         "worktree.list" => encode(repo::list_worktrees(state, args(req)?).await?),
+        "worktree.prune" => encode(repo::prune_worktrees(state, args(req)?).await?),
         "context.read" => encode(context::read(state, args(req)?).await?),
         "context.write" => encode(context::write(state, args(req)?).await?),
         "context.list" => encode(context::list(state, args(req)?).await?),

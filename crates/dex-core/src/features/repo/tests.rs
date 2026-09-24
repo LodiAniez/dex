@@ -7,13 +7,14 @@
 use std::path::Path;
 use std::process::Command;
 
-use dex_protocol::repo::{AddRepoArgs, AddWorktreeArgs, RepoArgs, ScanArgs};
+use dex_protocol::repo::{AddRepoArgs, AddWorktreeArgs, ListWorktreesArgs, RepoArgs, ScanArgs};
 
 use super::model::RepoError;
 use super::{add, add_worktree, list, list_worktrees, scan, status};
 use crate::app::AppState;
 use crate::platform::proc::GitError;
 
+mod prune;
 mod worktree_removal;
 mod worktrees;
 
@@ -211,8 +212,9 @@ async fn an_unknown_repository_names_what_was_asked_for() {
     let (_dir, state) = AppState::for_tests();
     let result = list_worktrees(
         &state,
-        RepoArgs {
+        ListWorktreesArgs {
             repo: "nope".into(),
+            sizes: false,
         },
     )
     .await;

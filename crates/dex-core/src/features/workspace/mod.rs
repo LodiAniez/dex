@@ -42,7 +42,8 @@ pub use runtimes::{choose_terminal, open_panes_in_terminal, terminal};
 #[cfg(test)]
 pub use store::update_terminal as set_terminal;
 pub use store::{
-    find_pane_workspace, pane_cwd, pane_label, pane_runtime, workspace_name, workspace_root,
+    find_pane_workspace, pane_cwd, pane_label, pane_runtime, terminal_panes, workspace_name,
+    workspace_root,
 };
 pub use switching::record_started;
 pub use targets::{focused_pane, pane_id_in, workspace_id};

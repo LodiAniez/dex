@@ -92,6 +92,18 @@ pub struct RemoveWorktreeArgs {
     pub force: bool,
 }
 
+/// Args for `worktree.list`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ListWorktreesArgs {
+    /// Repo name or id.
+    pub repo: String,
+    /// Measure each checkout on disk. Off by default: it walks every file in
+    /// every worktree, which for a checkout with dependencies installed is
+    /// seconds, not milliseconds.
+    #[serde(default)]
+    pub sizes: bool,
+}
+
 /// A worktree on disk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -102,6 +114,10 @@ pub struct WorktreeView {
     pub branch: Option<String>,
     /// Whether this is the repo's main checkout rather than a worktree.
     pub main: bool,
+    /// Bytes it holds, when that was asked for and could be measured.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub size_bytes: Option<i64>,
 }
 
 /// Result of `worktree.add`, `worktree.remove`, and `worktree.list`.
@@ -110,6 +126,67 @@ pub struct WorktreeView {
 pub struct WorktreeList {
     /// Every checkout git knows for the repo, main first.
     pub worktrees: Vec<WorktreeView>,
+}
+
+/// Args for `worktree.prune`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PruneWorktreesArgs {
+    /// Repo name or id.
+    pub repo: String,
+    /// Say what would go without taking anything away.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+/// Why a worktree was left where it is. Every one of these is a reason to
+/// believe the worktree may still hold work, or that Dex could not tell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub enum KeptBecause {
+    /// A pane whose shell is running has its folder inside it.
+    InUse,
+    /// Its working tree has changes git has not been told to keep.
+    Uncommitted,
+    /// Its folder is not there, or not reachable from here - a worktree on a
+    /// distro that is not running. Git still has a record of it, and clearing
+    /// those is `git worktree prune`'s job, which Dex will not run for you: a
+    /// folder that is only unreachable is not a folder that is gone.
+    Missing,
+    /// Its branch has commits the main checkout's branch does not.
+    Unmerged,
+    /// No branch is checked out, so there is nothing to compare.
+    Detached,
+    /// Git could not say how its branch compares, so Dex will not guess.
+    Unknown,
+    /// It was safe to take away and git refused to.
+    Refused,
+}
+
+/// A worktree left where it is, and why.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct KeptWorktree {
+    /// The worktree.
+    pub worktree: WorktreeView,
+    /// What kept it.
+    pub because: KeptBecause,
+}
+
+/// Result of `worktree.prune`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct Pruned {
+    /// The worktrees taken away, each with what it held. With `dry_run` these
+    /// are still there: they are what a prune would take.
+    pub taken: Vec<WorktreeView>,
+    /// The worktrees left, each with the reason it stayed.
+    pub kept: Vec<KeptWorktree>,
+    /// Bytes the taken worktrees held, measured before they went.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub freed_bytes: i64,
+    /// Whether this was a dry run, so nothing was actually removed.
+    pub dry_run: bool,
 }
 
 /// Args for `repo.diff`: the working-tree or staged diff of the repository
