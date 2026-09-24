@@ -15,4 +15,8 @@ branch: string | null,
 /**
  * Whether this is the repo's main checkout rather than a worktree.
  */
-main: boolean, };
+main: boolean, 
+/**
+ * Bytes it holds, when that was asked for and could be measured.
+ */
+size_bytes: number | null, };
