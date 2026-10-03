@@ -127,6 +127,18 @@ pub struct AgentSettings {
     /// agent sooner, raise it if long builds make it noise. Between a minute
     /// (below that, ordinary tool calls are called quiet) and a day.
     pub quiet_after_seconds: u64,
+    /// Whether Dex takes an agent's worktree away by itself once its work has
+    /// landed (issue #74). Off by default, and deliberately: not pruning costs
+    /// disk, pruning wrongly costs somebody's afternoon, and that is not a
+    /// choice to make on an owner's behalf. What it will and will not take is
+    /// `repo::verdict`; `dex worktree prune <repo> --auto` runs exactly the
+    /// same pass by hand, so it can be watched before it is trusted.
+    pub prune_merged_worktrees: bool,
+    /// How long a worktree is left alone after the last work in it, in hours.
+    /// A merged branch is not a branch whose diff the owner has finished
+    /// reading, and an agent may be part-way through its next turn. Between an
+    /// hour and a month.
+    pub prune_after_hours: u64,
 }
 
 /// Digest budgets, in characters.
@@ -179,6 +191,10 @@ impl Default for AgentSettings {
             // Long enough that an ordinary build or a CI wait passes without
             // a word, short enough to catch a stuck agent while it matters.
             quiet_after_seconds: 300,
+            prune_merged_worktrees: false,
+            // A day: long enough that yesterday's diff is still there to read
+            // in the morning, short enough to keep the disk from filling.
+            prune_after_hours: 24,
         }
     }
 }

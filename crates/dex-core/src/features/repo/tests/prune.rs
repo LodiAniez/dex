@@ -21,6 +21,7 @@ fn pruning() -> PruneWorktreesArgs {
     PruneWorktreesArgs {
         repo: "api".into(),
         dry_run: false,
+        auto: false,
     }
 }
 

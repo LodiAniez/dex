@@ -45,6 +45,21 @@ pub struct Output {
 ///
 /// Blocking: callers are on the database's blocking pool or a spawned task.
 pub fn git(dir: &Path, args: &[&str]) -> Result<Output, GitError> {
+    run(dir, args, false)
+}
+
+/// `git` for a command that reaches a remote, where nobody is there to answer.
+///
+/// Git asks a human for credentials by opening a prompt and waiting, and a
+/// helper may pop a window: either one hangs the caller for as long as the
+/// daemon lives. Everything that would wait is turned off instead, so a
+/// repository Dex cannot reach fails the call and is reported as "could not
+/// tell" rather than stopping the sweep it is part of.
+pub fn git_unattended(dir: &Path, args: &[&str]) -> Result<Output, GitError> {
+    run(dir, args, true)
+}
+
+fn run(dir: &Path, args: &[&str], unattended: bool) -> Result<Output, GitError> {
     let mut command = Command::new("git");
     command.args(args).current_dir(dir);
     // The directory decides which repository, never the environment: an
@@ -57,6 +72,16 @@ pub fn git(dir: &Path, args: &[&str]) -> Result<Output, GitError> {
     // A Mac app started from the Finder has a bare PATH (`login_env.rs`).
     if let Some(path) = super::login_env::login_path() {
         command.env("PATH", path);
+    }
+    if unattended {
+        command
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_ASKPASS", "")
+            .env("GCM_INTERACTIVE", "never")
+            .env(
+                "GIT_SSH_COMMAND",
+                "ssh -o BatchMode=yes -o ConnectTimeout=10",
+            );
     }
     let output = command.output().map_err(|err| match err.kind() {
         std::io::ErrorKind::NotFound => GitError::Missing,

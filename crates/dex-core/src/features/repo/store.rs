@@ -67,6 +67,15 @@ pub fn worktrees_of(
     rows.collect()
 }
 
+/// The workspaces that recorded using a repo, for telling each one what a
+/// prune did to the worktrees it was using.
+pub fn workspaces_using(conn: &Connection, repo_id: &str) -> rusqlite::Result<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT DISTINCT workspace_id FROM workspace_repo WHERE repo_id = ?1")?;
+    let rows = stmt.query_map([repo_id], |row| row.get(0))?;
+    rows.collect()
+}
+
 /// Forgets a workspace's use of a repo.
 pub fn detach(conn: &Connection, repo_id: &str, branch: &str) -> rusqlite::Result<usize> {
     conn.execute(

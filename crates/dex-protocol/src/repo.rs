@@ -137,6 +137,15 @@ pub struct PruneWorktreesArgs {
     /// Say what would go without taking anything away.
     #[serde(default)]
     pub dry_run: bool,
+    /// Judge by the remote rather than by the main checkout's branch, and
+    /// leave anything used recently alone: what the hourly pass does
+    /// (`[agents] prune_merged_worktrees`), run by hand so it can be watched.
+    ///
+    /// A squash merge makes a new commit, so a merged branch is not an
+    /// ancestor of `main` and the local check says "unmerged" for ever. This
+    /// asks the remote whether the branch is still there instead.
+    #[serde(default)]
+    pub auto: bool,
 }
 
 /// Why a worktree was left where it is. Every one of these is a reason to
@@ -156,6 +165,14 @@ pub enum KeptBecause {
     Missing,
     /// Its branch has commits the main checkout's branch does not.
     Unmerged,
+    /// The remote still has its branch, so the work has not landed yet.
+    StillOpen,
+    /// No remote has its branch, so nothing says the work landed - and it may
+    /// hold the only copy of it.
+    Unpushed,
+    /// Something was working in it within the last `prune_after_hours`. A
+    /// merged branch does not mean the owner has finished looking at it.
+    RecentlyUsed,
     /// No branch is checked out, so there is nothing to compare.
     Detached,
     /// Git could not say how its branch compares, so Dex will not guess.

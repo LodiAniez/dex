@@ -19,6 +19,13 @@ const MAX_QUIET_SECONDS: u64 = 24 * 60 * 60;
 /// anything useful and the agent would be better off with none.
 const MIN_DIGEST: usize = 200;
 
+/// Below an hour, a worktree could be taken while its agent is between turns.
+const MIN_PRUNE_HOURS: u64 = 1;
+
+/// Above a month the setting means "never", which `prune_merged_worktrees =
+/// false` already says, and the hours must survive being turned into seconds.
+const MAX_PRUNE_HOURS: u64 = 30 * 24;
+
 /// Every value the owner cannot have, put back to its default, with a line
 /// each saying what was wrong. Called on load and on every hot reload.
 pub(super) fn everything_unusable(config: &mut Config) -> Vec<String> {
@@ -56,6 +63,13 @@ pub(super) fn everything_unusable(config: &mut Config) -> Vec<String> {
             config.agents.quiet_after_seconds, defaults.agents.quiet_after_seconds
         ));
         config.agents.quiet_after_seconds = defaults.agents.quiet_after_seconds;
+    }
+    if !(MIN_PRUNE_HOURS..=MAX_PRUNE_HOURS).contains(&config.agents.prune_after_hours) {
+        problems.push(format!(
+            "agents.prune_after_hours ({}) must be between {MIN_PRUNE_HOURS} and {MAX_PRUNE_HOURS}; using {}",
+            config.agents.prune_after_hours, defaults.agents.prune_after_hours
+        ));
+        config.agents.prune_after_hours = defaults.agents.prune_after_hours;
     }
     if !PERMISSION_MODES.contains(&config.agents.spawn_permission_mode.as_str()) {
         problems.push(format!(
