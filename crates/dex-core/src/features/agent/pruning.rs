@@ -15,11 +15,13 @@
 //! through `worktree.prune` with `auto` set, so the owner can watch the same
 //! pass by hand with `dex worktree prune <repo> --auto` before trusting it.
 
+use std::path::Path;
+
 use dex_protocol::repo::PruneWorktreesArgs;
 
 use crate::app::AppState;
 use crate::features::{context, repo};
-use crate::platform::clock;
+use crate::platform::{clock, wsl};
 
 /// At most one pass an hour. The watchdog sweeps every fifteen seconds, and
 /// each pass asks every repository's remote: that is not a question to ask four
@@ -49,9 +51,38 @@ pub async fn prune_landed(state: &AppState) {
             return;
         }
     };
+    // Asked once, and only if a repository is registered on a distro's side.
+    let distros_up = repos
+        .iter()
+        .any(|repo| repo::distro_of(Path::new(&repo.path)).is_some())
+        .then(wsl::running_distros);
     for registered in repos {
+        if asleep(&registered.path, distros_up.as_deref()) {
+            tracing::debug!(name = %registered.name, "its distro is not running; left alone");
+            continue;
+        }
         prune_one(state, &registered.id, &registered.name, &registered.path).await;
     }
+}
+
+/// Whether a repository is on a distro that is not running.
+///
+/// #77 guarded the worktrees and not the repository they came from, and the
+/// repository this was written for is registered at
+/// `//wsl.localhost/Ubuntu/...`, so an hourly pass would still have reached
+/// into a distro's side, and reading one starts it (review).
+///
+/// A repository nobody can reach is simply skipped. The owner running the
+/// prune by hand has asked for it and may wake whatever it takes; a pass on a
+/// timer may not.
+fn asleep(path: &str, distros_up: Option<&[String]>) -> bool {
+    let Some(distro) = repo::distro_of(Path::new(path)) else {
+        return false;
+    };
+    !distros_up
+        .unwrap_or_default()
+        .iter()
+        .any(|up| up.eq_ignore_ascii_case(&distro))
 }
 
 /// One repository's worktrees, and a line in the log of every workspace that
@@ -157,7 +188,22 @@ fn held(bytes: i64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::held;
+    use super::{asleep, held};
+
+    #[test]
+    fn a_repository_on_a_distro_that_is_not_running_is_left_alone() {
+        let on_ubuntu = "//wsl.localhost/Ubuntu/home/me/patly";
+        assert!(asleep(on_ubuntu, Some(&["Debian".to_owned()])));
+        assert!(asleep(on_ubuntu, Some(&[])));
+        assert!(asleep(on_ubuntu, None));
+        assert!(!asleep(on_ubuntu, Some(&["ubuntu".to_owned()])), "it is up");
+    }
+
+    #[test]
+    fn a_repository_on_windows_is_never_asleep() {
+        assert!(!asleep("C:/code/api", Some(&[])));
+        assert!(!asleep("C:/code/api", None));
+    }
 
     #[test]
     fn what_went_is_said_in_the_largest_unit_that_fits() {

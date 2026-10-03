@@ -215,6 +215,29 @@ pub fn same_place(a: &Path, b: &Path) -> bool {
     }
 }
 
+/// The distro whose side of `\\wsl.localhost` a folder is on, by name as the
+/// path spells it, or `None` for a folder on Windows' own disks.
+///
+/// Written only: a path that merely resolves into a distro - a mapped drive -
+/// is not followed here, because resolving it is the very thing that would
+/// start the distro (issue #77). `in_wsl` is the one that follows, and it is
+/// used where a folder is about to be written in anyway.
+pub fn distro_of(dir: &Path) -> Option<String> {
+    let normal = paths::normalize(dir);
+    let normal = normal
+        .strip_prefix("//?/UNC/")
+        .or_else(|| normal.strip_prefix("//?/unc/"))
+        .map_or(normal.clone(), |rest| format!("//{rest}"));
+    let rest = ["//wsl.localhost/", "//wsl$/"].iter().find_map(|prefix| {
+        normal
+            .get(..prefix.len())
+            .filter(|start| start.eq_ignore_ascii_case(prefix))
+            .and_then(|_| normal.get(prefix.len()..))
+    })?;
+    let name = rest.split('/').next().unwrap_or_default();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
 /// Whether `inner` is `outer` itself or something inside it.
 ///
 /// Every folder above `inner` is compared as a place rather than as text, for
@@ -268,6 +291,23 @@ mod tests {
         let written = format!("{}/.", dir.path().to_string_lossy());
         assert!(same_place(dir.path(), Path::new(&written)));
         assert!(!same_place(dir.path(), &dir.path().join("elsewhere")));
+    }
+
+    #[test]
+    fn the_distro_a_folder_is_on_is_read_from_the_path_itself() {
+        let on = |path: &str| super::distro_of(Path::new(path));
+        assert_eq!(
+            on(r"\\wsl.localhost\Ubuntu\home\me\code"),
+            Some("Ubuntu".into())
+        );
+        assert_eq!(on("//wsl$/Debian/home/me"), Some("Debian".into()));
+        assert_eq!(
+            on(r"\\?\UNC\wsl.localhost\Ubuntu-22.04\home"),
+            Some("Ubuntu-22.04".into())
+        );
+        assert_eq!(on("//WSL.LOCALHOST/Ubuntu/home"), Some("Ubuntu".into()));
+        assert_eq!(on("C:/code"), None, "a folder on Windows' own disk");
+        assert_eq!(on("//wsl.localhost/"), None, "no distro named");
     }
 
     #[test]

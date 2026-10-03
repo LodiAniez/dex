@@ -21,6 +21,7 @@ mod worktree_commands;
 
 pub use commands::{WorkspaceRepo, add, diff, forget, list, scan, status, workspace_repos};
 pub use model::RepoError;
+pub use placement::distro_of;
 pub use prune::prune as prune_worktrees;
 pub use store::workspaces_using;
 pub use worktree_commands::{

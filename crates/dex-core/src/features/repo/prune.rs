@@ -30,6 +30,7 @@ use crate::features::workspace;
 use crate::platform::clock;
 use crate::platform::paths;
 use crate::platform::proc::{self, GitError};
+use crate::platform::wsl;
 
 /// `worktree.prune`: removes every worktree of a repo that is safe to remove,
 /// and says what was left behind and why.
@@ -85,6 +86,9 @@ struct Judging<'a> {
     /// Seconds since the epoch, read once, so every worktree in one sweep is
     /// judged against the same moment.
     now: i64,
+    /// The distros whose VM is up, asked once and only when a worktree is on
+    /// one. `None` when none of them is.
+    distros_up: Option<Vec<String>>,
     /// The main checkout's branch, for the local comparison.
     base: Option<String>,
 }
@@ -116,6 +120,12 @@ fn sweep(
             .filter(|_| !checkouts.is_empty())
             .and_then(|_| landed::branches_on_remote(repo)),
         now: clock::now_millis() / 1_000,
+        // Asked once, and only when something is on a distro's side: it is a
+        // `wsl.exe` call, and most repositories have nothing there.
+        distros_up: checkouts
+            .iter()
+            .any(|(path, _)| placement::distro_of(Path::new(path)).is_some())
+            .then(wsl::running_distros),
         base,
     };
     let mut pruned = Pruned {
@@ -178,7 +188,7 @@ async fn forget(state: &AppState, repo_id: &str, taken: &[WorktreeView]) {
 
 fn facts_of(judging: &Judging<'_>, path: &str, branch: Option<String>) -> Facts {
     let dir = Path::new(path);
-    let present = dir.is_dir();
+    let present = reachable(dir, judging.distros_up.as_deref());
     // Before `is_dirty`, which runs git inside the worktree: nothing read here
     // may be disturbed by Dex's own reading of it.
     let worked_recently = present && recently_used(judging, dir, branch.as_deref());
@@ -201,6 +211,40 @@ fn facts_of(judging: &Judging<'_>, path: &str, branch: Option<String>) -> Facts 
             .and_then(|(branch, base)| ahead_of(judging.repo, branch, base)),
         branch,
     }
+}
+
+/// Whether the worktree's folder can be looked at at all, without starting
+/// anything to find out.
+///
+/// A folder on a distro's side is read through `\\wsl.localhost`, and reading
+/// one starts that distro: an hourly prune would have woken a VM nobody was
+/// using - and with Docker Desktop's WSL integration, more than one - to decide
+/// whether to delete a folder in it (issue #77). So a worktree on a distro that
+/// is not running is treated exactly as one whose folder has gone: named, not
+/// pruned, and nothing asked of it. `KeptBecause::Missing` already says "not
+/// there, or not reachable from here - a worktree on a distro that is not
+/// running", which is this case.
+fn reachable(dir: &Path, distros_up: Option<&[String]>) -> bool {
+    looked_at(dir, distros_up, |path| path.is_dir())
+}
+
+/// `reachable`, with the file-system question handed in.
+///
+/// Injected for one reason: the requirement is that the question is never
+/// asked, because asking it is what starts the distro - so a test has to be
+/// able to watch for the ask rather than for its answer. Written the other way
+/// round, a test on a machine where the distro happens to be running passes
+/// whatever the code does, which is how this was first shipped (review).
+fn looked_at(dir: &Path, distros_up: Option<&[String]>, is_dir: impl Fn(&Path) -> bool) -> bool {
+    if let Some(distro) = placement::distro_of(dir)
+        && !distros_up
+            .unwrap_or_default()
+            .iter()
+            .any(|up| up.eq_ignore_ascii_case(&distro))
+    {
+        return false;
+    }
+    is_dir(dir)
 }
 
 /// Whether something was working in the worktree inside the grace period.
@@ -301,7 +345,7 @@ fn view(path: &str, branch: Option<String>) -> WorktreeView {
 mod tests {
     use std::path::Path;
 
-    use super::last_worked;
+    use super::{last_worked, looked_at, reachable};
 
     #[test]
     fn editing_a_file_at_the_top_of_a_worktree_counts_as_work_in_it() {
@@ -317,6 +361,48 @@ mod tests {
         let after = last_worked(Path::new("."), dir.path(), None).expect("still there");
 
         assert!(after > before, "the edit at {after} is newer than {before}");
+    }
+
+    /// `looked_at`, saying whether the file system was asked at all.
+    fn asking(dir: &str, distros_up: Option<&[String]>) -> (bool, bool) {
+        let asked = std::cell::Cell::new(false);
+        let answer = looked_at(Path::new(dir), distros_up, |_| {
+            asked.set(true);
+            true
+        });
+        (answer, asked.get())
+    }
+
+    #[test]
+    fn a_worktree_on_a_sleeping_distro_is_never_even_looked_at() {
+        // Asking the file system is what starts the distro, so the test is
+        // that nothing asked - not that the answer was no (issue #77).
+        let on_ubuntu = "//wsl.localhost/Ubuntu/home/me/.dex/worktrees/api/feat-x";
+        for running in [Some(&["Debian".to_owned()][..]), Some(&[][..]), None] {
+            let (answer, asked) = asking(on_ubuntu, running);
+            assert!(!answer, "not reachable: {running:?}");
+            assert!(!asked, "and the file system was never asked: {running:?}");
+        }
+    }
+
+    #[test]
+    fn a_worktree_on_a_running_distro_is_looked_at_as_any_other() {
+        let (answer, asked) = asking(
+            "//wsl.localhost/Ubuntu/home/me/wt",
+            Some(&["ubuntu".to_owned()]),
+        );
+        assert!(asked, "the distro is up, so the folder is looked at");
+        assert!(answer, "and what the file system said is the answer");
+    }
+
+    #[test]
+    fn a_folder_on_windows_is_looked_at_whatever_is_running() {
+        let (answer, asked) = asking("C:/code/.dex/worktrees/api/feat-x", Some(&[]));
+        assert!(asked && answer, "the guard is only about distro paths");
+        // And through the real thing, which is what the sweep calls.
+        let dir = tempfile::tempdir().unwrap();
+        assert!(reachable(dir.path(), None));
+        assert!(!reachable(&dir.path().join("gone"), None));
     }
 
     #[test]
