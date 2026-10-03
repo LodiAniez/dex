@@ -16,13 +16,12 @@ use std::path::PathBuf;
 
 use dex_core::app::AppState;
 use dex_core::platform::auth::Token;
-use dex_core::platform::{job, paths, pipe};
+use dex_core::platform::{job, log, paths, pipe};
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 fn main() {
-    // Logs go to stderr for now; a file sink under %LOCALAPPDATA%\Dex\logs is still to come.
-    let _ = tracing_subscriber::fmt().try_init();
+    start_logging();
 
     // Before any child is spawned: every descendant inherits the job, so if
     // this process dies for any reason, Windows kills the whole tree. The
@@ -139,6 +138,55 @@ fn main() {
             app.state::<AppState>().pty.end_all();
         }
     });
+}
+
+/// The daemon's own words, into `<data dir>/dex.log` and to stdout as well for
+/// a `tauri dev` run (issue #73).
+///
+/// They went to stdout alone, which a windowed app does not have, so every
+/// warning the daemon wrote was discarded - and when the owner asked to see
+/// Dex's logs after an hour of trouble, there was nothing to read.
+///
+/// `Targets` rather than `EnvFilter`: the filter has to say "debug from Dex,
+/// info from everything else", and `EnvFilter` would mean enabling a feature
+/// that brings `regex` into the installer to read a string nobody sets. Still
+/// honours `RUST_LOG` when it names a level, for a session being debugged.
+/// A log that cannot be opened is no reason not to start.
+fn start_logging() {
+    use tracing_subscriber::filter::{LevelFilter, Targets};
+    use tracing_subscriber::fmt::writer::MakeWriterExt;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    let ours = std::env::var("RUST_LOG")
+        .ok()
+        .and_then(|set| set.parse::<LevelFilter>().ok())
+        .unwrap_or(LevelFilter::DEBUG);
+    let filter = Targets::new()
+        .with_target("dex_core", ours)
+        .with_target("dex_app", ours)
+        .with_default(LevelFilter::INFO);
+
+    let opened = paths::app_data_dir().and_then(|dir| log::open(&dir));
+    match opened {
+        Ok(file) => {
+            let _ = tracing_subscriber::registry()
+                .with(filter)
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .with_ansi(false)
+                        .with_writer((move || file.clone()).and(std::io::stdout)),
+                )
+                .try_init();
+        }
+        Err(err) => {
+            let _ = tracing_subscriber::registry()
+                .with(filter)
+                .with(tracing_subscriber::fmt::layer())
+                .try_init();
+            tracing::warn!(%err, "no dex.log: the daemon's log goes nowhere a human can read");
+        }
+    }
 }
 
 /// Opens `%APPDATA%\Dex\dex.db`, reads `config.toml`, and prepares a fresh

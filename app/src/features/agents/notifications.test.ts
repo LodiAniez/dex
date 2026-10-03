@@ -36,7 +36,7 @@ function agent(id: string, status: AgentStatus, extra: Partial<AgentView> = {}):
 }
 
 function list(...agents: AgentView[]): AgentList {
-  return { agents, revision: 1 };
+  return { agents, revision: 1, distros_not_answering: [] };
 }
 
 /** Every pane exists, and the user is looking at none of them. */

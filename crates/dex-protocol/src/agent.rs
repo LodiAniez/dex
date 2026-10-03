@@ -94,6 +94,12 @@ pub struct AgentList {
     /// since responses can arrive out of order.
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
+    /// Distros that have stopped answering, so the window can say so (issue
+    /// #73). Dex leaves one alone for a while after it goes quiet, and while
+    /// it does, it cannot tell whether the agents in it are still there - and
+    /// the owner reading a still office deserves to know that is why.
+    #[serde(default)]
+    pub distros_not_answering: Vec<String>,
 }
 
 /// Args for `agent.list`.
