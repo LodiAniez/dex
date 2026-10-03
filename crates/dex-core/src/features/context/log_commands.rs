@@ -10,6 +10,7 @@ use dex_protocol::context::{
 
 use super::commands::{author, log, scope};
 use super::logic;
+use super::mirror;
 use super::model::{ContextError, NewEvent};
 use super::store;
 use crate::app::AppState;
@@ -18,7 +19,9 @@ use crate::platform::clock;
 
 /// What `message_send` settles in the database: where the message landed, how
 /// it reaches the recipient, and the wake to type if it must be woken.
-type Delivered = (i64, Delivery, Option<super::Wake>);
+/// What one `message_send` decided: the sequence, how it was delivered, a
+/// wake to spend if it earned one, and the line the mirror owes (issue #82).
+type Delivered = (i64, Delivery, Option<super::Wake>, mirror::Owed);
 
 /// How the message will reach this agent, and the wake to type if it is to be
 /// woken now. At its prompt: woken. Busy: it sees the message at its next
@@ -109,15 +112,15 @@ pub fn record_event(
 /// `context.note`: append a freeform line to the workspace log.
 pub async fn note(state: &AppState, args: NoteArgs) -> Result<Appended, ContextError> {
     let now = clock::now_millis();
-    state
+    let (appended, owed) = state
         .db
         .call(
-            move |conn| -> rusqlite::Result<Result<Appended, ContextError>> {
+            move |conn| -> rusqlite::Result<Result<(Appended, mirror::Owed), ContextError>> {
                 let scope = match scope(conn, &args.caller)? {
                     Ok(scope) => scope,
                     Err(err) => return Ok(Err(err)),
                 };
-                let seq = log(
+                let (seq, owed) = log(
                     conn,
                     &scope,
                     NewEvent {
@@ -130,16 +133,18 @@ pub async fn note(state: &AppState, args: NoteArgs) -> Result<Appended, ContextE
                         created_at: now,
                     },
                 )?;
-                Ok(Ok(Appended { seq }))
+                Ok(Ok((Appended { seq }, owed)))
             },
         )
-        .await?
+        .await??;
+    mirror::flush(owed).await;
+    Ok(appended)
 }
 
 /// `context.message_send`: a directed note to one sibling agent.
 pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Sent, ContextError> {
     let now = clock::now_millis();
-    let (seq, delivery, wake) = state
+    let (seq, delivery, wake, owed) = state
         .db
         .call(
             move |conn| -> rusqlite::Result<Result<Delivered, ContextError>> {
@@ -154,7 +159,7 @@ pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Sent, C
                 let Some(target) = found else {
                     return Ok(Err(ContextError::NoSuchAgent(args.target_agent)));
                 };
-                let seq = log(
+                let (seq, owed) = log(
                     conn,
                     &scope,
                     NewEvent {
@@ -168,10 +173,11 @@ pub async fn message_send(state: &AppState, args: MessageArgs) -> Result<Sent, C
                     },
                 )?;
                 let (delivery, wake) = delivery_for(conn, &target)?;
-                Ok(Ok((seq, delivery, wake)))
+                Ok(Ok((seq, delivery, wake, owed)))
             },
         )
         .await??;
+    mirror::flush(owed).await;
     // What the sender is told is what happened: a pane whose shell has gone
     // cannot be typed into, and then the message waits for a turn like any
     // other.
