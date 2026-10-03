@@ -215,11 +215,22 @@ pub fn same_place(a: &Path, b: &Path) -> bool {
     }
 }
 
+/// Whether `inner` is `outer` itself or something inside it.
+///
+/// Every folder above `inner` is compared as a place rather than as text, for
+/// the same reason `same_place` exists: the folder Dex recorded for a pane and
+/// the path git prints for the worktree holding it are often written
+/// differently, and a prune that missed the match would delete the worktree an
+/// agent is working in.
+pub fn inside_place(outer: &Path, inner: &Path) -> bool {
+    inner.ancestors().any(|above| same_place(outer, above))
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
-    use super::{NOTE, in_wsl, same_place};
+    use super::{NOTE, in_wsl, inside_place, same_place};
 
     #[test]
     fn a_folder_through_wsl_localhost_is_on_the_distros_side() {
@@ -257,6 +268,22 @@ mod tests {
         let written = format!("{}/.", dir.path().to_string_lossy());
         assert!(same_place(dir.path(), Path::new(&written)));
         assert!(!same_place(dir.path(), &dir.path().join("elsewhere")));
+    }
+
+    #[test]
+    fn a_folder_inside_a_worktree_is_inside_it_however_it_is_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let worktree = dir.path().join("worktrees").join("api");
+        std::fs::create_dir_all(worktree.join("app")).unwrap();
+        let written = format!("{}/./app", worktree.to_string_lossy());
+
+        assert!(inside_place(&worktree, Path::new(&written)));
+        assert!(inside_place(&worktree, &worktree));
+        assert!(!inside_place(&worktree, dir.path()));
+        assert!(!inside_place(
+            &worktree,
+            &dir.path().join("worktrees").join("api-two")
+        ));
     }
 
     #[cfg(windows)]

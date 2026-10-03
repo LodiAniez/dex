@@ -15,4 +15,9 @@ branch: string | null,
 /**
  * Whether this is the repo's main checkout rather than a worktree.
  */
-main: boolean, };
+main: boolean, 
+/**
+ * What its files add up to, when that was asked for. Not what deleting
+ * it would give back, for the reason `Pruned::taken_bytes` explains.
+ */
+size_bytes: number | null, };

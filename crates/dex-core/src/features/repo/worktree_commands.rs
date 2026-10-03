@@ -8,13 +8,14 @@
 use std::path::{Path, PathBuf};
 
 use dex_protocol::repo::{
-    AddWorktreeArgs, RemoveWorktreeArgs, RepoArgs, WorktreeList, WorktreeView,
+    AddWorktreeArgs, ListWorktreesArgs, RemoveWorktreeArgs, WorktreeList, WorktreeView,
 };
 
 use super::commands::{current_branch, resolve};
 use super::logic;
 use super::model::RepoError;
 use super::placement::{self, MadeBy};
+use super::size;
 use super::store;
 use crate::app::AppState;
 use crate::features::workspace;
@@ -65,7 +66,7 @@ pub async fn add(state: &AppState, args: AddWorktreeArgs) -> Result<WorktreeList
             })
             .await?;
     }
-    list(state, RepoArgs { repo: repo.path }).await
+    list(state, listing(repo.path)).await
 }
 
 /// The workspace a target names, and its root.
@@ -125,11 +126,11 @@ pub async fn remove(state: &AppState, args: RemoveWorktreeArgs) -> Result<Worktr
         .db
         .call(move |conn| store::detach(conn, &repo_id, &branch))
         .await?;
-    list(state, RepoArgs { repo: repo.path }).await
+    list(state, listing(repo.path)).await
 }
 
-/// `git worktree remove`, forced if asked.
-fn take_away(repo: &Path, path: &str, force: bool) -> Result<(), RepoError> {
+/// `git worktree remove`, forced if asked. The prune uses it too.
+pub(super) fn take_away(repo: &Path, path: &str, force: bool) -> Result<(), RepoError> {
     let mut command = vec!["worktree", "remove"];
     if force {
         command.push("--force");
@@ -174,9 +175,11 @@ fn checkout_of(
     Ok(on_branch.or_else(at_recorded).map(|(path, _)| path.clone()))
 }
 
-/// `worktree.list`: every checkout git knows for a repo, main first.
-pub async fn list(state: &AppState, args: RepoArgs) -> Result<WorktreeList, RepoError> {
+/// `worktree.list`: every checkout git knows for a repo, main first, with what
+/// each one is holding when `sizes` asks for it.
+pub async fn list(state: &AppState, args: ListWorktreesArgs) -> Result<WorktreeList, RepoError> {
     let repo = resolve(state, &args.repo).await?;
+    let sizes = args.sizes;
     tokio::task::spawn_blocking(move || {
         let dir = Path::new(&repo.path);
         let out = proc::git(dir, &["worktree", "list", "--porcelain"])?;
@@ -186,6 +189,8 @@ pub async fn list(state: &AppState, args: RepoArgs) -> Result<WorktreeList, Repo
             .map(|(index, (path, branch))| WorktreeView {
                 // git lists the main checkout first.
                 main: index == 0,
+                size_bytes: sizes
+                    .then(|| i64::try_from(size::measure(Path::new(&path))).unwrap_or(i64::MAX)),
                 path: paths::normalize(Path::new(&path)),
                 branch,
             })
@@ -194,6 +199,12 @@ pub async fn list(state: &AppState, args: RepoArgs) -> Result<WorktreeList, Repo
     })
     .await
     .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))?
+}
+
+/// The listing every `worktree.*` command answers with, without sizes: they
+/// cost a walk of every file, and nothing asked for them.
+fn listing(repo: String) -> ListWorktreesArgs {
+    ListWorktreesArgs { repo, sizes: false }
 }
 
 /// Creates the worktree, reusing the branch when it already exists.
