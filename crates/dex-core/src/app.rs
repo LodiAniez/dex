@@ -1,5 +1,6 @@
 //! `AppState`: the platform handles every command handler receives.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -22,10 +23,12 @@ pub struct AppState {
     /// than a value because the file is hot-reloaded: take one snapshot per
     /// operation with `config.get()`, never two.
     pub config: ConfigHandle,
-    /// When the last occasional pass ran, for `claim_slot`. In memory on
-    /// purpose: after a restart the first pass runs once, which costs one
-    /// question to each remote and keeps the state out of the database.
-    slot_at: Arc<Mutex<i64>>,
+    /// When each occasional pass last ran, by name, for `claim_slot`. Keyed
+    /// rather than one timestamp, because two passes sharing it would each see
+    /// the other's claim and starve (review). In memory on purpose: after a
+    /// restart the first pass of each runs once, which keeps the state out of
+    /// the database and costs one round of whatever that pass does.
+    slot_at: Arc<Mutex<HashMap<&'static str, i64>>>,
 }
 
 impl AppState {
@@ -43,21 +46,23 @@ impl AppState {
             db,
             bus: Bus::new(),
             config,
-            slot_at: Arc::new(Mutex::new(0)),
+            slot_at: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    /// Whether `every` milliseconds have passed since the last claim, claiming
-    /// the slot if so: for a pass that must run occasionally while being
+    /// Whether `every` milliseconds have passed since `what` last ran,
+    /// claiming it if so: for a pass that must run occasionally while being
     /// driven by a sweep that runs every fifteen seconds.
     ///
-    /// The lock is taken and dropped here and never held across an await
-    /// (conventions 4.4). A poisoned lock answers no, which skips the pass
-    /// rather than panicking inside a sweep.
-    pub fn claim_slot(&self, now: i64, every: i64) -> bool {
-        let Ok(mut last) = self.slot_at.lock() else {
+    /// Each pass has its own slot under its own name. The lock is taken and
+    /// dropped here and never held across an await (conventions 4.4); a
+    /// poisoned lock answers no, which skips the pass rather than panicking
+    /// inside a sweep.
+    pub fn claim_slot(&self, what: &'static str, now: i64, every: i64) -> bool {
+        let Ok(mut slots) = self.slot_at.lock() else {
             return false;
         };
+        let last = slots.entry(what).or_insert(0);
         if now.saturating_sub(*last) < every {
             return false;
         }

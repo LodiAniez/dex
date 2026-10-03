@@ -16,7 +16,7 @@ mod store;
 mod tests;
 mod wake;
 
-pub use commands::{list, read, search, write};
+pub use commands::{list, read, record_and_mirror, search, write};
 pub use digest_commands::digest;
 pub use log_commands::{
     clear_events, delete_event, events, inbox, message_send, note, record_event, record_status,

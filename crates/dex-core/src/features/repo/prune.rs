@@ -78,9 +78,10 @@ struct Judging<'a> {
     /// `Some(seconds)` in auto mode: how long after work stops a worktree is
     /// still left alone. `None` outside it, where the owner asked directly.
     grace: Option<i64>,
-    /// The branches the remote has, asked once for the whole repository.
-    /// `None` outside auto mode, or when the remote could not be reached.
-    on_remote: Option<Vec<String>>,
+    /// The remote and its branches, asked once for the whole repository.
+    /// `None` outside auto mode, when there was nothing to judge, or when the
+    /// remote could not be reached.
+    on_remote: Option<landed::OnRemote>,
     /// Seconds since the epoch, read once, so every worktree in one sweep is
     /// judged against the same moment.
     now: i64,
@@ -101,14 +102,19 @@ fn sweep(
     // Git lists the main checkout first, and its branch is what the local
     // comparison means by merged.
     let base = checkouts.next().and_then(|(_, branch)| branch);
+    let checkouts: Vec<(String, Option<String>)> = checkouts.collect();
     let judging = Judging {
         repo,
         busy,
         grace,
-        // The only part of the prune that touches the network, and only when
-        // it was asked for: a remote that cannot be reached leaves every
-        // worktree to the local comparison.
-        on_remote: grace.and_then(|_| landed::branches_on_remote(repo)),
+        // The only part of the prune that touches the network: only in auto
+        // mode, and only when there is a worktree to judge, so a repository
+        // with nothing but its main checkout costs no call at all (review). A
+        // remote that cannot be reached leaves every worktree to the local
+        // comparison.
+        on_remote: grace
+            .filter(|_| !checkouts.is_empty())
+            .and_then(|_| landed::branches_on_remote(repo)),
         now: clock::now_millis() / 1_000,
         base,
     };
@@ -187,7 +193,7 @@ fn facts_of(judging: &Judging<'_>, path: &str, branch: Option<String>) -> Facts 
         landed: branch.as_deref().and_then(|branch| {
             judging
                 .grace
-                .map(|_| landed::landed(judging.repo, branch, judging.on_remote.as_deref()))
+                .map(|_| landed::landed(judging.repo, branch, judging.on_remote.as_ref()))
         }),
         ahead: branch
             .as_deref()
@@ -213,26 +219,58 @@ fn recently_used(judging: &Judging<'_>, dir: &Path, branch: Option<&str>) -> boo
 }
 
 /// When work last happened in the worktree, in seconds since the epoch: the
-/// newer of the folder's own timestamp and the branch's last commit.
+/// newest of the folder's own timestamp, those of everything directly in it,
+/// and the branch's last commit.
 ///
-/// Neither moves when Dex reads the worktree, which is the whole requirement.
-/// `git status` can rewrite the index git keeps for a worktree, so an index
-/// timestamp would be refreshed by this prune's own dirty check and every
-/// worktree would look busy for ever. A checkout or a build moves the folder; a
-/// commit moves the branch. And a worktree a spawn made moments ago is new by
+/// None of those moves when Dex reads the worktree, which is the whole
+/// requirement. `git status` can rewrite the index git keeps for a worktree, so
+/// an index timestamp would be refreshed by this prune's own dirty check and
+/// every worktree would look busy for ever.
+///
+/// The entries just inside as well as the folder, because the two say
+/// different things (both measured, review): a folder's timestamp moves when
+/// something is **added to or removed from it**, so the folder alone misses a
+/// top-level file being edited - a regenerated `pnpm-lock.yaml`, a
+/// hand-written `.env` - while that file's own timestamp catches it. One
+/// `read_dir`, no recursion: the top of a checkout is a handful of entries.
+///
+/// A commit moves the branch; and a worktree a spawn made moments ago is new by
 /// its folder, which is what keeps it from being taken in the seconds before
 /// its shell starts.
+///
+/// **What none of this sees** is a process Dex does not own writing further
+/// down, under a folder git ignores: a dev server rewriting
+/// `node_modules/.vite` moves `.vite` and nothing above it, and no timestamp
+/// short of walking the whole tree would notice - and walking it is what this
+/// exists to avoid. What protects that worktree instead is everything else the
+/// verdict asks: its tree is clean, so nothing git tracks is lost; its branch
+/// is gone from the remote, so its history is safe there; and the grace period
+/// runs from whichever is newer of its creation and its last commit. What can
+/// still be lost is an ignored file nobody committed, which is equally true of
+/// `git worktree remove` and is why the prune's help says so.
 fn last_worked(repo: &Path, dir: &Path, branch: Option<&str>) -> Option<i64> {
-    let folder = std::fs::metadata(dir)
-        .and_then(|meta| meta.modified())
-        .ok()
-        .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
-        .and_then(|since| i64::try_from(since.as_secs()).ok());
+    let newest = touched(dir).max(
+        std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| touched(&entry.path()))
+            .max(),
+    );
     let commit = branch.and_then(|branch| {
         let shown = proc::git(repo, &["log", "-1", "--format=%ct", branch]).ok()?;
         shown.stdout.trim().parse::<i64>().ok()
     });
-    folder.max(commit)
+    newest.max(commit)
+}
+
+/// When a file or folder was last written, in seconds since the epoch.
+fn touched(path: &Path) -> Option<i64> {
+    std::fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|since| i64::try_from(since.as_secs()).ok())
 }
 
 /// Whether the worktree holds anything git has not been told to keep,
@@ -256,5 +294,37 @@ fn view(path: &str, branch: Option<String>) -> WorktreeView {
         branch,
         main: false,
         size_bytes: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::last_worked;
+
+    #[test]
+    fn editing_a_file_at_the_top_of_a_worktree_counts_as_work_in_it() {
+        // A folder's own timestamp does not move when a file already in it is
+        // written - only when an entry is added or removed - so the folder
+        // alone would call this worktree cold (review).
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".env"), "KEY=one\n").unwrap();
+        let before = last_worked(Path::new("."), dir.path(), None).expect("the folder is there");
+
+        std::thread::sleep(std::time::Duration::from_millis(1_100));
+        std::fs::write(dir.path().join(".env"), "KEY=two\n").unwrap();
+        let after = last_worked(Path::new("."), dir.path(), None).expect("still there");
+
+        assert!(after > before, "the edit at {after} is newer than {before}");
+    }
+
+    #[test]
+    fn a_folder_that_is_not_there_was_never_worked_in() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            last_worked(Path::new("."), &dir.path().join("gone"), None),
+            None
+        );
     }
 }

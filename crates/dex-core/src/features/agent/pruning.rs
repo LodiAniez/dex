@@ -26,6 +26,9 @@ use crate::platform::clock;
 /// times a minute.
 const EVERY_MS: i64 = 60 * 60 * 1_000;
 
+/// This pass's name in `AppState::claim_slot`.
+const SLOT: &str = "prune-landed-worktrees";
+
 /// Takes away the worktrees whose work has landed, if the owner asked for that
 /// and an hour has passed since the last pass.
 ///
@@ -36,7 +39,7 @@ pub async fn prune_landed(state: &AppState) {
     if !state.config.get().agents.prune_merged_worktrees {
         return;
     }
-    if !state.claim_slot(clock::now_millis(), EVERY_MS) {
+    if !state.claim_slot(SLOT, clock::now_millis(), EVERY_MS) {
         return;
     }
     let repos = match repo::list(state).await {
@@ -81,10 +84,15 @@ async fn prune_one(state: &AppState, id: &str, name: &str, path: &str) {
         .filter_map(|worktree| worktree.branch.clone())
         .collect();
     tracing::info!(%name, taken = branches.len(), "took away worktrees whose work had landed");
+    // The size is said because it was measured: the prune walks every file of
+    // every worktree it takes, and before this it filled a number nothing read
+    // (review). It is what the files added up to, not what the disk gives
+    // back - `repo::size` says why.
     let said = format!(
-        "Dex took away {} worktree{} of {name} whose work had landed: {}.",
+        "Dex took away {} worktree{} of {name} whose work had landed, {} of files: {}.",
         branches.len(),
         if branches.len() == 1 { "" } else { "s" },
+        held(pruned.taken_bytes),
         branches.join(", ")
     );
     for workspace in watching {
@@ -111,18 +119,51 @@ async fn workspaces_using(state: &AppState, repo_id: &str) -> Vec<String> {
     }
 }
 
-/// One line in a workspace's log. Best effort: the worktrees are already gone,
-/// and a line that could not be written is not worth failing anything over -
-/// though it is worth a warning, because a removal nobody can account for
-/// afterwards is worse than the disk it saved.
+/// One line in a workspace's log, and in `.dex/activity.log` with it: a
+/// removal has to be findable by whoever greps the folder afterwards, not only
+/// in the office (review).
+///
+/// Best effort: the worktrees are already gone, and a line that could not be
+/// written is not worth failing anything over - though it is worth a warning,
+/// because a removal nobody can account for is worse than the disk it saved.
 async fn say(state: &AppState, workspace_id: &str, body: &str) {
     let (workspace_id, body) = (workspace_id.to_owned(), body.to_owned());
     let now = clock::now_millis();
     let written = state
         .db
-        .call(move |conn| context::record_event(conn, &workspace_id, None, "note", body, now))
+        .call(move |conn| context::record_and_mirror(conn, &workspace_id, "note", body, now))
         .await;
     if let Err(err) = written {
         tracing::warn!(%err, "took a worktree away but could not say so in the log");
+    }
+}
+
+/// Bytes as a line in a log reads them. Rough on purpose: this is a sentence
+/// about a folder that has gone, not a measurement anyone will subtract.
+fn held(bytes: i64) -> String {
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64 / 1024.0;
+    if size < 1.0 {
+        return format!("{bytes} B");
+    }
+    for unit in UNITS {
+        if size < 1024.0 || unit == "TB" {
+            return format!("{size:.1} {unit}");
+        }
+        size /= 1024.0;
+    }
+    format!("{bytes} B")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::held;
+
+    #[test]
+    fn what_went_is_said_in_the_largest_unit_that_fits() {
+        assert_eq!(held(0), "0 B");
+        assert_eq!(held(900), "900 B");
+        assert_eq!(held(4096), "4.0 KB");
+        assert_eq!(held(3_221_225_472), "3.0 GB");
     }
 }

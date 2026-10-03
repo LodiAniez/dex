@@ -35,16 +35,21 @@ pub enum Landed {
     CannotTell,
 }
 
-/// Every branch the repository's remote has, or `None` when there is no remote
-/// to ask or it could not be reached.
+/// What a repository's remote has: its name, and every branch on it. `None`
+/// when there is no remote to ask or it could not be reached.
 ///
 /// One call per repository rather than per branch, and through
 /// `git_unattended`, because this is the only thing in the prune that touches
-/// the network and nobody is there to type a password.
-pub fn branches_on_remote(repo: &Path) -> Option<Vec<String>> {
+/// the network and nobody is there to type a password. The name comes back with
+/// the listing so that judging a branch costs no further subprocesses: asking
+/// git for it again per branch was two extra processes each (review).
+pub fn branches_on_remote(repo: &Path) -> Option<OnRemote> {
     let remote = first_remote(repo)?;
     match proc::git_unattended(repo, &["ls-remote", "--heads", &remote]) {
-        Ok(out) => Some(parse_heads(&out.stdout)),
+        Ok(out) => Some(OnRemote {
+            branches: parse_heads(&out.stdout),
+            remote,
+        }),
         Err(err) => {
             tracing::debug!(%remote, %err, "could not ask the remote which branches it has");
             None
@@ -52,17 +57,26 @@ pub fn branches_on_remote(repo: &Path) -> Option<Vec<String>> {
     }
 }
 
+/// A remote, and the branches it had when it was asked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OnRemote {
+    /// The remote's name, for naming its tracking refs.
+    pub remote: String,
+    /// Every branch it listed.
+    pub branches: Vec<String>,
+}
+
 /// What the remote says about one branch, given the listing for the repository.
-pub fn landed(repo: &Path, branch: &str, on_remote: Option<&[String]>) -> Landed {
-    let Some(heads) = on_remote else {
+pub fn landed(repo: &Path, branch: &str, on_remote: Option<&OnRemote>) -> Landed {
+    let Some(on_remote) = on_remote else {
         return Landed::CannotTell;
     };
-    if heads.iter().any(|head| head == branch) {
+    if on_remote.branches.iter().any(|head| head == branch) {
         return Landed::StillThere;
     }
     // Gone from the remote - but a branch that was never pushed is also not
     // there, and that is the one case where deleting the folder loses work.
-    let tracking = format!("refs/remotes/{}", tracked_as(repo, branch));
+    let tracking = format!("refs/remotes/{}/{branch}", on_remote.remote);
     if !has_ref(repo, &tracking) {
         return Landed::NotPushed;
     }
@@ -102,12 +116,6 @@ fn first_remote(repo: &Path) -> Option<String> {
     remotes.first().map(|remote| (*remote).to_owned())
 }
 
-/// `<remote>/<branch>`, as the remote-tracking ref is named.
-fn tracked_as(repo: &Path, branch: &str) -> String {
-    let remote = first_remote(repo).unwrap_or_else(|| "origin".to_owned());
-    format!("{remote}/{branch}")
-}
-
 fn has_ref(repo: &Path, reference: &str) -> bool {
     proc::git(repo, &["rev-parse", "--verify", "--quiet", reference]).is_ok()
 }
@@ -122,7 +130,7 @@ fn unpushed(repo: &Path, tracking: &str, branch: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Landed, landed, parse_heads};
+    use super::{Landed, OnRemote, landed, parse_heads};
     use std::path::Path;
 
     #[test]
@@ -158,9 +166,12 @@ deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\trefs/tags/v1.0
 
     #[test]
     fn a_branch_the_remote_still_has_has_not_landed() {
-        let heads = vec!["main".to_owned(), "feat/x".to_owned()];
+        let listed = OnRemote {
+            remote: "origin".into(),
+            branches: vec!["main".to_owned(), "feat/x".to_owned()],
+        };
         assert_eq!(
-            landed(Path::new("."), "feat/x", Some(&heads)),
+            landed(Path::new("."), "feat/x", Some(&listed)),
             Landed::StillThere
         );
     }
