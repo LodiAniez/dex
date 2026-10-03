@@ -7,6 +7,7 @@
 //! cross into Linux is the pane's identity: `WSLENV` names the variables
 //! `wsl.exe` passes in, and passes back out when Linux runs a Windows program.
 
+pub mod quiet;
 #[cfg(test)]
 mod tests;
 
@@ -253,9 +254,24 @@ pub fn parse_panes(printed: &str) -> Vec<String> {
 
 /// The Dex panes in `distro` that run Claude Code now. An error when the
 /// distro could not be asked, which is no evidence of anything. Blocking.
+///
+/// A distro that has stopped answering is not asked at all until its wait is
+/// over (`quiet`): the watchdog sweeps every fifteen seconds and the limit on
+/// one probe is fifteen seconds, so without that the sweep would spend its
+/// whole life inside this call and everything after it in the sweep would wait
+/// too (issue #73).
 pub fn claude_panes(distro: &str) -> Result<Vec<String>, String> {
-    let out = run(&["-d", distro, "--exec", "sh", "-c", CLAUDE_PANES])
-        .ok_or_else(|| format!("{distro} did not answer"))?;
+    let now = crate::platform::clock::now_millis();
+    if quiet::is_resting(distro, now) {
+        return Err(format!("{distro} is not answering; not asking again yet"));
+    }
+    let asked = run(&["-d", distro, "--exec", "sh", "-c", CLAUDE_PANES]);
+    let Some(out) = asked else {
+        let wait = quiet::went_quiet(distro, now);
+        tracing::warn!(%distro, wait_ms = wait, "the distro did not answer; leaving it alone");
+        return Err(format!("{distro} did not answer"));
+    };
+    quiet::answered(distro);
     if out.status.success() {
         Ok(parse_panes(&String::from_utf8_lossy(&out.stdout)))
     } else {

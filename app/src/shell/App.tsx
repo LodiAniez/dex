@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
-import { agentCounts, loadAgents, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
+import { agentCounts, loadAgents, newlyQuiet, notifyTransitions, useAgents, watchAgentChanges, type PaneContext } from "../features/agents";
 import { ActivityPopup } from "../features/activity";
 import { OfficeView, officeNameOf } from "../features/office";
 import { CommandPalette, type PaletteItem } from "../features/palette";
@@ -17,7 +17,7 @@ import {
 } from "../features/workspaces";
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { currentKeymap, useUiSettings, watchConfig } from "../platform/config";
-import { showError } from "../platform/notices";
+import { showError, showWarning } from "../platform/notices";
 import { focusTerminal, setShortcutFilter, suspendTerminalFocus } from "../platform/terminalRegistry";
 import { watchUpdates } from "../platform/update";
 import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
@@ -150,6 +150,16 @@ export function App() {
 
   // Toasts for agents that need attention in panes the user is not looking at.
   useEffect(() => watchAgentChanges((before, after) => notifyTransitions(before, after, locatePane, officeNameOf)), []);
+  // A distro that stops answering makes the office go still; say which one it
+  // is, so a still office is not read as a hung Dex (issue #73).
+  useEffect(
+    () =>
+      watchAgentChanges((before, after) => {
+        const said = newlyQuiet(before?.distros_not_answering, after.distros_not_answering);
+        if (said) showWarning(said);
+      }),
+    [],
+  );
 
   // A clicked toast brings the app forward; show the pane it was about.
   useEffect(() => {
