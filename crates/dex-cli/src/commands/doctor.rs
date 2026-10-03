@@ -50,6 +50,7 @@ pub fn run(format: Format) -> bool {
     let mut checks = connection_checks();
     checks.push(claude());
     checks.push(git());
+    checks.push(repos());
     checks.push(verdict("hooks", hooks::doctor_check()));
     checks.push(verdict("mcp", mcp::doctor_check()));
     checks.push(verdict("skill", skill::doctor_check()));
@@ -85,6 +86,54 @@ pub fn run(format: Format) -> bool {
         output::table(format, &["CHECK", "STATUS", "DETAIL"], &rows);
     }
     healthy
+}
+
+/// Every registered repository is still where it was registered.
+///
+/// A registration outlives its checkout - a repository can be moved or deleted
+/// while Dex is not looking - and then every command that needs it fails on
+/// git's words about a missing directory, with nothing saying the registration
+/// is the stale part. One of these was found with 157 GB of orphaned worktrees
+/// behind it (issue #72).
+fn repos() -> Check {
+    let listed = client::connect().and_then(|mut client| {
+        client.call::<dex_protocol::repo::RepoList>("repo.list", serde_json::json!({}))
+    });
+    let Ok(listed) = listed else {
+        return check("repos", Status::Skip, "the app is not answering");
+    };
+    let gone: Vec<&dex_protocol::repo::RepoView> =
+        listed.repos.iter().filter(|repo| repo.missing).collect();
+    match gone.as_slice() {
+        [] => check(
+            "repos",
+            Status::Ok,
+            format!("{} registered, all where they were", listed.repos.len()),
+        ),
+        [one] => {
+            let mut line = check(
+                "repos",
+                Status::Fail,
+                format!(
+                    "{} is registered at {}, which is not there; `dex repo forget {}` drops it",
+                    one.name, one.path, one.name
+                ),
+            );
+            line.fix = Some(format!("repo forget {}", one.name));
+            line
+        }
+        many => check(
+            "repos",
+            Status::Fail,
+            format!(
+                "registered at folders that are not there: {}. `dex repo forget <name>` drops each",
+                many.iter()
+                    .map(|repo| format!("{} ({})", repo.name, repo.path))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+        ),
+    }
 }
 
 /// The app is running, answers on the pipe, proves it is Dex, and speaks our version.

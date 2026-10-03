@@ -14,6 +14,12 @@ pub struct RepoView {
     pub path: String,
     /// Checked-out branch of the main checkout, if git could say.
     pub branch: Option<String>,
+    /// Its folder is not there any more. The registration outlives the
+    /// checkout - a repository can be moved or deleted while Dex is not
+    /// looking - and every worktree made from it is then orphaned, which is
+    /// worth saying rather than leaving to be discovered (issue #72).
+    #[serde(default)]
+    pub missing: bool,
 }
 
 /// Result of `repo.list`, `repo.add`, and `repo.scan`.
@@ -49,6 +55,13 @@ pub struct AddRepoArgs {
     /// Display name; the directory name by default.
     #[serde(default)]
     pub name: Option<String>,
+}
+
+/// Args for `repo.forget`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForgetRepoArgs {
+    /// Repo name, id, or path.
+    pub repo: String,
 }
 
 /// Args for `repo.scan`.

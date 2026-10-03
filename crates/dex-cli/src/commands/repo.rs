@@ -5,7 +5,9 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 use dex_protocol::ErrorBody;
-use dex_protocol::repo::{KeptBecause, Pruned, RepoList, RepoStatus, WorktreeList, WorktreeView};
+use dex_protocol::repo::{
+    KeptBecause, Pruned, RepoList, RepoStatus, RepoView, WorktreeList, WorktreeView,
+};
 use serde_json::json;
 
 use crate::commands::workspace::absolute;
@@ -24,6 +26,18 @@ pub enum RepoCommand {
     },
     /// List the registered repositories and their branches.
     List,
+    /// Drop a repository's registration.
+    ///
+    /// For one whose folder has gone: Dex cannot run git in a folder that is
+    /// not there, so every command that needs the repository fails until the
+    /// folder comes back or the registration goes. Worktrees Dex made from it
+    /// are left on disk - git in them points at a repository that has gone, so
+    /// nothing can judge them and they are yours to keep or delete. `dex repo
+    /// list` shows where they were.
+    Forget {
+        /// Repo name, id, or path.
+        repo: String,
+    },
     /// Find git repositories under a directory and register them.
     Scan {
         /// Where to look.
@@ -112,6 +126,10 @@ pub fn run(command: RepoCommand, format: Format) -> Result<(), ErrorBody> {
         }
         RepoCommand::List => {
             let list: RepoList = client.call("repo.list", json!({}))?;
+            print_repos(&list, format);
+        }
+        RepoCommand::Forget { repo } => {
+            let list: RepoList = client.call("repo.forget", json!({ "repo": repo }))?;
             print_repos(&list, format);
         }
         RepoCommand::Scan { path, depth } => {
@@ -240,6 +258,18 @@ fn print_pruned(pruned: &Pruned, format: Format) {
     output::table(format, &["BRANCH", "WHY", "PATH"], &rows);
 }
 
+/// What to show where a branch goes: the branch, or why there is not one.
+///
+/// A repository whose folder has gone reads `(gone)` rather than `(detached)`:
+/// nothing is checked out because there is nothing there, and the owner needs
+/// to know which of the two it is (issue #72).
+fn state_of(repo: &RepoView) -> String {
+    if repo.missing {
+        return "(gone)".to_owned();
+    }
+    repo.branch.clone().unwrap_or_else(|| "(detached)".into())
+}
+
 fn branch_of(worktree: &WorktreeView) -> String {
     worktree
         .branch
@@ -295,13 +325,7 @@ fn print_repos(list: &RepoList, format: Format) {
     let rows: Vec<Vec<String>> = list
         .repos
         .iter()
-        .map(|repo| {
-            vec![
-                repo.name.clone(),
-                repo.branch.clone().unwrap_or_else(|| "(detached)".into()),
-                repo.path.clone(),
-            ]
-        })
+        .map(|repo| vec![repo.name.clone(), state_of(repo), repo.path.clone()])
         .collect();
     output::table(format, &["NAME", "BRANCH", "PATH"], &rows);
 }

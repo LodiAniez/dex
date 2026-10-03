@@ -7,7 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use dex_protocol::repo::{
-    AddRepoArgs, DiffArgs, RepoArgs, RepoDiff, RepoList, RepoStatus, RepoView, ScanArgs,
+    AddRepoArgs, DiffArgs, ForgetRepoArgs, RepoArgs, RepoDiff, RepoList, RepoStatus, RepoView,
+    ScanArgs,
 };
 use rusqlite::Connection;
 
@@ -70,12 +71,18 @@ pub async fn list(state: &AppState) -> Result<RepoList, RepoError> {
         repos
             .into_iter()
             .map(|repo| {
-                let branch = current_branch(Path::new(&repo.path));
+                let dir = Path::new(&repo.path);
+                // Asked before git, and said out loud: a registration outlives
+                // its checkout, and every worktree made from a repository that
+                // has gone is orphaned (issue #72).
+                let missing = !dir.is_dir();
+                let branch = (!missing).then(|| current_branch(dir)).flatten();
                 RepoView {
                     id: repo.id,
                     name: repo.name,
                     path: repo.path,
                     branch,
+                    missing,
                 }
             })
             .collect()
@@ -172,11 +179,55 @@ pub async fn diff(state: &AppState, args: DiffArgs) -> Result<RepoDiff, RepoErro
 
 /// The repo a target names: its id, its exact name, else a unique prefix.
 pub(super) async fn resolve(state: &AppState, target: &str) -> Result<Repo, RepoError> {
+    let repo = registered(state, target).await?;
+    if Path::new(&repo.path).is_dir() {
+        return Ok(repo);
+    }
+    // Everything that resolves a repository then runs git in its folder, and
+    // git's words about a directory that is not there say nothing about the
+    // registration being stale. So this says it, and names the worktrees Dex
+    // made from it: their git points at a repository that has gone, so no
+    // command can judge them and the owner has to be told where they are
+    // (issue #72).
+    let id = repo.id.clone();
+    let worktrees = state
+        .db
+        .call(move |conn| store::worktrees_of_repo(conn, &id))
+        .await?;
+    Err(RepoError::RepoGone {
+        name: repo.name,
+        path: repo.path,
+        worktrees,
+    })
+}
+
+/// The repository a target names, whether or not its folder is still there.
+/// For `repo.forget`, which exists precisely for the ones that are not.
+pub(super) async fn registered(state: &AppState, target: &str) -> Result<Repo, RepoError> {
     let wanted = target.to_owned();
     state
         .db
         .call(move |conn| Ok(pick(&store::list_repos(conn)?, &wanted)))
         .await?
+}
+
+/// `repo.forget`: takes the registration away, and every workspace's record of
+/// using it.
+///
+/// The worktrees stay on disk. One made from a repository that has gone holds
+/// files git can no longer say anything about - not a diff, not a branch, not
+/// whether anything in it was ever committed - so whether it is worth keeping
+/// is the owner's to decide and nobody else's (issue #72). What `repo.list`
+/// and this error say is where they are.
+pub async fn forget(state: &AppState, args: ForgetRepoArgs) -> Result<RepoList, RepoError> {
+    let repo = registered(state, &args.repo).await?;
+    let id = repo.id.clone();
+    state
+        .db
+        .call(move |conn| store::delete_repo(conn, &id))
+        .await?;
+    tracing::info!(name = %repo.name, path = %repo.path, "forgot a repository");
+    list(state).await
 }
 
 fn pick(repos: &[Repo], target: &str) -> Result<Repo, RepoError> {

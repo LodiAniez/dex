@@ -97,6 +97,7 @@ async fn route(state: &AppState, req: &Request) -> Result<Value, CoreError> {
         "pane.content" => encode(workspace::pane_content(state, args(req)?).await?),
         "repo.diff" => encode(repo::diff(state, args(req)?).await?),
         "repo.add" => encode(repo::add(state, args(req)?).await?),
+        "repo.forget" => encode(repo::forget(state, args(req)?).await?),
         "repo.list" => encode(repo::list(state).await?),
         "repo.scan" => encode(repo::scan(state, args(req)?).await?),
         "repo.status" => encode(repo::status(state, args(req)?).await?),
