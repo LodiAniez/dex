@@ -19,6 +19,7 @@ use super::store;
 use crate::app::AppState;
 use crate::features::{agent, workspace};
 use crate::platform::clock;
+use crate::platform::db::DbError;
 
 /// Most hits `context.search` returns when the caller does not say.
 const DEFAULT_SEARCH_LIMIT: u32 = 10;
@@ -107,10 +108,10 @@ pub async fn read(state: &AppState, args: ReadArgs) -> Result<EntryView, Context
 /// current value so the caller can merge without a second round trip.
 pub async fn write(state: &AppState, args: WriteArgs) -> Result<Written, ContextError> {
     let now = clock::now_millis();
-    state
+    let (written, owed) = state
         .db
         .call(
-            move |conn| -> rusqlite::Result<Result<Written, ContextError>> {
+            move |conn| -> rusqlite::Result<Result<(Written, mirror::Owed), ContextError>> {
                 if let Err(bad) = logic::check_key(&args.key) {
                     return Ok(Err(ContextError::InvalidKey {
                         key: args.key,
@@ -152,8 +153,7 @@ pub async fn write(state: &AppState, args: WriteArgs) -> Result<Written, Context
                         now,
                     )?,
                 };
-                mirror::write_entry(scope.root(), &args.key, &args.value);
-                log(
+                let (_, owed) = log(
                     conn,
                     &scope,
                     NewEvent {
@@ -166,10 +166,15 @@ pub async fn write(state: &AppState, args: WriteArgs) -> Result<Written, Context
                         created_at: now,
                     },
                 )?;
-                Ok(Ok(Written { version }))
+                // The entry's own file as well as the log line, and neither
+                // written until the connection is free (issue #82).
+                let owed = owed.with_entry(&args.key, &args.value);
+                Ok(Ok((Written { version }, owed)))
             },
         )
-        .await?
+        .await??;
+    mirror::flush(owed).await;
+    Ok(written)
 }
 
 /// `context.list`: keys and metadata, no values — a cheap survey.
@@ -229,24 +234,30 @@ pub async fn search(state: &AppState, args: SearchArgs) -> Result<SearchResults,
         .await?
 }
 
-/// Appends to the log and mirrors the line to `.dex/activity.log`.
-pub(super) fn log(conn: &Connection, scope: &Scope, event: NewEvent) -> rusqlite::Result<i64> {
+/// Appends to the log, and hands back the line the mirror owes.
+///
+/// It used to write that line here, inside whichever `db.call` closure called
+/// it - which held Dex's one database connection across a file write, and so
+/// across every other command, typing into a pane included (issue #82). The
+/// caller flushes it once the closure has returned.
+pub(super) fn log(
+    conn: &Connection,
+    scope: &Scope,
+    event: NewEvent,
+) -> rusqlite::Result<(i64, mirror::Owed)> {
     let seq = store::insert_event(conn, &event)?;
-    mirror::append_event(
-        scope.root(),
-        &Event {
-            seq,
-            workspace_id: event.workspace_id,
-            agent_id: event.agent_id,
-            kind: event.kind.to_owned(),
-            key: event.key,
-            body: event.body,
-            target_agent: event.target_agent,
-            read_at: None,
-            created_at: event.created_at,
-        },
-    );
-    Ok(seq)
+    let owed = mirror::Owed::at(scope.root()).with_event(Event {
+        seq,
+        workspace_id: event.workspace_id,
+        agent_id: event.agent_id,
+        kind: event.kind.to_owned(),
+        key: event.key,
+        body: event.body,
+        target_agent: event.target_agent,
+        read_at: None,
+        created_at: event.created_at,
+    });
+    Ok((seq, owed))
 }
 
 /// For other slices: one event in the workspace log, and the same line in
@@ -258,36 +269,44 @@ pub(super) fn log(conn: &Connection, scope: &Scope, event: NewEvent) -> rusqlite
 /// own - taking a worktree away - has to be findable afterwards by whoever
 /// goes looking in the folder with `grep`, which is where the owner looked
 /// when they asked to see Dex's logs (review).
-pub fn record_and_mirror(
-    conn: &Connection,
+pub async fn record_and_mirror(
+    state: &AppState,
     workspace_id: &str,
     kind: &'static str,
     body: String,
     now: i64,
-) -> rusqlite::Result<()> {
-    let event = NewEvent {
-        workspace_id: workspace_id.to_owned(),
-        agent_id: None,
-        kind,
-        key: None,
-        body,
-        target_agent: None,
-        created_at: now,
-    };
-    let Some(root) = workspace::workspace_root(conn, workspace_id)? else {
-        // No root, so nowhere to mirror to: the row alone, as before.
-        store::insert_event(conn, &event)?;
-        return Ok(());
-    };
-    log(
-        conn,
-        &Scope {
-            workspace_id: workspace_id.to_owned(),
-            root,
-            agent_id: None,
-        },
-        event,
-    )?;
+) -> Result<(), DbError> {
+    let id = workspace_id.to_owned();
+    let owed = state
+        .db
+        .call(move |conn| {
+            let event = NewEvent {
+                workspace_id: id.clone(),
+                agent_id: None,
+                kind,
+                key: None,
+                body,
+                target_agent: None,
+                created_at: now,
+            };
+            let Some(root) = workspace::workspace_root(conn, &id)? else {
+                // No root, so nowhere to mirror to: the row alone.
+                store::insert_event(conn, &event)?;
+                return Ok(mirror::Owed::default());
+            };
+            let (_, owed) = log(
+                conn,
+                &Scope {
+                    workspace_id: id.clone(),
+                    root,
+                    agent_id: None,
+                },
+                event,
+            )?;
+            Ok(owed)
+        })
+        .await?;
+    mirror::flush(owed).await;
     Ok(())
 }
 

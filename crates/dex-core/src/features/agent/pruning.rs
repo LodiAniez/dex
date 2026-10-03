@@ -158,12 +158,9 @@ async fn workspaces_using(state: &AppState, repo_id: &str) -> Vec<String> {
 /// written is not worth failing anything over - though it is worth a warning,
 /// because a removal nobody can account for is worse than the disk it saved.
 async fn say(state: &AppState, workspace_id: &str, body: &str) {
-    let (workspace_id, body) = (workspace_id.to_owned(), body.to_owned());
     let now = clock::now_millis();
-    let written = state
-        .db
-        .call(move |conn| context::record_and_mirror(conn, &workspace_id, "note", body, now))
-        .await;
+    let written =
+        context::record_and_mirror(state, workspace_id, "note", body.to_owned(), now).await;
     if let Err(err) = written {
         tracing::warn!(%err, "took a worktree away but could not say so in the log");
     }

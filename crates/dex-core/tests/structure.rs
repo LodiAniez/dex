@@ -91,3 +91,47 @@ fn no_utils_files_exist() {
         );
     }
 }
+
+/// The activity mirror is written only by `mirror::flush`, which is async and
+/// takes no database connection - so no `db.call` closure can write a file
+/// while holding Dex's one connection (issue #82).
+///
+/// Privacy is what enforces it; this is here so that making either writer
+/// public again fails loudly rather than quietly re-opening the hazard, which
+/// stalled typing in every pane while an agent wrote a note.
+#[test]
+fn only_the_mirror_module_writes_the_mirror() {
+    let mirror = src_dir().join("features/context/mirror.rs");
+    let text = fs::read_to_string(&mirror).unwrap();
+    for writer in ["fn write_entry", "fn append_event"] {
+        assert!(
+            text.contains(&format!(
+                "
+{writer}"
+            )),
+            "{writer} should be private to mirror.rs"
+        );
+        assert!(
+            !text.contains(&format!("pub fn {}", writer.trim_start_matches("fn "))),
+            "{writer} must stay private: public, it can be called inside a db.call closure"
+        );
+    }
+    assert!(
+        text.contains("pub(super) async fn flush"),
+        "flush is the only way out, and async so it cannot run inside a closure"
+    );
+
+    for file in rust_files(&src_dir()) {
+        if file.ends_with("mirror.rs") {
+            continue;
+        }
+        let text = fs::read_to_string(&file).unwrap();
+        for writer in ["mirror::write_entry", "mirror::append_event"] {
+            assert!(
+                !text.contains(writer),
+                "{} calls {writer}; the mirror is written by mirror::flush alone",
+                file.display()
+            );
+        }
+    }
+}
