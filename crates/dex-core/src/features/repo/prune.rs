@@ -11,17 +11,23 @@
 //! would not report on is dirty, a branch git would not compare is unmerged,
 //! and anything a running shell is sitting in stays whatever else is true.
 //! What was kept, and why, is reported rather than left silent.
+//!
+//! The facts are gathered here; the rules that read them are pure, in
+//! `verdict.rs`, and what the remote says became of a branch is `landed.rs`.
 
 use std::path::Path;
 
 use dex_protocol::repo::{KeptBecause, KeptWorktree, PruneWorktreesArgs, Pruned, WorktreeView};
 
 use super::commands::resolve;
+use super::landed;
 use super::model::RepoError;
+use super::verdict::{self, Facts};
 use super::worktree_commands::take_away;
 use super::{logic, placement, size, store};
 use crate::app::AppState;
 use crate::features::workspace;
+use crate::platform::clock;
 use crate::platform::paths;
 use crate::platform::proc::{self, GitError};
 
@@ -30,10 +36,16 @@ use crate::platform::proc::{self, GitError};
 pub async fn prune(state: &AppState, args: PruneWorktreesArgs) -> Result<Pruned, RepoError> {
     let repo = resolve(state, &args.repo).await?;
     let busy = busy_folders(state).await?;
+    // In auto mode the remote decides what has landed, and anything worked in
+    // inside the grace period is left alone whatever it says.
+    let grace = args
+        .auto
+        .then(|| (state.config.get().agents.prune_after_hours as i64).saturating_mul(3_600));
     let (repo_path, dry_run) = (repo.path.clone(), args.dry_run);
-    let pruned = tokio::task::spawn_blocking(move || sweep(Path::new(&repo_path), &busy, dry_run))
-        .await
-        .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))??;
+    let pruned =
+        tokio::task::spawn_blocking(move || sweep(Path::new(&repo_path), &busy, dry_run, grace))
+            .await
+            .map_err(|err| RepoError::Git(GitError::Other(err.to_string())))??;
     if !pruned.dry_run {
         forget(state, &repo.id, &pruned.taken).await;
     }
@@ -58,14 +70,48 @@ async fn busy_folders(state: &AppState) -> Result<Vec<String>, RepoError> {
         .collect())
 }
 
+/// What one sweep of a repository needs in order to judge every worktree in it.
+struct Judging<'a> {
+    repo: &'a Path,
+    /// The folders panes with a running shell are in.
+    busy: &'a [String],
+    /// `Some(seconds)` in auto mode: how long after work stops a worktree is
+    /// still left alone. `None` outside it, where the owner asked directly.
+    grace: Option<i64>,
+    /// The branches the remote has, asked once for the whole repository.
+    /// `None` outside auto mode, or when the remote could not be reached.
+    on_remote: Option<Vec<String>>,
+    /// Seconds since the epoch, read once, so every worktree in one sweep is
+    /// judged against the same moment.
+    now: i64,
+    /// The main checkout's branch, for the local comparison.
+    base: Option<String>,
+}
+
 /// Judges every worktree of the repository, main checkout aside, and takes
 /// away the ones nothing speaks for.
-fn sweep(repo: &Path, busy: &[String], dry_run: bool) -> Result<Pruned, RepoError> {
+fn sweep(
+    repo: &Path,
+    busy: &[String],
+    dry_run: bool,
+    grace: Option<i64>,
+) -> Result<Pruned, RepoError> {
     let listed = proc::git(repo, &["worktree", "list", "--porcelain"])?;
     let mut checkouts = logic::parse_worktrees(&listed.stdout).into_iter();
-    // Git lists the main checkout first, and its branch is what "merged"
-    // means here: no fetch, no remote, nothing that needs the network.
+    // Git lists the main checkout first, and its branch is what the local
+    // comparison means by merged.
     let base = checkouts.next().and_then(|(_, branch)| branch);
+    let judging = Judging {
+        repo,
+        busy,
+        grace,
+        // The only part of the prune that touches the network, and only when
+        // it was asked for: a remote that cannot be reached leaves every
+        // worktree to the local comparison.
+        on_remote: grace.and_then(|_| landed::branches_on_remote(repo)),
+        now: clock::now_millis() / 1_000,
+        base,
+    };
     let mut pruned = Pruned {
         taken: Vec::new(),
         kept: Vec::new(),
@@ -73,9 +119,9 @@ fn sweep(repo: &Path, busy: &[String], dry_run: bool) -> Result<Pruned, RepoErro
         dry_run,
     };
     for (path, branch) in checkouts {
-        let facts = facts_of(repo, &path, branch, busy, base.as_deref());
+        let facts = facts_of(&judging, &path, branch);
         let worktree = view(&path, facts.branch.clone());
-        match keep(&facts) {
+        match verdict::keep(&facts) {
             Some(because) => pruned.kept.push(KeptWorktree { worktree, because }),
             None => take(repo, worktree, dry_run, &mut pruned),
         }
@@ -124,70 +170,69 @@ async fn forget(state: &AppState, repo_id: &str, taken: &[WorktreeView]) {
     }
 }
 
-/// What a worktree's path, branch and tree say about taking it away.
-pub struct Facts {
-    /// A pane whose shell is running has its folder inside it.
-    pub in_use: bool,
-    /// Its folder is there to look at. A worktree on a distro that is not
-    /// running is not, and nothing can be judged about it from here.
-    pub present: bool,
-    /// Its working tree holds changes git has not been told to keep - or git
-    /// would not say, which counts the same.
-    pub dirty: bool,
-    /// The branch checked out in it, absent when detached.
-    pub branch: Option<String>,
-    /// Commits its branch has that the main checkout's branch does not, and
-    /// `None` when git could not say.
-    pub ahead: Option<usize>,
-}
-
-/// Why this worktree stays, or `None` when it can go.
-///
-/// In use first: that a worktree is committed and merged says nothing about
-/// whether deleting the folder under a working agent would ruin its afternoon.
-pub fn keep(facts: &Facts) -> Option<KeptBecause> {
-    if facts.in_use {
-        return Some(KeptBecause::InUse);
-    }
-    // Before anything git is asked, because git cannot be asked: with the
-    // folder away, `status` fails and that would read as uncommitted work.
-    if !facts.present {
-        return Some(KeptBecause::Missing);
-    }
-    if facts.dirty {
-        return Some(KeptBecause::Uncommitted);
-    }
-    if facts.branch.is_none() {
-        return Some(KeptBecause::Detached);
-    }
-    match facts.ahead {
-        Some(0) => None,
-        Some(_) => Some(KeptBecause::Unmerged),
-        None => Some(KeptBecause::Unknown),
-    }
-}
-
-fn facts_of(
-    repo: &Path,
-    path: &str,
-    branch: Option<String>,
-    busy: &[String],
-    base: Option<&str>,
-) -> Facts {
+fn facts_of(judging: &Judging<'_>, path: &str, branch: Option<String>) -> Facts {
     let dir = Path::new(path);
     let present = dir.is_dir();
+    // Before `is_dirty`, which runs git inside the worktree: nothing read here
+    // may be disturbed by Dex's own reading of it.
+    let worked_recently = present && recently_used(judging, dir, branch.as_deref());
     Facts {
-        in_use: busy
+        in_use: judging
+            .busy
             .iter()
             .any(|cwd| placement::inside_place(dir, Path::new(cwd))),
         present,
         dirty: present && is_dirty(dir),
+        recently_used: worked_recently,
+        landed: branch.as_deref().and_then(|branch| {
+            judging
+                .grace
+                .map(|_| landed::landed(judging.repo, branch, judging.on_remote.as_deref()))
+        }),
         ahead: branch
             .as_deref()
-            .zip(base)
-            .and_then(|(branch, base)| ahead_of(repo, branch, base)),
+            .zip(judging.base.as_deref())
+            .and_then(|(branch, base)| ahead_of(judging.repo, branch, base)),
         branch,
     }
+}
+
+/// Whether something was working in the worktree inside the grace period.
+///
+/// Outside auto mode nobody asked, and the answer is no. Inside it, a worktree
+/// whose timestamps cannot be read counts as worked in: this slice keeps what
+/// it cannot judge.
+fn recently_used(judging: &Judging<'_>, dir: &Path, branch: Option<&str>) -> bool {
+    let Some(grace) = judging.grace else {
+        return false;
+    };
+    match last_worked(judging.repo, dir, branch) {
+        Some(at) => judging.now - at < grace,
+        None => true,
+    }
+}
+
+/// When work last happened in the worktree, in seconds since the epoch: the
+/// newer of the folder's own timestamp and the branch's last commit.
+///
+/// Neither moves when Dex reads the worktree, which is the whole requirement.
+/// `git status` can rewrite the index git keeps for a worktree, so an index
+/// timestamp would be refreshed by this prune's own dirty check and every
+/// worktree would look busy for ever. A checkout or a build moves the folder; a
+/// commit moves the branch. And a worktree a spawn made moments ago is new by
+/// its folder, which is what keeps it from being taken in the seconds before
+/// its shell starts.
+fn last_worked(repo: &Path, dir: &Path, branch: Option<&str>) -> Option<i64> {
+    let folder = std::fs::metadata(dir)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|since| i64::try_from(since.as_secs()).ok());
+    let commit = branch.and_then(|branch| {
+        let shown = proc::git(repo, &["log", "-1", "--format=%ct", branch]).ok()?;
+        shown.stdout.trim().parse::<i64>().ok()
+    });
+    folder.max(commit)
 }
 
 /// Whether the worktree holds anything git has not been told to keep,
@@ -211,109 +256,5 @@ fn view(path: &str, branch: Option<String>) -> WorktreeView {
         branch,
         main: false,
         size_bytes: None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Facts, keep};
-    use dex_protocol::repo::KeptBecause;
-
-    /// A worktree with nothing to say for itself: clean, idle, merged.
-    fn spent() -> Facts {
-        Facts {
-            in_use: false,
-            present: true,
-            dirty: false,
-            branch: Some("feat/done".into()),
-            ahead: Some(0),
-        }
-    }
-
-    #[test]
-    fn a_clean_merged_worktree_nobody_is_in_can_go() {
-        assert_eq!(keep(&spent()), None);
-    }
-
-    #[test]
-    fn a_worktree_with_a_running_shell_in_it_stays() {
-        let busy = Facts {
-            in_use: true,
-            ..spent()
-        };
-        assert_eq!(keep(&busy), Some(KeptBecause::InUse));
-    }
-
-    #[test]
-    fn being_in_use_outweighs_every_other_reason_to_take_it() {
-        // The one that matters: an agent working in a worktree whose branch is
-        // merged and whose tree is clean is still an agent working in it.
-        let working = Facts {
-            in_use: true,
-            present: true,
-            dirty: false,
-            branch: Some("feat/done".into()),
-            ahead: Some(0),
-        };
-        assert_eq!(keep(&working), Some(KeptBecause::InUse));
-    }
-
-    #[test]
-    fn a_worktree_with_uncommitted_work_stays() {
-        let dirty = Facts {
-            dirty: true,
-            ..spent()
-        };
-        assert_eq!(keep(&dirty), Some(KeptBecause::Uncommitted));
-    }
-
-    #[test]
-    fn a_worktree_whose_branch_has_its_own_commits_stays() {
-        let ahead = Facts {
-            ahead: Some(3),
-            ..spent()
-        };
-        assert_eq!(keep(&ahead), Some(KeptBecause::Unmerged));
-    }
-
-    #[test]
-    fn a_detached_worktree_stays_because_there_is_nothing_to_compare() {
-        let detached = Facts {
-            branch: None,
-            ..spent()
-        };
-        assert_eq!(keep(&detached), Some(KeptBecause::Detached));
-    }
-
-    #[test]
-    fn a_worktree_whose_folder_has_gone_is_kept_and_named_as_that() {
-        // Not as uncommitted work: with the folder away `git status` fails,
-        // and saying "uncommitted" of a folder that is not there sends the
-        // owner looking for work that is not in it. On Windows this is every
-        // worktree on a distro that has been shut down.
-        let gone = Facts {
-            present: false,
-            ..spent()
-        };
-        assert_eq!(keep(&gone), Some(KeptBecause::Missing));
-    }
-
-    #[test]
-    fn a_shell_running_in_it_still_wins_over_a_folder_that_seems_gone() {
-        let odd = Facts {
-            in_use: true,
-            present: false,
-            ..spent()
-        };
-        assert_eq!(keep(&odd), Some(KeptBecause::InUse));
-    }
-
-    #[test]
-    fn a_branch_git_would_not_compare_keeps_its_worktree() {
-        let unknown = Facts {
-            ahead: None,
-            ..spent()
-        };
-        assert_eq!(keep(&unknown), Some(KeptBecause::Unknown));
     }
 }

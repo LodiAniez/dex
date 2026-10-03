@@ -1,11 +1,12 @@
 //! `agent.sweep`: the watchdog, run on a timer by the app. What hooks cannot
 //! say for themselves - a pane that is gone, a Claude Code that is gone, an
-//! agent gone quiet - is noticed here.
+//! agent gone quiet - is noticed here, and once an hour the worktrees whose
+//! work has landed are taken away (`pruning.rs`).
 
 use dex_protocol::agent::{AgentStatus, EventOutcome};
 
 use super::model::AgentError;
-use super::{presence, silence, store};
+use super::{presence, pruning, silence, store};
 use crate::app::AppState;
 use crate::platform::clock;
 
@@ -48,6 +49,11 @@ pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
             Vec::new()
         })
         .len();
+    // Last, and at most once an hour inside it: taking away the worktrees
+    // whose work has landed (issue #74). It asks every repository's remote, so
+    // it must not run at the sweep's own pace, and nothing it does is worth
+    // failing the sweep over - it says what it did in each workspace's log.
+    pruning::prune_landed(state).await;
     Ok(if departed > 0 || woken > 0 {
         APPLIED
     } else {

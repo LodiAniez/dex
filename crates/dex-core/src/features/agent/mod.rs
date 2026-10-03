@@ -3,7 +3,8 @@
 //! Commands: `agent.event` (hooks), `agent.list`, `agent.stop`, `agent.prompt`, `agent.pane_exited`,
 //! `agent.sweep` (the watchdog, in `watchdog.rs`).
 //! Which hook means what, and how a status moves, is pure and lives in `logic.rs`;
-//! when an agent has gone quiet, and what is said about it, in `silence.rs`.
+//! when an agent has gone quiet, and what is said about it, in `silence.rs`;
+//! taking a finished agent's worktree away, in `pruning.rs` (issue #74).
 
 mod asking;
 mod commands;
@@ -14,6 +15,7 @@ mod model;
 mod placement;
 mod presence;
 mod prompt;
+mod pruning;
 mod reason;
 mod session;
 mod silence;

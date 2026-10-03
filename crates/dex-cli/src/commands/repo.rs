@@ -93,6 +93,12 @@ pub enum WorktreeCommand {
         /// Say what would go without taking anything away.
         #[arg(long)]
         dry_run: bool,
+        /// Judge by the remote rather than by the main branch, and leave
+        /// anything worked in over the last few hours alone: exactly what the
+        /// hourly pass does when `[agents] prune_merged_worktrees` is on. Use
+        /// it with --dry-run to watch that pass before trusting it.
+        #[arg(long)]
+        auto: bool,
     },
 }
 
@@ -135,10 +141,15 @@ pub fn run(command: RepoCommand, format: Format) -> Result<(), ErrorBody> {
 
 pub fn run_worktree(command: WorktreeCommand, format: Format) -> Result<(), ErrorBody> {
     let mut client = client::connect()?;
-    if let WorktreeCommand::Prune { repo, dry_run } = command {
+    if let WorktreeCommand::Prune {
+        repo,
+        dry_run,
+        auto,
+    } = command
+    {
         let pruned: Pruned = client.call(
             "worktree.prune",
-            json!({ "repo": repo, "dry_run": dry_run }),
+            json!({ "repo": repo, "dry_run": dry_run, "auto": auto }),
         )?;
         print_pruned(&pruned, format);
         return Ok(());
@@ -243,6 +254,9 @@ fn why(because: KeptBecause) -> &'static str {
         KeptBecause::Uncommitted => "uncommitted work",
         KeptBecause::Missing => "its folder is not there",
         KeptBecause::Unmerged => "commits the main branch has not",
+        KeptBecause::StillOpen => "the remote still has its branch",
+        KeptBecause::Unpushed => "no remote has its branch",
+        KeptBecause::RecentlyUsed => "something was working in it recently",
         KeptBecause::Detached => "no branch checked out",
         KeptBecause::Unknown => "git could not compare its branch",
         KeptBecause::Refused => "git would not remove it",
@@ -318,6 +332,9 @@ mod tests {
             KeptBecause::InUse,
             KeptBecause::Uncommitted,
             KeptBecause::Missing,
+            KeptBecause::StillOpen,
+            KeptBecause::Unpushed,
+            KeptBecause::RecentlyUsed,
             KeptBecause::Unmerged,
             KeptBecause::Detached,
             KeptBecause::Unknown,
