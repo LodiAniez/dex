@@ -117,6 +117,15 @@ async fn a_worktree_whose_work_has_landed_goes_and_is_written_in_the_log() {
         "a worktree never simply vanishes: {:?}",
         events.events
     );
+
+    // And in the file, which is where someone greps when they go looking in
+    // the folder rather than opening the office (review).
+    let log = std::fs::read_to_string(Path::new(&root).join(".dex/activity.log"))
+        .expect("the workspace's activity log");
+    assert!(
+        log.contains("feat/done") && log.contains("took away"),
+        "the mirror has it too: {log}"
+    );
 }
 
 #[tokio::test]

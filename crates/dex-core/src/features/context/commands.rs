@@ -249,6 +249,48 @@ pub(super) fn log(conn: &Connection, scope: &Scope, event: NewEvent) -> rusqlite
     Ok(seq)
 }
 
+/// For other slices: one event in the workspace log, and the same line in
+/// `.dex/activity.log`.
+///
+/// `record_event`'s sibling, and the difference matters. That one writes only
+/// the row, which is right for the status changes it was built for: they are
+/// the office's business and would bury the file. But something Dex did on its
+/// own - taking a worktree away - has to be findable afterwards by whoever
+/// goes looking in the folder with `grep`, which is where the owner looked
+/// when they asked to see Dex's logs (review).
+pub fn record_and_mirror(
+    conn: &Connection,
+    workspace_id: &str,
+    kind: &'static str,
+    body: String,
+    now: i64,
+) -> rusqlite::Result<()> {
+    let event = NewEvent {
+        workspace_id: workspace_id.to_owned(),
+        agent_id: None,
+        kind,
+        key: None,
+        body,
+        target_agent: None,
+        created_at: now,
+    };
+    let Some(root) = workspace::workspace_root(conn, workspace_id)? else {
+        // No root, so nowhere to mirror to: the row alone, as before.
+        store::insert_event(conn, &event)?;
+        return Ok(());
+    };
+    log(
+        conn,
+        &Scope {
+            workspace_id: workspace_id.to_owned(),
+            root,
+            agent_id: None,
+        },
+        event,
+    )?;
+    Ok(())
+}
+
 pub(super) fn author(
     conn: &Connection,
     agent_id: Option<&str>,
