@@ -45,5 +45,5 @@ pub use store::{
     find_pane_workspace, pane_cwd, pane_label, pane_runtime, terminal_panes, workspace_name,
     workspace_root,
 };
-pub use switching::record_started;
+pub use switching::{anything_running, record_started};
 pub use targets::{focused_pane, pane_id_in, workspace_id};

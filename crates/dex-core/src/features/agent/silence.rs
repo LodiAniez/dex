@@ -20,6 +20,27 @@ pub fn is_silent(
         && now - last_output_at.unwrap_or(0) >= quiet_ms
 }
 
+/// Whether the watchdog should call an agent `unknown` - "not responding" in
+/// the window - having found it silent (issue #81).
+///
+/// Silence alone is not enough, and that was the bug: four agents were running
+/// test suites with their output redirected to files, as the lead had told
+/// them to, so no hook arrived and their panes printed nothing. All four were
+/// branded "not responding" while working, and the owner closed Dex over it.
+///
+/// What tells the two apart is whether anything is running under the pane's
+/// shell: an agent inside one long tool call has `pnpm` or `cargo` under it,
+/// while one whose hooks have broken sits at a prompt with nothing under it.
+///
+/// `running_under` is `None` when that could not be told - the shell is not in
+/// the process table, or the distro did not answer - and then the agent keeps
+/// the status it has. The quiet line still says "nothing for 12m" about it
+/// (`quiet_for`), which is the honest thing to say when Dex cannot hear an
+/// agent and has no reason to think it has stopped.
+pub fn unheard(silent: bool, running_under: Option<bool>) -> bool {
+    silent && running_under == Some(false)
+}
+
 /// How long a running agent has gone without a hook, when that is long enough
 /// to be worth saying (issue #67). Hooks fire at every prompt and every tool
 /// batch, so a gap means the agent has not finished a tool call in all that
@@ -36,6 +57,35 @@ pub fn quiet_for(status: AgentStatus, last_event_at: i64, now: i64, after_ms: i6
 
 #[cfg(test)]
 mod tests {
+    use super::unheard;
+
+    #[test]
+    fn silent_with_nothing_running_is_unheard() {
+        // Hooks have stopped and the shell has nothing to show for it.
+        assert!(unheard(true, Some(false)));
+    }
+
+    #[test]
+    fn silent_with_something_running_is_working() {
+        // The bug: a test suite with its output in a file is silent by both
+        // measures, and calling it "not responding" is what closed the app.
+        assert!(!unheard(true, Some(true)));
+    }
+
+    #[test]
+    fn what_cannot_be_told_leaves_the_status_alone() {
+        // A shell missing from the process table, or a distro that did not
+        // answer. The quiet line still says how long it has been silent.
+        assert!(!unheard(true, None));
+    }
+
+    #[test]
+    fn an_agent_that_is_not_silent_is_never_unheard() {
+        for under in [Some(true), Some(false), None] {
+            assert!(!unheard(false, under), "{under:?}");
+        }
+    }
+
     use super::{is_silent, quiet_for};
     use dex_protocol::agent::AgentStatus;
 

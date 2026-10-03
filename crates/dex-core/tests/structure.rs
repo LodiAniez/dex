@@ -91,3 +91,28 @@ fn no_utils_files_exist() {
         );
     }
 }
+
+/// The watchdog asks whether anything is running under a silent agent's shell
+/// before it calls that agent "not responding" (issue #81).
+///
+/// Checked over the source, like the sweep's order below it, because a test
+/// cannot make a pane's shell run a child: input written into a shell under a
+/// pseudoconsole does not execute in the harness - tried typed, typed after
+/// the prompt arrived, and passed as arguments. The decision itself is tested
+/// (`watchdog::those_not_working`); this is the one line joining it to the
+/// question, and it is the line whose loss branded four working agents dead.
+#[test]
+fn the_watchdog_asks_before_it_calls_an_agent_unresponsive() {
+    let watchdog = src_dir().join("features/agent/watchdog.rs");
+    let text = fs::read_to_string(&watchdog).unwrap();
+    let asks = text
+        .find("unheard(state, quiet)")
+        .expect("the sweep asks whether the silent agents are working");
+    let marks = text
+        .find("AgentStatus::Unknown")
+        .expect("and somewhere it marks them");
+    assert!(
+        asks < marks,
+        "watchdog.rs marks an agent unknown before asking whether it is working"
+    );
+}
