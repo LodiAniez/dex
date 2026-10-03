@@ -36,12 +36,93 @@ pub(super) fn busy(
     procs: Option<&[Proc]>,
     counts: Option<&HashMap<String, usize>>,
 ) -> bool {
+    // Restarting a pane is the destructive one, so what cannot be told is left
+    // alone: busy.
+    running_under(pane, shell, runtime, procs, counts).unwrap_or(true)
+}
+
+/// Whether anything is running under a pane's shell, or `None` when that
+/// cannot be told: the shell is not in the process table, or the distro did
+/// not answer.
+///
+/// The judgement both callers share. They differ in what to do with `None`,
+/// which is why that is left to them.
+pub(super) fn running_under(
+    pane: &str,
+    shell: u32,
+    runtime: &str,
+    procs: Option<&[Proc]>,
+    counts: Option<&HashMap<String, usize>>,
+) -> Option<bool> {
     match Runtime::parse(runtime) {
         Ok(Runtime::Wsl(_)) => counts
             .and_then(|counts| counts.get(pane))
-            .is_none_or(|count| *count > WSL_SHELL_ALONE),
-        _ => procs.and_then(|procs| proctree::bare(procs, shell)) != Some(true),
+            .map(|count| *count > WSL_SHELL_ALONE),
+        _ => proctree::bare(procs?, shell).map(|bare| !bare),
     }
+}
+
+/// For the agent slice: whether anything is running under each of these panes'
+/// shells (issue #81).
+///
+/// A pane with no shell at all answers `Some(false)`: nothing can be running
+/// under a shell that is not there, and that is a different thing from not
+/// being able to tell. The process table is read once and each distro asked
+/// once, however many panes are named.
+pub async fn anything_running(state: &AppState, panes: &[String]) -> HashMap<String, Option<bool>> {
+    let wanted: Vec<String> = panes.to_vec();
+    let rows = state
+        .db
+        .call(|conn| store::terminal_panes(conn))
+        .await
+        .unwrap_or_default();
+    let asked: Vec<(String, String, Option<u32>)> = rows
+        .into_iter()
+        .filter(|(pane, _, _)| wanted.iter().any(|want| want == pane))
+        .map(|(pane, _, runtime)| {
+            let shell = state.pty.shell_pid(&pane);
+            (pane, runtime, shell)
+        })
+        .collect();
+    let on_windows = asked
+        .iter()
+        .any(|(_, runtime, _)| !matches!(Runtime::parse(runtime), Ok(Runtime::Wsl(_))));
+    let procs = match on_windows {
+        true => tokio::task::spawn_blocking(proctree::snapshot)
+            .await
+            .ok()
+            .and_then(Result::ok),
+        false => None,
+    };
+    let mut distros: HashMap<String, Option<HashMap<String, usize>>> = HashMap::new();
+    let mut running = HashMap::new();
+    for (pane, runtime, shell) in asked {
+        let Some(shell) = shell else {
+            // No shell, so nothing under one.
+            running.insert(pane, Some(false));
+            continue;
+        };
+        let counts = match Runtime::parse(&runtime) {
+            Ok(Runtime::Wsl(distro)) => {
+                if !distros.contains_key(&distro) {
+                    let asked_for = distro.clone();
+                    let answer =
+                        tokio::task::spawn_blocking(move || wsl::pane_processes(&asked_for).ok())
+                            .await
+                            .ok()
+                            .flatten();
+                    distros.insert(distro.clone(), answer);
+                }
+                distros.get(&distro).and_then(Option::as_ref)
+            }
+            _ => None,
+        };
+        running.insert(
+            pane.clone(),
+            running_under(&pane, shell, &runtime, procs.as_deref(), counts),
+        );
+    }
+    running
 }
 
 /// The panes whose shell is running in another terminal than `chosen`, less

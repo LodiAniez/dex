@@ -3,11 +3,14 @@
 //! agent gone quiet - is noticed here, and once an hour the worktrees whose
 //! work has landed are taken away (`pruning.rs`).
 
+use std::collections::HashMap;
+
 use dex_protocol::agent::{AgentStatus, EventOutcome};
 
 use super::model::AgentError;
 use super::{presence, pruning, silence, store};
 use crate::app::AppState;
+use crate::features::workspace;
 use crate::platform::clock;
 
 /// A running agent with no hook event and no output for this long is `unknown`.
@@ -22,7 +25,7 @@ const IGNORED: EventOutcome = EventOutcome { applied: false };
 /// `unknown`, which covers every way hook delivery can fail. Announces a
 /// change only when it made one.
 pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
-    let statuses = sweep_statuses(state).await?;
+    let statuses = sweep_statuses(state, clock::now_millis()).await?;
     // Crossing the quiet threshold changes nothing in the database, so nothing
     // else would tell the app about it and the line would never appear
     // (review). Said every sweep while it lasts: a re-read is cheap, the bus
@@ -61,6 +64,47 @@ pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
     })
 }
 
+/// Of the agents that look silent, the ones Dex really cannot hear: nothing is
+/// running under their shells either.
+///
+/// One process table and one question per distro, however many agents are in
+/// the list (`workspace::anything_running`).
+async fn unheard(state: &AppState, quiet: Vec<(String, String)>) -> Vec<String> {
+    if quiet.is_empty() {
+        return Vec::new();
+    }
+    let panes: Vec<String> = quiet.iter().map(|(_, pane)| pane.clone()).collect();
+    let running = workspace::anything_running(state, &panes).await;
+    those_not_working(quiet, &running)
+}
+
+/// The filtering, with the answers handed in: a test cannot make a pane's
+/// shell run a child - input written into a shell under a pseudoconsole never
+/// executes in the harness, tried three ways - so the part that decides is
+/// kept apart from the part that asks.
+fn those_not_working(
+    quiet: Vec<(String, String)>,
+    running: &HashMap<String, Option<bool>>,
+) -> Vec<String> {
+    quiet
+        .into_iter()
+        .filter(|(id, pane)| {
+            let under = running.get(pane).copied().flatten();
+            let unheard = silence::unheard(true, under);
+            if !unheard {
+                tracing::debug!(
+                    agent = %id,
+                    %pane,
+                    ?under,
+                    "silent, but something is running under its shell: still working"
+                );
+            }
+            unheard
+        })
+        .map(|(id, _)| id)
+        .collect()
+}
+
 /// Whether any agent is working and has gone quiet, by the owner's threshold:
 /// what `AgentView.quiet_for_ms` will say, asked here only to know that the
 /// app should look again (issue #67).
@@ -76,8 +120,11 @@ async fn quiet_agents(state: &AppState) -> Result<bool, AgentError> {
     }))
 }
 
-async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
-    let now = clock::now_millis();
+/// Takes `now` rather than reading the clock, as every time-dependent rule in
+/// this slice does (`platform::clock`): a test can then put a pane's shell to
+/// work and look at it from three minutes in the future, which is the only way
+/// to exercise "silent but busy" without waiting two real minutes.
+pub(super) async fn sweep_statuses(state: &AppState, now: i64) -> Result<EventOutcome, AgentError> {
     // Orphans first: a pane closed from the UI, or lost with a crashed
     // session, nulls `pane_id` but leaves status where it was. Left alone,
     // those rows counted toward the spawn limit for ever.
@@ -89,7 +136,7 @@ async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
         .db
         .call(|conn| store::list_by_status(conn, AgentStatus::Running))
         .await?;
-    let silent: Vec<String> = running
+    let quiet: Vec<(String, String)> = running
         .into_iter()
         .filter(|agent| {
             let output = agent
@@ -98,8 +145,14 @@ async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
                 .and_then(|pane| state.pty.last_output_at(pane));
             silence::is_silent(agent.status, agent.last_event_at, output, now, WATCHDOG_MS)
         })
-        .map(|agent| agent.id)
+        .filter_map(|agent| agent.pane_id.map(|pane| (agent.id, pane)))
         .collect();
+    // Silent is not stopped. An agent inside one long tool call hears nothing
+    // and prints nothing - especially one told to redirect its output to a
+    // file, which is good practice - and calling that "not responding" is what
+    // sent the owner to close the app (issue #81). Asked only when something
+    // looks silent, which is rare.
+    let silent = unheard(state, quiet).await;
     if silent.is_empty() {
         if orphaned > 0 {
             state.bus.publish("agents");
@@ -118,4 +171,42 @@ async fn sweep_statuses(state: &AppState) -> Result<EventOutcome, AgentError> {
         .await?;
     state.bus.publish("agents");
     Ok(APPLIED)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::those_not_working;
+
+    fn quiet() -> Vec<(String, String)> {
+        vec![
+            ("busy-agent".to_owned(), "busy-pane".to_owned()),
+            ("idle-agent".to_owned(), "idle-pane".to_owned()),
+            ("unknowable".to_owned(), "odd-pane".to_owned()),
+        ]
+    }
+
+    #[test]
+    fn only_the_agents_with_nothing_running_under_them_are_unheard() {
+        let mut running = HashMap::new();
+        running.insert("busy-pane".to_owned(), Some(true));
+        running.insert("idle-pane".to_owned(), Some(false));
+        running.insert("odd-pane".to_owned(), None);
+
+        let unheard = those_not_working(quiet(), &running);
+
+        assert_eq!(
+            unheard,
+            vec!["idle-agent".to_owned()],
+            "the one inside a tool call keeps working, and the one nobody could              answer for keeps its status"
+        );
+    }
+
+    #[test]
+    fn a_pane_nobody_answered_for_at_all_keeps_its_status() {
+        // `anything_running` returns no entry for a pane it could not look at.
+        let unheard = those_not_working(quiet(), &HashMap::new());
+        assert!(unheard.is_empty(), "{unheard:?}");
+    }
 }

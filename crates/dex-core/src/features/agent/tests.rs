@@ -26,6 +26,7 @@ mod resumes;
 mod sessions;
 mod spawn;
 mod stopping;
+mod unheard;
 mod waiting;
 mod worktrees;
 
