@@ -275,6 +275,22 @@ pub fn distros() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The distros whose VM is up right now; empty without WSL (or off Windows).
+/// Blocking.
+///
+/// For deciding whether a folder on a distro's side can be looked at: reading
+/// one through `\\wsl.localhost` starts that distro, and starting a VM to
+/// decide whether to delete something is not Dex's to do (issue #77).
+pub fn running_distros() -> Vec<String> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    run(&["--list", "--running", "--quiet"])
+        .filter(|out| out.status.success())
+        .map(|out| parse_distros(&out.stdout))
+        .unwrap_or_default()
+}
+
 /// A Windows path as `distro` sees it (`C:/src` is `/mnt/c/src`), asked of
 /// the distro itself, which knows where it mounts drives. Blocking.
 pub fn linux_path(distro: &str, windows: &str) -> Result<String, String> {
