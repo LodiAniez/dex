@@ -83,6 +83,10 @@ pub enum WorktreeCommand {
     /// installed dependencies and build output, and anything else gitignored
     /// that only exists there - a hand-written `.env`, most likely. Run it with
     /// --dry-run first.
+    ///
+    /// The sizes are what the files add up to, not what the disk will give
+    /// back: pnpm and its like hardlink the same bytes into every
+    /// `node_modules` that wants them, and this counts each one.
     Prune {
         /// Repo name, id, or path.
         repo: String,
@@ -191,11 +195,11 @@ fn print_pruned(pruned: &Pruned, format: Format) {
         return output::json(pruned);
     }
     println!(
-        "{} {} worktree{}, {}{}",
+        "{} {} worktree{}, {} of files{}",
         if pruned.dry_run { "would take" } else { "took" },
         pruned.taken.len(),
         if pruned.taken.len() == 1 { "" } else { "s" },
-        held(Some(pruned.freed_bytes)),
+        held(Some(pruned.taken_bytes)),
         if pruned.dry_run { " (dry run)" } else { "" },
     );
     if !pruned.taken.is_empty() {
@@ -245,9 +249,13 @@ fn why(because: KeptBecause) -> &'static str {
     }
 }
 
-/// What a worktree is holding, to one decimal place and never as bytes: this
-/// is read to decide what to delete, and `1.2 GB` answers that where
+/// What a worktree's files add up to, to one decimal place and never as bytes:
+/// this is read to decide what to delete, and `1.2 GB` answers that where
 /// `1288490188` does not. Nothing measured prints as nothing.
+///
+/// "of files" in the line above it is doing work: a package store hardlinks
+/// the same bytes into every `node_modules` that wants them, so this is what
+/// the files claim and not what the disk will give back.
 fn held(bytes: Option<i64>) -> String {
     let Some(bytes) = bytes else {
         return String::new();

@@ -16,9 +16,16 @@ taken: Array<WorktreeView>,
  */
 kept: Array<KeptWorktree>, 
 /**
- * Bytes the taken worktrees held, measured before they went.
+ * What the taken worktrees' files add up to, measured before they went.
+ *
+ * Not what the disk gives back. Every file is counted where it is found,
+ * and a package store hardlinks the same bytes into every `node_modules`
+ * that wants them: thirty worktrees of one pnpm monorepo measured 157 GB
+ * and deleting all thirty returned 4.3 GB. Counting links once needs a
+ * file's identity, which Rust does not offer on Windows outside a nightly
+ * feature, so this is honest about what it is instead.
  */
-freed_bytes: number, 
+taken_bytes: number, 
 /**
  * Whether this was a dry run, so nothing was actually removed.
  */

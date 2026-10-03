@@ -69,7 +69,7 @@ fn sweep(repo: &Path, busy: &[String], dry_run: bool) -> Result<Pruned, RepoErro
     let mut pruned = Pruned {
         taken: Vec::new(),
         kept: Vec::new(),
-        freed_bytes: 0,
+        taken_bytes: 0,
         dry_run,
     };
     for (path, branch) in checkouts {
@@ -100,7 +100,7 @@ fn take(repo: &Path, mut worktree: WorktreeView, dry_run: bool, pruned: &mut Pru
         });
         return;
     }
-    pruned.freed_bytes += worktree.size_bytes.unwrap_or(0);
+    pruned.taken_bytes += worktree.size_bytes.unwrap_or(0);
     pruned.taken.push(worktree);
 }
 

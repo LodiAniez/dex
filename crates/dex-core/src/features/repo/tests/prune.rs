@@ -72,9 +72,9 @@ async fn a_clean_merged_worktree_nobody_is_in_is_taken_away() {
     assert!(pruned.kept.is_empty(), "{:?}", pruned.kept);
     assert!(!checkout.exists(), "the folder went with it");
     assert!(
-        pruned.freed_bytes > 0,
+        pruned.taken_bytes > 0,
         "it held something: {}",
-        pruned.freed_bytes
+        pruned.taken_bytes
     );
 }
 
@@ -170,7 +170,7 @@ async fn a_dry_run_says_what_would_go_and_takes_nothing() {
 
     assert!(pruned.dry_run);
     assert_eq!(pruned.taken.len(), 1);
-    assert!(pruned.freed_bytes > 0);
+    assert!(pruned.taken_bytes > 0);
     assert!(checkout.is_dir(), "a dry run removes nothing");
 
     let after = prune_worktrees(&state, pruning()).await.unwrap();

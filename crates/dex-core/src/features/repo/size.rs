@@ -1,11 +1,20 @@
 //! How much disk a checkout is holding.
 //!
 //! Asked for rather than always measured: a worktree with its dependencies
-//! installed is tens of thousands of files, and walking them is seconds. The
-//! number is what the files say they are, which is not quite what deleting the
-//! folder would give back - a file hardlinked from a package store (pnpm's, for
-//! one) is counted here and is also still counted there - and it is the right
-//! number for "how much is this worktree costing me".
+//! installed is tens of thousands of files, and walking them is seconds.
+//!
+//! The number is what the files say they are, and that is **not** what deleting
+//! the folder gives back. A package store hardlinks one copy of a file into
+//! every `node_modules` that wants it, so the same bytes are counted again in
+//! each place they are found: thirty worktrees of one pnpm monorepo measured
+//! 157 GB here, and deleting all thirty returned 4.3 GB, because the store they
+//! all pointed at held 0.9 GB. Counting a link only once needs the file's
+//! identity - its volume and index - which Rust offers on Unix (`ino`) but on
+//! Windows only behind the nightly `windows_by_handle` feature, and the
+//! alternative is an unsafe call into `GetFileInformationByHandle`, which this
+//! codebase does not allow (conventions 4.1). So the number stays honest about
+//! what it is: what the files claim, which is the right answer to "what is in
+//! this worktree" and the wrong one to "what will I get back".
 
 use std::fs;
 use std::path::{Path, PathBuf};

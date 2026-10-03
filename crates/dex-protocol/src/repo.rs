@@ -114,7 +114,8 @@ pub struct WorktreeView {
     pub branch: Option<String>,
     /// Whether this is the repo's main checkout rather than a worktree.
     pub main: bool,
-    /// Bytes it holds, when that was asked for and could be measured.
+    /// What its files add up to, when that was asked for. Not what deleting
+    /// it would give back, for the reason `Pruned::taken_bytes` explains.
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub size_bytes: Option<i64>,
@@ -182,9 +183,16 @@ pub struct Pruned {
     pub taken: Vec<WorktreeView>,
     /// The worktrees left, each with the reason it stayed.
     pub kept: Vec<KeptWorktree>,
-    /// Bytes the taken worktrees held, measured before they went.
+    /// What the taken worktrees' files add up to, measured before they went.
+    ///
+    /// Not what the disk gives back. Every file is counted where it is found,
+    /// and a package store hardlinks the same bytes into every `node_modules`
+    /// that wants them: thirty worktrees of one pnpm monorepo measured 157 GB
+    /// and deleting all thirty returned 4.3 GB. Counting links once needs a
+    /// file's identity, which Rust does not offer on Windows outside a nightly
+    /// feature, so this is honest about what it is instead.
     #[cfg_attr(feature = "ts", ts(type = "number"))]
-    pub freed_bytes: i64,
+    pub taken_bytes: i64,
     /// Whether this was a dry run, so nothing was actually removed.
     pub dry_run: bool,
 }

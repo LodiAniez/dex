@@ -17,6 +17,7 @@ branch: string | null,
  */
 main: boolean, 
 /**
- * Bytes it holds, when that was asked for and could be measured.
+ * What its files add up to, when that was asked for. Not what deleting
+ * it would give back, for the reason `Pruned::taken_bytes` explains.
  */
 size_bytes: number | null, };
