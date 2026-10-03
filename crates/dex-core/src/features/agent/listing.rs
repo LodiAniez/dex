@@ -7,7 +7,7 @@ use super::model::{Agent, AgentError};
 use super::{silence, store};
 use crate::app::AppState;
 use crate::features::{context, workspace};
-use crate::platform::clock;
+use crate::platform::{clock, wsl};
 
 /// `agent.list`: agents newest first, optionally including ended ones and
 /// limited to one workspace (by id or name).
@@ -68,6 +68,7 @@ pub async fn list(state: &AppState, args: ListAgentsArgs) -> Result<AgentList, A
                 Ok(Ok(AgentList {
                     agents,
                     revision: store::revision(conn)?,
+                    distros_not_answering: wsl::quiet::resting(now),
                 }))
             },
         )

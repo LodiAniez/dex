@@ -126,3 +126,21 @@ p-1
     assert_eq!(counts.get("p-2"), Some(&1));
     assert_eq!(counts.get("p-3"), None);
 }
+
+/// A distro inside its wait is not asked at all: the error comes back without
+/// `wsl.exe` being run, which is the whole point of the backoff (issue #73).
+#[test]
+fn a_resting_distro_is_not_asked() {
+    let distro = "dex-test-no-such-distro";
+    let now = crate::platform::clock::now_millis();
+    super::quiet::went_quiet(distro, now);
+
+    let answer = super::claude_panes(distro);
+
+    let err = answer.expect_err("a distro being left alone answers nothing");
+    assert!(
+        err.contains("not asking again yet"),
+        "it was left alone rather than asked: {err}"
+    );
+    super::quiet::answered(distro);
+}

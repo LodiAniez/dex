@@ -135,6 +135,22 @@ fn repo_repair(err: &RepoError) -> (ErrorCode, String) {
             ErrorCode::InvalidArgs,
             "Give an existing folder, as an absolute path.".to_owned(),
         ),
+        RepoError::RepoGone {
+            name, worktrees, ..
+        } => (
+            // The closed set has no code for "registered but gone"; the
+            // args named a repository that cannot be used, which is this.
+            ErrorCode::InvalidArgs,
+            match worktrees.as_slice() {
+                [] => format!(
+                    "Put the folder back, or run `dex repo forget {name}` to drop the registration."
+                ),
+                orphans => format!(
+                    "Put the folder back, or run `dex repo forget {name}`. Dex made worktrees of it at {};                      git in those points at a repository that has gone, so they are yours to keep or delete.",
+                    orphans.join("; ")
+                ),
+            },
+        ),
         RepoError::InvalidBranch { reason, .. } => {
             (ErrorCode::InvalidArgs, reason.repair().to_owned())
         }

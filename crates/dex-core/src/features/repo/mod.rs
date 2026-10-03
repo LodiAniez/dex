@@ -19,7 +19,7 @@ mod tests;
 mod verdict;
 mod worktree_commands;
 
-pub use commands::{WorkspaceRepo, add, diff, list, scan, status, workspace_repos};
+pub use commands::{WorkspaceRepo, add, diff, forget, list, scan, status, workspace_repos};
 pub use model::RepoError;
 pub use placement::distro_of;
 pub use prune::prune as prune_worktrees;

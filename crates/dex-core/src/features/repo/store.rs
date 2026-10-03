@@ -67,6 +67,28 @@ pub fn worktrees_of(
     rows.collect()
 }
 
+/// Forgets a repository: the registration, and every workspace's record of
+/// using it. The worktrees themselves are left on disk; whether they are worth
+/// keeping is not Dex's to decide (issue #72).
+pub fn delete_repo(conn: &Connection, repo_id: &str) -> rusqlite::Result<usize> {
+    conn.execute(
+        "DELETE FROM workspace_repo WHERE repo_id = ?1",
+        params![repo_id],
+    )?;
+    conn.execute("DELETE FROM repo WHERE id = ?1", params![repo_id])
+}
+
+/// Every folder Dex recorded making a worktree of this repo at, for naming the
+/// orphans when the repository itself has gone.
+pub fn worktrees_of_repo(conn: &Connection, repo_id: &str) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT worktree_path FROM workspace_repo
+         WHERE repo_id = ?1 AND worktree_path IS NOT NULL ORDER BY worktree_path",
+    )?;
+    let rows = stmt.query_map([repo_id], |row| row.get(0))?;
+    rows.collect()
+}
+
 /// The workspaces that recorded using a repo, for telling each one what a
 /// prune did to the worktrees it was using.
 pub fn workspaces_using(conn: &Connection, repo_id: &str) -> rusqlite::Result<Vec<String>> {
