@@ -19,4 +19,11 @@ path: string,
 /**
  * Checked-out branch of the main checkout, if git could say.
  */
-branch: string | null, };
+branch: string | null, 
+/**
+ * Its folder is not there any more. The registration outlives the
+ * checkout - a repository can be moved or deleted while Dex is not
+ * looking - and every worktree made from it is then orphaned, which is
+ * worth saying rather than leaving to be discovered (issue #72).
+ */
+missing: boolean, };

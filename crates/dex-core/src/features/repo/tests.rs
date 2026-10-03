@@ -14,6 +14,7 @@ use super::{add, add_worktree, list, list_worktrees, scan, status};
 use crate::app::AppState;
 use crate::platform::proc::GitError;
 
+mod gone;
 mod landing;
 mod prune;
 mod worktree_removal;

@@ -36,6 +36,19 @@ pub enum RepoError {
     /// The path is not an existing directory.
     #[error("{0:?} is not an existing directory")]
     NoSuchDir(String),
+    /// A registered repository whose folder is no longer there. Everything
+    /// that needs git needs the folder, and git's own words about a directory
+    /// that is not there say nothing about the registration being stale.
+    #[error("the repository {name:?} is registered at {path}, which is not there any more")]
+    RepoGone {
+        /// Its name, for `dex repo forget`.
+        name: String,
+        /// Where it was registered.
+        path: String,
+        /// The folders Dex recorded worktrees of it at, which are now
+        /// orphaned: git in them points at a repository that has gone.
+        worktrees: Vec<String>,
+    },
     /// The branch name breaks git's rules or Windows'.
     #[error("{branch:?} is not a usable branch name")]
     InvalidBranch {
