@@ -92,17 +92,33 @@ fn those_not_working(
             let under = running.get(pane).copied().flatten();
             let unheard = silence::unheard(true, under);
             if !unheard {
-                tracing::debug!(
-                    agent = %id,
-                    %pane,
-                    ?under,
-                    "silent, but something is running under its shell: still working"
-                );
+                tracing::debug!(agent = %id, %pane, ?under, "{}", left_working(under));
             }
             unheard
         })
         .map(|(id, _)| id)
         .collect()
+}
+
+/// Why a silent agent was left working, in the words of what was known
+/// (issue #88).
+///
+/// The decision is `silence::unheard`'s and is not made here; this is only
+/// what the log says about it. It used to say one thing for both answers, so a
+/// pane whose shell could not be found in the process table - `None`, nothing
+/// known - was written down as "something is running under its shell", which
+/// is the opposite of the truth. Nobody was ended wrongly, because no evidence
+/// has never been evidence here, but the line a reader of `dex.log` goes to
+/// first said the one thing that was certainly not established.
+fn left_working(under: Option<bool>) -> &'static str {
+    match under {
+        Some(true) => "silent, but something is running under its shell: still working",
+        // `silence::unheard` keeps this one out, so the line is unreachable
+        // through the filter. Said plainly all the same: a wording that is
+        // true of its input cannot go wrong if a later caller reaches it.
+        Some(false) => "silent, with nothing running under its shell",
+        None => "silent, and whether anything runs under its shell is unknown: left working",
+    }
 }
 
 /// Whether any agent is working and has gone quiet, by the owner's threshold:
@@ -177,7 +193,7 @@ pub(super) async fn sweep_statuses(state: &AppState, now: i64) -> Result<EventOu
 mod tests {
     use std::collections::HashMap;
 
-    use super::those_not_working;
+    use super::{left_working, those_not_working};
 
     fn quiet() -> Vec<(String, String)> {
         vec![
@@ -199,8 +215,35 @@ mod tests {
         assert_eq!(
             unheard,
             vec!["idle-agent".to_owned()],
-            "the one inside a tool call keeps working, and the one nobody could              answer for keeps its status"
+            "the one inside a tool call keeps working, and the one nobody could answer for keeps its status"
         );
+    }
+
+    #[test]
+    fn a_pane_nobody_could_answer_for_is_not_written_down_as_busy() {
+        // What the old line claimed for this case. `None` is "could not be
+        // told", and the log is where the owner looks first when a pane has
+        // gone quiet - so it must not invent a child process.
+        let said = left_working(None);
+        assert!(
+            !said.contains("something is running"),
+            "nothing was established about this shell: {said}"
+        );
+        assert!(said.contains("unknown"), "{said}");
+    }
+
+    #[test]
+    fn a_pane_with_a_child_still_says_so() {
+        assert!(
+            left_working(Some(true)).contains("something is running under its shell"),
+            "the case the line was written for still reads the same"
+        );
+    }
+
+    #[test]
+    fn the_two_answers_do_not_read_alike() {
+        // The point of the fix: one wording for both is what was wrong.
+        assert_ne!(left_working(Some(true)), left_working(None));
     }
 
     #[test]
