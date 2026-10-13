@@ -88,10 +88,13 @@ pub async fn anything_running(state: &AppState, panes: &[String]) -> HashMap<Str
         .iter()
         .any(|(_, runtime, _)| !matches!(Runtime::parse(runtime), Ok(Runtime::Wsl(_))));
     let procs = match on_windows {
-        true => tokio::task::spawn_blocking(proctree::snapshot)
-            .await
-            .ok()
-            .and_then(Result::ok),
+        true => {
+            let table = state.procs.clone();
+            tokio::task::spawn_blocking(move || table.within(proctree::SWEEP_FRESH))
+                .await
+                .ok()
+                .and_then(Result::ok)
+        }
         false => None,
     };
     let mut distros: HashMap<String, Option<HashMap<String, usize>>> = HashMap::new();

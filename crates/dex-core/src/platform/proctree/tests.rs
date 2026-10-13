@@ -1,7 +1,7 @@
 //! Whether Claude Code is running under a pane's shell, decided from a
 //! snapshot of the process table.
 
-use super::{Presence, Proc, bare, claude_under, parse};
+use super::{Presence, Proc, SWEEP_FRESH, Table, bare, claude_under, parse};
 
 fn proc(pid: u32, parent: u32, name: &str, command: &str) -> Proc {
     Proc {
@@ -175,4 +175,136 @@ fn a_shell_with_nothing_under_it_is_bare() {
     assert_eq!(bare(&procs, 800), Some(true), "only its console host");
     assert_eq!(bare(&procs, 900), Some(false), "a server is running in it");
     assert_eq!(bare(&procs, 999), None, "not in the table");
+}
+
+/// A process started just now, to look for in a table. Killed by its test.
+fn a_child_to_look_for() -> std::process::Child {
+    let mut command = if cfg!(windows) {
+        let mut c = std::process::Command::new("cmd.exe");
+        c.args(["/c", "pause"]).stdin(std::process::Stdio::piped());
+        c
+    } else {
+        let mut c = std::process::Command::new("/bin/sh");
+        c.args(["-c", "sleep 30; :"]);
+        c
+    };
+    command
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("a child to look for")
+}
+
+/// What the sweep needs: two callers, one read of the process table.
+///
+/// Timed rather than counted, because the read is a subprocess: the second
+/// call cannot have started PowerShell and come back in a fraction of the
+/// first call's time.
+#[test]
+fn a_table_read_once_is_handed_to_the_next_caller() {
+    use std::time::{Duration, Instant};
+
+    let table = Table::default();
+
+    let first = Instant::now();
+    let once = table.within(SWEEP_FRESH).expect("the process table");
+    let cold = first.elapsed();
+
+    let again = Instant::now();
+    let twice = table.within(SWEEP_FRESH).expect("the table again");
+    let warm = again.elapsed();
+
+    assert!(!once.is_empty(), "this process is in it at least");
+    assert_eq!(once.len(), twice.len(), "the same table came back");
+    assert!(
+        warm < cold / 2 || warm < Duration::from_millis(5),
+        "the second read was not a read: cold {cold:?}, warm {warm:?}"
+    );
+}
+
+/// A table of one's own is never answered out of another's.
+///
+/// The reason this is a handle and not a static. A cache of the machine's
+/// processes shared by the whole process is shared by every test in it: the
+/// test that spawns a shell and then sweeps was answered out of a table read
+/// before that shell existed, and passed or failed on nothing but which test
+/// had last filled the static. CI failed on macOS and passed on Windows, for
+/// no reason in either one's own code.
+#[test]
+fn a_second_table_is_not_answered_out_of_the_first() {
+    let filled = Table::default();
+    let before = filled.within(SWEEP_FRESH).expect("the process table");
+
+    let mut child = a_child_to_look_for();
+    let pid = child.id();
+    let read_afresh = Table::default()
+        .within(SWEEP_FRESH)
+        .expect("a table of its own");
+
+    assert!(
+        !before.iter().any(|proc| proc.pid == pid),
+        "the child did not exist when the first table was read"
+    );
+    assert!(
+        read_afresh.iter().any(|proc| proc.pid == pid),
+        "and a table that has read nothing yet must read now, not borrow that"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// A cached table is genuinely the old one, and asking for no staleness
+/// genuinely reads again.
+///
+/// Observed rather than timed: a child spawned after the cached read cannot be
+/// in the cached table and must be in a fresh one. `agent.prompt` acts on this
+/// answer, so it calls `snapshot` itself.
+#[test]
+fn a_stale_table_is_the_old_one_and_a_fresh_one_is_not() {
+    use std::time::Duration;
+
+    let table = Table::default();
+    // Fill it before the child exists.
+    let before = table.within(SWEEP_FRESH).expect("the process table");
+    let mut child = a_child_to_look_for();
+    let pid = child.id();
+
+    let cached = table.within(SWEEP_FRESH).expect("the cached table");
+    let fresh = table.within(Duration::ZERO).expect("a fresh table");
+
+    assert!(
+        !before.iter().any(|proc| proc.pid == pid),
+        "the child did not exist when the first read happened"
+    );
+    assert!(
+        !cached.iter().any(|proc| proc.pid == pid),
+        "so a cached read cannot know about it - which is what cached means"
+    );
+    assert!(
+        fresh.iter().any(|proc| proc.pid == pid),
+        "and a read with no staleness allowed must find it"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// No staleness allowed means a read. Pins the contract, whichever part of
+/// `already_read` provides it.
+#[test]
+fn a_request_for_no_staleness_is_never_answered_from_the_cache() {
+    use std::time::Duration;
+
+    let table = Table::default();
+    // Fill it, so there is something to be wrongly handed back.
+    let _ = table.within(SWEEP_FRESH).expect("the process table");
+
+    assert!(
+        table.already_read(Duration::ZERO).is_none(),
+        "zero means read it again"
+    );
+    assert!(
+        table.already_read(SWEEP_FRESH).is_some(),
+        "and a tolerance that was just met is answered from it"
+    );
 }

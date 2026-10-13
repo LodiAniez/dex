@@ -299,7 +299,7 @@ Dex checks GitHub for a newer release when it starts and every six hours. When t
 check = false
 ```
 
-**When something goes wrong.** Dex writes what it is doing to `%APPDATA%\Dex\dex.log` (`~/Library/Application Support/Dex/dex.log` on macOS) - 8 MB, with one `dex.log.1` kept behind it. That is the first place to look, and the first thing to attach if you file an issue. `RUST_LOG=trace` turns it up for a session.
+**When something goes wrong.** Dex notes in its log anything that took too long - a keystroke that waited more than half a second to reach a shell, a watchdog sweep that overran five seconds - with the duration, so a pane that felt frozen leaves a record of what it was waiting for. Dex writes what it is doing to `%APPDATA%\Dex\dex.log` (`~/Library/Application Support/Dex/dex.log` on macOS) - 8 MB, with one `dex.log.1` kept behind it. That is the first place to look, and the first thing to attach if you file an issue. `RUST_LOG=trace` turns it up for a session.
 
 If a WSL distro stops answering, Dex stops asking it for a while - 30 seconds, then a minute, up to five - rather than spending every sweep waiting on it, and says which distro in the window. The office going quiet while that happens does not mean your agents are gone: Dex simply cannot see into a distro that will not answer, and says so instead of guessing.
 

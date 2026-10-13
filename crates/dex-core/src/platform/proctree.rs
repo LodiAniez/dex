@@ -18,6 +18,8 @@ mod tests;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
@@ -192,6 +194,80 @@ pub fn snapshot() -> io::Result<Vec<Proc>> {
         return Err(io::Error::other("the process table could not be read"));
     }
     Ok(parse_ps(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// How stale a table a watchdog sweep will accept.
+///
+/// **It must stay under `presence::LOOK_AGAIN_AFTER`**, and a test over there
+/// says so: a departure is confirmed by looking twice, two seconds apart,
+/// because Claude Code replaces its own process when it updates and gone for a
+/// moment is not gone. Two looks answered out of one table would confirm
+/// nothing, and would end an agent that was only restarting. Inside that bound
+/// the two reads a single sweep makes back to back - whose Claude Code has
+/// gone, and whether a silent agent is inside a tool call - become one.
+///
+/// The tolerance lives here rather than in either slice that reads it: the
+/// agent slice already calls the workspace slice, so a constant owned by one
+/// of them would have the other reaching back (conventions 1.2).
+pub const SWEEP_FRESH: Duration = Duration::from_secs(1);
+
+/// A process table, read no more often than its readers need.
+///
+/// Reading it costs real time - on Windows it is a PowerShell start and a CIM
+/// enumeration of every process, measured at **620 ms** on the owner's machine
+/// for 370 processes - and one watchdog sweep asked for it twice over (issue
+/// #86).
+///
+/// A handle, held in `AppState` beside the other platform services, rather
+/// than a static: a cache of the machine's real processes shared by a whole
+/// process is one shared by every test in it, and the test that spawns a shell
+/// and then asks about it would be answered out of a table read before the
+/// shell existed. CI caught exactly that. Each `AppState` has its own, so a
+/// test is answered about its own machine at its own moment.
+///
+/// Callers say what staleness they can live with; nothing here decides for
+/// them. `agent.prompt` calls `snapshot` itself, because it is about to act on
+/// the answer.
+#[derive(Clone, Default)]
+pub struct Table(Arc<Mutex<Option<LastRead>>>);
+
+/// A table and when it was read.
+type LastRead = (Instant, Vec<Proc>);
+
+impl Table {
+    /// The table, read afresh unless the last read was no longer ago than
+    /// `max_age`. Blocking: call it off the async runtime.
+    pub fn within(&self, max_age: Duration) -> io::Result<Vec<Proc>> {
+        if let Some(procs) = self.already_read(max_age) {
+            return Ok(procs);
+        }
+        let procs = snapshot()?;
+        if let Ok(mut held) = self.0.lock() {
+            *held = Some((Instant::now(), procs.clone()));
+        }
+        Ok(procs)
+    }
+
+    /// The table already read, if that was recent enough to pass for now.
+    ///
+    /// `ZERO` returns early rather than being left to the comparison below,
+    /// which would also reject it: "read less than no time ago" is false for
+    /// any elapsed time above zero, and elapsed time here is never zero in
+    /// practice. The early return says what is meant instead of relying on
+    /// that, and **no test can tell the two apart** - removing it changes no
+    /// observable behaviour, which mutation testing confirmed. It is kept as
+    /// the statement of intent, not because anything exercises it.
+    fn already_read(&self, max_age: Duration) -> Option<Vec<Proc>> {
+        if max_age.is_zero() {
+            return None;
+        }
+        self.0
+            .lock()
+            .ok()
+            .and_then(|held| held.clone())
+            .filter(|(read_at, _)| read_at.elapsed() <= max_age)
+            .map(|(_, procs)| procs)
+    }
 }
 
 /// The process table, now. Blocking: call it off the async runtime.

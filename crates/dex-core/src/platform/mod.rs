@@ -16,4 +16,5 @@ pub mod pipe;
 pub mod proc;
 pub mod proctree;
 pub mod pty;
+pub mod slow;
 pub mod wsl;

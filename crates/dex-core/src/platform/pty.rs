@@ -282,6 +282,16 @@ impl PtySupervisor {
         self.lock().get(pane_id).map(|pane| pane.flow.last_output())
     }
 
+    /// Whether this is a pane the supervisor is holding: a shell was started
+    /// for it and has not been reaped.
+    ///
+    /// For a caller that has a pane's id already and only needs to know it is
+    /// live - typing, which must not go near the database to find that out
+    /// (issue #86).
+    pub fn holds(&self, pane_id: &str) -> bool {
+        self.lock().contains_key(pane_id)
+    }
+
     /// The pid of a pane's shell, the root of all that runs in it, if alive.
     pub fn shell_pid(&self, pane_id: &str) -> Option<u32> {
         self.lock().get(pane_id).and_then(|pane| pane.pid)
