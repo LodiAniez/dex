@@ -15,6 +15,7 @@ mod panes;
 mod runtimes;
 mod switching;
 mod targets;
+mod typing;
 
 fn named(name: &str) -> CreateWorkspaceArgs {
     CreateWorkspaceArgs {

@@ -176,3 +176,95 @@ fn a_shell_with_nothing_under_it_is_bare() {
     assert_eq!(bare(&procs, 900), Some(false), "a server is running in it");
     assert_eq!(bare(&procs, 999), None, "not in the table");
 }
+
+/// What the sweep needs: two callers, one read of the process table.
+///
+/// Timed rather than counted, because the read is a subprocess: the second
+/// call cannot have started PowerShell and come back in a fraction of the
+/// first call's time.
+#[test]
+fn a_table_read_once_is_handed_to_the_next_caller() {
+    use std::time::{Duration, Instant};
+
+    let first = Instant::now();
+    let once = super::snapshot_within(super::SWEEP_FRESH).expect("the process table");
+    let cold = first.elapsed();
+
+    let again = Instant::now();
+    let twice = super::snapshot_within(super::SWEEP_FRESH).expect("the table again");
+    let warm = again.elapsed();
+
+    assert!(!once.is_empty(), "this process is in it at least");
+    assert_eq!(once.len(), twice.len(), "the same table came back");
+    assert!(
+        warm < cold / 2 || warm < Duration::from_millis(5),
+        "the second read was not a read: cold {cold:?}, warm {warm:?}"
+    );
+}
+
+/// A cached table is genuinely the old one, and asking for no staleness
+/// genuinely reads again.
+///
+/// Observed rather than timed: a child spawned after the cached read cannot be
+/// in the cached table and must be in a fresh one. `agent.prompt` acts on this
+/// answer, so it is the caller that asks for zero.
+#[test]
+fn a_stale_table_is_the_old_one_and_a_fresh_one_is_not() {
+    use std::time::Duration;
+
+    // Fill the cache before the child exists.
+    let before = super::snapshot_within(super::SWEEP_FRESH).expect("the process table");
+    let mut child = if cfg!(windows) {
+        std::process::Command::new("cmd.exe")
+            .args(["/c", "pause"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("a child to look for")
+    } else {
+        std::process::Command::new("/bin/sh")
+            .args(["-c", "sleep 30; :"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("a child to look for")
+    };
+    let pid = child.id();
+
+    let cached = super::snapshot_within(super::SWEEP_FRESH).expect("the cached table");
+    let fresh = super::snapshot_within(Duration::ZERO).expect("a fresh table");
+
+    assert!(
+        !before.iter().any(|proc| proc.pid == pid),
+        "the child did not exist when the first read happened"
+    );
+    assert!(
+        !cached.iter().any(|proc| proc.pid == pid),
+        "so a cached read cannot know about it - which is what cached means"
+    );
+    assert!(
+        fresh.iter().any(|proc| proc.pid == pid),
+        "and a read with no staleness allowed must find it"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// No staleness allowed means a read. Pins the contract, whichever part of
+/// `read_within` provides it.
+#[test]
+fn a_request_for_no_staleness_is_never_answered_from_the_cache() {
+    use std::time::Duration;
+
+    // Fill it, so there is something to be wrongly handed back.
+    let _ = super::snapshot_within(super::SWEEP_FRESH).expect("the process table");
+
+    assert!(
+        super::read_within(Duration::ZERO).is_none(),
+        "zero means read it again"
+    );
+    assert!(
+        super::read_within(super::SWEEP_FRESH).is_some(),
+        "and a tolerance that was just met is answered from it"
+    );
+}

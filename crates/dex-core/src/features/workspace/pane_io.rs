@@ -11,6 +11,7 @@ use super::store;
 use super::targets::{resolve_pane, target_workspace};
 use crate::app::AppState;
 use crate::platform::pty::PtyError;
+use crate::platform::slow;
 
 /// How long the Enter waits behind the text it submits.
 const ENTER_GAP: Duration = Duration::from_millis(50);
@@ -76,21 +77,45 @@ pub async fn send_key(state: &AppState, args: SendKeyArgs) -> Result<Sent, Works
     write(state, args.pane, logic::key_bytes(args.key).to_vec()).await
 }
 
-/// Resolves the target, then writes on the blocking pool: a shell that is not
+/// Finds the pane, then writes on the blocking pool: a shell that is not
 /// reading its input makes the write block.
 async fn write(state: &AppState, target: String, bytes: Vec<u8>) -> Result<Sent, WorkspaceError> {
+    let id = pane_to_write_to(state, target).await?;
+    let pty = state.pty.clone();
+    let writing = id.clone();
+    // Timed, because a pane that takes no input is the complaint this path is
+    // answering, and "it froze" was all anyone could say about it (issue #86).
+    let started = std::time::Instant::now();
+    let written = tokio::task::spawn_blocking(move || pty.write(&writing, &bytes))
+        .await
+        .map_err(|err| WorkspaceError::Pty(err.to_string()))?;
+    slow::note(&format!("writing to pane {id}"), started, slow::SLOW_WRITE);
+    match written {
+        Ok(()) => Ok(Sent { pane: id }),
+        Err(PtyError::NoSuchPane(_)) => Err(WorkspaceError::PaneNotStarted(id)),
+        Err(other) => Err(WorkspaceError::Pty(other.to_string())),
+    }
+}
+
+/// Which pane to write to, without the database when it can be helped.
+///
+/// A keystroke arrives with its own pane's id, and the supervisor already
+/// knows whether that pane is live - so the lookup that exists for labels,
+/// `--pane` arguments and ambiguity is skipped for the one caller that never
+/// needs it.
+///
+/// It used to run on every character (issue #86): `resolve_pane` reads every
+/// pane row through Dex's single connection, so each keystroke queued behind
+/// every hook from every agent and every query the sweep makes. With five
+/// agents hooking at each prompt and tool batch, a pane could take no input
+/// for a minute and then take all of it at once.
+async fn pane_to_write_to(state: &AppState, target: String) -> Result<String, WorkspaceError> {
+    if state.pty.holds(&target) {
+        return Ok(target);
+    }
     let pane = state
         .db
         .call(move |conn| resolve_pane(conn, &target))
         .await??;
-    let pty = state.pty.clone();
-    let id = pane.id.clone();
-    let written = tokio::task::spawn_blocking(move || pty.write(&id, &bytes))
-        .await
-        .map_err(|err| WorkspaceError::Pty(err.to_string()))?;
-    match written {
-        Ok(()) => Ok(Sent { pane: pane.id }),
-        Err(PtyError::NoSuchPane(_)) => Err(WorkspaceError::PaneNotStarted(pane.id)),
-        Err(other) => Err(WorkspaceError::Pty(other.to_string())),
-    }
+    Ok(pane.id)
 }

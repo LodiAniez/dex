@@ -12,6 +12,7 @@ use super::{presence, pruning, silence, store};
 use crate::app::AppState;
 use crate::features::workspace;
 use crate::platform::clock;
+use crate::platform::slow;
 
 /// A running agent with no hook event and no output for this long is `unknown`.
 const WATCHDOG_MS: i64 = 120_000;
@@ -25,6 +26,16 @@ const IGNORED: EventOutcome = EventOutcome { applied: false };
 /// `unknown`, which covers every way hook delivery can fail. Announces a
 /// change only when it made one.
 pub async fn sweep(state: &AppState) -> Result<EventOutcome, AgentError> {
+    // The app sweeps every fifteen seconds; one that takes longer has eaten
+    // its own interval, and everything it does afterwards was late by that
+    // much. Said with the number, so a slow sweep is a fact and not a feeling.
+    let started = std::time::Instant::now();
+    let swept = sweeping(state).await;
+    slow::note("a watchdog sweep", started, slow::SLOW_SWEEP);
+    swept
+}
+
+async fn sweeping(state: &AppState) -> Result<EventOutcome, AgentError> {
     let statuses = sweep_statuses(state, clock::now_millis()).await?;
     // Crossing the quiet threshold changes nothing in the database, so nothing
     // else would tell the app about it and the line would never appear

@@ -109,7 +109,8 @@ async fn look(candidates: &[Candidate]) -> HashSet<String> {
         }
     }
     if !on_windows.is_empty() {
-        match tokio::task::spawn_blocking(proctree::snapshot).await {
+        match tokio::task::spawn_blocking(|| proctree::snapshot_within(proctree::SWEEP_FRESH)).await
+        {
             Ok(Ok(procs)) => departed.extend(gone(&procs, &on_windows)),
             Ok(Err(err)) => {
                 tracing::warn!(%err, "could not read the process table; nobody is ended on a guess");

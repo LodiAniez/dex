@@ -18,6 +18,8 @@ mod tests;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
@@ -192,6 +194,63 @@ pub fn snapshot() -> io::Result<Vec<Proc>> {
         return Err(io::Error::other("the process table could not be read"));
     }
     Ok(parse_ps(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// The process table, as long as it was read no longer ago than `max_age`.
+///
+/// Reading it costs real time - on Windows it is a PowerShell start and a CIM
+/// enumeration of every process, measured at **620 ms** on the owner's machine
+/// for 370 processes - and one watchdog sweep asks for it twice: once to see
+/// whose Claude Code has gone, once to see whether a silent agent is inside a
+/// tool call. Those two want the same table (issue #86).
+///
+/// Callers say what staleness they can live with, so nothing here decides for
+/// them: the sweep's rules work on two-minute thresholds and are happy with
+/// seconds, while `agent.prompt` asks for a fresh one because it is about to
+/// act on the answer.
+///
+/// The tolerance a sweep uses lives here rather than in either slice that
+/// reads it: the agent slice already calls the workspace slice, so a constant
+/// owned by one of them would have the other reaching back (conventions 1.2).
+pub const SWEEP_FRESH: Duration = Duration::from_secs(5);
+
+pub fn snapshot_within(max_age: Duration) -> io::Result<Vec<Proc>> {
+    if let Some(procs) = read_within(max_age) {
+        return Ok(procs);
+    }
+    let procs = snapshot()?;
+    if let Ok(mut held) = cached().lock() {
+        *held = Some((Instant::now(), procs.clone()));
+    }
+    Ok(procs)
+}
+
+/// The table already read, if that was recent enough to pass for now.
+///
+/// `ZERO` returns early rather than being left to the comparison below, which
+/// would also reject it: "read less than no time ago" is false for any elapsed
+/// time above zero, and elapsed time here is never zero in practice. The early
+/// return says what is meant instead of relying on that, and **no test can
+/// tell the two apart** - removing it changes no observable behaviour, which
+/// mutation testing confirmed. It is kept as the statement of intent, not
+/// because anything exercises it.
+fn read_within(max_age: Duration) -> Option<Vec<Proc>> {
+    if max_age.is_zero() {
+        return None;
+    }
+    cached()
+        .lock()
+        .ok()
+        .and_then(|held| held.clone())
+        .filter(|(read_at, _)| read_at.elapsed() <= max_age)
+        .map(|(_, procs)| procs)
+}
+
+type LastRead = Mutex<Option<(Instant, Vec<Proc>)>>;
+
+fn cached() -> &'static LastRead {
+    static LAST: OnceLock<LastRead> = OnceLock::new();
+    LAST.get_or_init(|| Mutex::new(None))
 }
 
 /// The process table, now. Blocking: call it off the async runtime.
