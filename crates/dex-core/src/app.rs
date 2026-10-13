@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use crate::platform::bus::Bus;
 use crate::platform::config::ConfigHandle;
 use crate::platform::db::{Db, DbError};
+use crate::platform::proctree;
 use crate::platform::pty::PtySupervisor;
 
 /// Handles to the long-lived platform services. Cheap to clone; every clone
@@ -19,6 +20,11 @@ pub struct AppState {
     pub pty: PtySupervisor,
     /// Change notifications for the UI.
     pub bus: Bus,
+    /// The process table, read once for the callers of one watchdog sweep
+    /// rather than once each (issue #86). Held here rather than in a static
+    /// because a cache of the machine's processes shared by a whole process is
+    /// one shared by every test in it.
+    pub procs: proctree::Table,
     /// The owner's settings, as they stand right now. Held as a handle rather
     /// than a value because the file is hot-reloaded: take one snapshot per
     /// operation with `config.get()`, never two.
@@ -45,6 +51,7 @@ impl AppState {
             pty: PtySupervisor::new(config.get().flow_limits()),
             db,
             bus: Bus::new(),
+            procs: proctree::Table::default(),
             config,
             slot_at: Arc::new(Mutex::new(HashMap::new())),
         }

@@ -21,6 +21,19 @@ fn candidate(id: &str, shell: u32) -> (String, u32) {
 }
 
 #[test]
+fn a_confirmation_cannot_be_answered_out_of_the_table_the_first_look_read() {
+    // Claude Code replaces its own process when it updates, so a departure is
+    // only believed when two looks two seconds apart agree. A sweep shares one
+    // process table between its readers (issue #86); if it could share one
+    // across this wait, both looks would be the same look and an agent that
+    // was only restarting would be ended.
+    assert!(
+        crate::platform::proctree::SWEEP_FRESH < presence::LOOK_AGAIN_AFTER,
+        "a shared table must go stale before the second look"
+    );
+}
+
+#[test]
 fn an_agent_whose_shell_has_no_claude_under_it_has_gone() {
     let procs = [
         proc(100, 1, "pwsh.exe"),

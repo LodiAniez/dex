@@ -30,7 +30,11 @@ use crate::platform::proctree::{self, Presence, Proc};
 use crate::platform::wsl::{self, Runtime};
 
 /// How long after finding someone gone the table is read again.
-const LOOK_AGAIN_AFTER: Duration = Duration::from_secs(2);
+///
+/// `pub(super)` for the test that holds `proctree::SWEEP_FRESH` under it: a
+/// sweep may share one table between its readers, but not between these two
+/// looks, or the confirmation confirms nothing.
+pub(super) const LOOK_AGAIN_AFTER: Duration = Duration::from_secs(2);
 
 /// Which of `candidates` - agent id and its pane's shell pid - the table shows
 /// to have no Claude Code under their shell.
@@ -95,7 +99,7 @@ async fn candidates(state: &AppState) -> Result<Vec<Candidate>, AgentError> {
         .collect())
 }
 
-async fn look(candidates: &[Candidate]) -> HashSet<String> {
+async fn look(procs: &proctree::Table, candidates: &[Candidate]) -> HashSet<String> {
     let mut departed = HashSet::new();
     let mut on_windows = Vec::new();
     let mut in_wsl: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
@@ -109,8 +113,8 @@ async fn look(candidates: &[Candidate]) -> HashSet<String> {
         }
     }
     if !on_windows.is_empty() {
-        match tokio::task::spawn_blocking(|| proctree::snapshot_within(proctree::SWEEP_FRESH)).await
-        {
+        let table = procs.clone();
+        match tokio::task::spawn_blocking(move || table.within(proctree::SWEEP_FRESH)).await {
             Ok(Ok(procs)) => departed.extend(gone(&procs, &on_windows)),
             Ok(Err(err)) => {
                 tracing::warn!(%err, "could not read the process table; nobody is ended on a guess");
@@ -137,14 +141,16 @@ pub async fn end_the_departed(state: &AppState) -> Result<usize, AgentError> {
     if looked_for.is_empty() {
         return Ok(0);
     }
-    let first = look(&looked_for).await;
+    let first = look(&state.procs, &looked_for).await;
     if first.is_empty() {
         return Ok(0);
     }
     tokio::time::sleep(LOOK_AGAIN_AFTER).await;
     // Looked for afresh: a pane may have closed, or a new session started in it, meanwhile.
     let still = candidates(state).await?;
-    let departed = confirmed(&first, &look(&still).await);
+    // A real second read and not the first one handed back: `SWEEP_FRESH` is
+    // under the wait above, which is what makes the confirmation mean anything.
+    let departed = confirmed(&first, &look(&state.procs, &still).await);
     end_confirmed(state, departed).await
 }
 
