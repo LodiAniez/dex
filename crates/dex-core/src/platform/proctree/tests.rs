@@ -91,6 +91,31 @@ fn the_snapshot_is_parsed_whether_powershell_prints_a_list_or_a_single_object() 
     assert!(parse("not json").is_err());
 }
 
+/// A control character in the text was put there on the way out.
+///
+/// `ConvertTo-Json` escapes every control character it means to send, so a raw
+/// one is damage, not data: PowerShell writes stdout in the console's code
+/// page, and a code page without a bullet in it best-fit maps that character
+/// onto a byte that happens to be a control one. It costs the command line it
+/// landed in a character, and nothing else (issue #91).
+#[test]
+fn a_byte_mangled_on_the_way_out_costs_one_command_line_not_the_table() {
+    let mangled = "[{\"p\":100,\"pp\":1,\"n\":\"powershell.exe\",\"c\":\"powershell.exe\"},\
+                    {\"p\":110,\"pp\":100,\"n\":\"git.exe\",\"c\":\"git commit -m \u{7}done\"}]";
+    let procs = parse(mangled).expect("one bad byte does not lose every process on the machine");
+    assert_eq!(procs.len(), 2);
+    assert_eq!(
+        procs[0].command, "powershell.exe",
+        "the other row is untouched"
+    );
+    assert_eq!(procs[1].command, "git commit -m done");
+    assert_eq!(
+        claude_under(&procs, 100),
+        Presence::Gone,
+        "and the table can still be asked about"
+    );
+}
+
 #[test]
 fn claude_code_under_another_runtime_is_recognised_by_its_command_line() {
     // The watchdog ends whoever is judged gone, so a miss costs an agent:
@@ -306,5 +331,68 @@ fn a_request_for_no_staleness_is_never_answered_from_the_cache() {
     assert!(
         table.already_read(SWEEP_FRESH).is_some(),
         "and a tolerance that was just met is answered from it"
+    );
+}
+
+/// What the console cannot spell, the script does not let it write.
+///
+/// A GUI process gets a hidden console, and that console's output code page is
+/// the system OEM one - 437 on the owner's machine. PowerShell writes its JSON
+/// in that code page, and .NET best-fit maps a bullet onto 0x07 and a curly
+/// quote onto a bare `"`, which breaks the document rather than one string of
+/// it. Every agent that writes a bullet into a commit message was taking the
+/// whole process table down with it, 186 times in ten days (issue #91).
+///
+/// Run against a console deliberately set to 437, which is what the script has
+/// to survive. The marker process carries the characters that did it.
+#[cfg(windows)]
+#[test]
+fn the_table_comes_back_whole_from_a_console_that_cannot_spell() {
+    use std::process::{Command, Stdio};
+
+    let hostile = |script: &str| {
+        Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!("[Console]::OutputEncoding=[Text.Encoding]::GetEncoding(437);{script}"),
+            ])
+            .output()
+            .expect("powershell")
+    };
+
+    // The premise: left to itself, this console cannot write a bullet. Without
+    // it the test below would pass on any console and pin nothing.
+    let lossy = hostile("[Console]::Write([char]0x2022)");
+    assert_ne!(
+        lossy.stdout,
+        "\u{2022}".as_bytes(),
+        "a 437 console wrote a bullet: there is nothing here to survive"
+    );
+
+    let mut marker = Command::new("cmd.exe")
+        .args(["/c", "pause", "\u{2022}\u{2192}\u{201C}"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .expect("a process whose command line the console cannot spell");
+    let pid = marker.id();
+
+    let output = hostile(super::SCRIPT);
+
+    let _ = marker.kill();
+    let _ = marker.wait();
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let procs = parse(&text).expect("the whole table, not an error about a control character");
+    let found = procs
+        .iter()
+        .find(|proc| proc.pid == pid)
+        .expect("the marker process is in it");
+    assert!(
+        found.command.contains('\u{2022}') && found.command.contains('\u{201C}'),
+        "its command line came through as written: {}",
+        found.command
     );
 }

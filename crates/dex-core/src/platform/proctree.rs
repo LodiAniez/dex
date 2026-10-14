@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod tests;
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::process::Command;
@@ -138,9 +139,28 @@ enum Rows {
     One(Row),
 }
 
+/// A control character that reached the text raw is damage, not data.
+///
+/// `ConvertTo-Json` escapes every control character it means to send, so a raw
+/// one was put there on the way out: PowerShell writes stdout in the console's
+/// code page, and .NET best-fit maps a character the code page has no room for
+/// onto whatever byte is nearest - a bullet onto 0x07 in CP437. `serde_json`
+/// then refuses the whole document, and nobody gets a process table at all.
+///
+/// `SCRIPT` asks for UTF-8 so this should not arise. If it ever does again,
+/// one command line loses a character instead of every process on the machine
+/// being lost with it (issue #91). Nothing legitimate is dropped: `-Compress`
+/// prints no whitespace, and the text is trimmed before this sees it.
+fn without_mangled_bytes(json: &str) -> Cow<'_, str> {
+    if !json.contains(|ch| ch <= '\u{1f}') {
+        return Cow::Borrowed(json);
+    }
+    Cow::Owned(json.chars().filter(|ch| *ch > '\u{1f}').collect())
+}
+
 /// Parses what `snapshot` asks PowerShell to print.
 pub fn parse(json: &str) -> Result<Vec<Proc>, serde_json::Error> {
-    let rows = match serde_json::from_str::<Rows>(json.trim())? {
+    let rows = match serde_json::from_str::<Rows>(&without_mangled_bytes(json.trim()))? {
         Rows::Many(rows) => rows,
         Rows::One(row) => vec![row],
     };
@@ -155,8 +175,18 @@ pub fn parse(json: &str) -> Result<Vec<Proc>, serde_json::Error> {
         .collect())
 }
 
+/// The table, as JSON, printed in an encoding that can spell what it found.
+///
+/// The first statement is the one that matters. PowerShell writes stdout in
+/// the console's output code page, and the console a GUI process gets is the
+/// system OEM one - 437 here, which has no bullet and no curly quote. What it
+/// cannot spell, .NET best-fit maps: a bullet becomes 0x07, a curly quote a
+/// bare `"` that ends the string early. One agent putting a bullet in a commit
+/// message was enough to lose every process on the machine for that sweep, 186
+/// times in ten days (issue #91). Said in the script, the encoding holds
+/// whatever console Dex was started from.
 #[cfg(windows)]
-const SCRIPT: &str = "Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ p = $_.ProcessId; pp = $_.ParentProcessId; n = $_.Name; c = $_.CommandLine } } | ConvertTo-Json -Compress";
+const SCRIPT: &str = "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false; Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ p = $_.ProcessId; pp = $_.ParentProcessId; n = $_.Name; c = $_.CommandLine } } | ConvertTo-Json -Compress";
 
 /// Reads `ps -A -o pid=,ppid=,args=`. A process's name is its first word
 /// without the directory - and without the `-` a login shell is shown with -
