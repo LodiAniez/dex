@@ -1,7 +1,9 @@
-//! `pane.*` commands that change the tree — split, create, close, focus,
-//! swap, label — plus the workspace commands that edit the whole tree
+//! `pane.*` commands that change the tree — split, create, focus, swap,
+//! label — plus the workspace commands that edit the whole tree
 //! (`workspace.set_layout`, `workspace.cycle_layout`). Tree edits are pure
 //! functions in `layout.rs`; these resolve targets, apply, and save.
+//! `pane.close` is next door in `pane_close.rs`, which has a distro to clear
+//! up after as well as a tree to mend.
 
 use dex_protocol::pane::{CreatePaneArgs, Created, LabelPaneArgs};
 use dex_protocol::workspace::{
@@ -11,7 +13,7 @@ use dex_protocol::workspace::{
 use rusqlite::Connection;
 
 use super::commands::{Outcome, load_list, pane_target};
-use super::layout::{self, Closed};
+use super::layout;
 use super::logic;
 use super::model::{Pane, WorkspaceError};
 use super::store;
@@ -20,10 +22,10 @@ use crate::app::AppState;
 use crate::platform::{clock, ids};
 
 /// A pane, and its workspace's tree and focus as they are right now.
-struct Located {
-    pane: Pane,
-    layout: Layout,
-    active: Option<String>,
+pub(super) struct Located {
+    pub(super) pane: Pane,
+    pub(super) layout: Layout,
+    pub(super) active: Option<String>,
 }
 
 /// What a split answers with.
@@ -42,7 +44,10 @@ struct NewPane {
 }
 
 /// Resolves a pane and loads its workspace's current tree.
-fn locate(conn: &Connection, target: &str) -> rusqlite::Result<Result<Located, WorkspaceError>> {
+pub(super) fn locate(
+    conn: &Connection,
+    target: &str,
+) -> rusqlite::Result<Result<Located, WorkspaceError>> {
     let pane = match resolve_pane(conn, target)? {
         Ok(pane) => pane,
         Err(err) => return Ok(Err(err)),
@@ -69,7 +74,7 @@ fn pane_ids(conn: &Connection, workspace_id: &str) -> rusqlite::Result<Vec<Strin
         .collect())
 }
 
-fn to_json(tree: &Layout) -> Result<String, WorkspaceError> {
+pub(super) fn to_json(tree: &Layout) -> Result<String, WorkspaceError> {
     Ok(serde_json::to_string(tree)?)
 }
 
@@ -207,41 +212,6 @@ pub async fn create_pane(
                 Ok(split_located(conn, found, new)?.map(|_| Created { pane: new_id }))
             },
         )
-        .await?
-}
-
-/// `pane.close`: removes a pane; its sibling takes the parent split's place.
-/// A workspace keeps at least one pane. If the closed pane had focus, focus
-/// moves to the first pane left.
-pub async fn close_pane(state: &AppState, args: PaneArgs) -> Result<WorkspaceList, WorkspaceError> {
-    let now = clock::now_millis();
-    state
-        .db
-        .call(move |conn| -> Outcome {
-            let found = match locate(conn, &args.pane)? {
-                Ok(found) => found,
-                Err(err) => return Ok(Err(err)),
-            };
-            let tree = match layout::close_pane(&found.layout, &found.pane.id) {
-                Closed::Remaining(tree) => tree,
-                Closed::WasLast => return Ok(Err(WorkspaceError::LastPane)),
-                Closed::NotFound => return Ok(Err(WorkspaceError::NoSuchPane(args.pane))),
-            };
-            let focus = if found.active.as_deref() == Some(found.pane.id.as_str()) {
-                layout::leaves(&tree).into_iter().next()
-            } else {
-                found.active
-            };
-            let json = match to_json(&tree) {
-                Ok(json) => json,
-                Err(err) => return Ok(Err(err)),
-            };
-            let tx = conn.transaction()?;
-            store::delete_pane(&tx, &found.pane.id)?;
-            store::update_layout(&tx, &found.pane.workspace_id, &json, focus.as_deref(), now)?;
-            tx.commit()?;
-            load_list(conn).map(Ok)
-        })
         .await?
 }
 

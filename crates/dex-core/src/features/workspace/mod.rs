@@ -1,6 +1,7 @@
 //! Workspaces, panes, and the pane layout tree.
 //! Tables: `workspace`, `pane`, `app_state`.
-//! Commands: `workspace.*` (`commands.rs`); `pane.*` tree edits (`pane_commands.rs`);
+//! Commands: `workspace.*` (`commands.rs`); `pane.*` tree edits (`pane_commands.rs`,
+//! `pane_close.rs`);
 //! `pane.list/send/send_key` (`pane_io.rs`); `pane.content` (`pane_content.rs`);
 //! `pane.terminal`, the terminal every new pane opens in (`runtimes.rs`).
 //! Rules and tree operations are pure (`logic.rs`, `layout.rs`).
@@ -11,6 +12,7 @@ pub(crate) mod docking;
 mod layout;
 mod logic;
 mod model;
+mod pane_close;
 mod pane_commands;
 mod pane_content;
 mod pane_io;
@@ -31,9 +33,10 @@ pub use layout::Preset;
 #[cfg(test)]
 pub use layout::leaves as leaves_of;
 pub use model::WorkspaceError;
+pub use pane_close::close_pane;
 pub use pane_commands::{
-    close_pane, create_pane, cycle_layout, focus_pane, label_pane, set_layout, split_pane,
-    split_pane_in, swap_panes,
+    create_pane, cycle_layout, focus_pane, label_pane, set_layout, split_pane, split_pane_in,
+    swap_panes,
 };
 pub use pane_content::content as pane_content;
 pub use pane_io::{list_panes, send, send_key};
