@@ -13,8 +13,14 @@ use crate::app::AppState;
 use crate::platform::pty::PtyError;
 use crate::platform::slow;
 
-/// How long the Enter waits behind the text it submits.
+/// How long the Enter waits behind the text it submits, at the least.
 const ENTER_GAP: Duration = Duration::from_millis(50);
+
+/// How long it then waits for the pane to show that it took the text.
+pub(super) const ENTER_WAIT: Duration = Duration::from_millis(400);
+
+/// How often to look while waiting.
+const LOOK: Duration = Duration::from_millis(10);
 
 /// `pane.list`: panes of one workspace (by name/id, or the one holding a
 /// given pane), or of every workspace.
@@ -59,17 +65,62 @@ pub async fn list_panes(state: &AppState, args: ListPanesArgs) -> Result<PaneLis
 
 /// `pane.send`: types text into a pane's shell, then Enter if asked.
 ///
-/// The Enter is a second write, a moment later. Claude Code's TUI reads a
+/// The Enter is a second write, behind the text. Claude Code's TUI reads a
 /// carriage return that arrives in the same chunk as the text as a pasted
 /// newline and leaves the prompt unsent (ARCHITECTURE.md); arriving on its own
 /// it is a keypress. Shells behave the same either way.
+///
+/// Two writes are two chunks only if the pane read the first one in between,
+/// and a gap alone cannot make that true: the nudge that wakes an agent is
+/// typed at the moment that agent finished a turn, with its transcript to
+/// write and its hooks to run, and a prompt left sitting unsent woke nobody
+/// (issue #94). So the Enter goes on evidence - the pane has drawn since the
+/// text, which it does not do without having read it - and the gap stays as
+/// the floor under it, because that is what was measured against a real
+/// session.
 pub async fn send(state: &AppState, args: SendArgs) -> Result<Sent, WorkspaceError> {
-    let sent = write(state, args.pane, args.text.into_bytes()).await?;
+    let pane = pane_to_write_to(state, args.pane).await?;
+    let before = state.pty.last_output_at(&pane);
+    let sent = write_to(state, pane.clone(), args.text.into_bytes()).await?;
     if !args.enter {
         return Ok(sent);
     }
     tokio::time::sleep(ENTER_GAP).await;
-    write(state, sent.pane, b"\r".to_vec()).await
+    let said = || state.pty.last_output_at(&pane);
+    if !took_the_text(said, before, ENTER_WAIT).await {
+        tracing::debug!(%pane, "the pane said nothing about the text; pressing Enter blind");
+    }
+    write_to(state, pane, b"\r".to_vec()).await
+}
+
+/// Waits until the pane has said something since `before`, for up to `within`;
+/// false if it never did.
+///
+/// A terminal echoes what is typed into it and Claude Code redraws its prompt
+/// box, so in the ordinary case this returns at once and the Enter is no later
+/// than it was before. A pane that says nothing is not held up for ever: the
+/// Enter goes anyway, which is what it did on every send until now.
+///
+/// How strong the evidence is depends on who is echoing. A Windows console
+/// echoes as the child reads, so output means the child read. A Unix pty's
+/// line discipline echoes whether the child reads or not - but a program that
+/// submits a prompt is in raw mode with that echo off, and then the only thing
+/// that can draw is the program itself, which is the case this is for.
+pub(super) async fn took_the_text(
+    said: impl Fn() -> Option<i64>,
+    before: Option<i64>,
+    within: Duration,
+) -> bool {
+    let deadline = std::time::Instant::now() + within;
+    loop {
+        if said() != before {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(LOOK).await;
+    }
 }
 
 /// `pane.send_key`: presses one key in a pane's shell.
@@ -77,10 +128,15 @@ pub async fn send_key(state: &AppState, args: SendKeyArgs) -> Result<Sent, Works
     write(state, args.pane, logic::key_bytes(args.key).to_vec()).await
 }
 
-/// Finds the pane, then writes on the blocking pool: a shell that is not
-/// reading its input makes the write block.
+/// Finds the pane, then writes to it.
 async fn write(state: &AppState, target: String, bytes: Vec<u8>) -> Result<Sent, WorkspaceError> {
     let id = pane_to_write_to(state, target).await?;
+    write_to(state, id, bytes).await
+}
+
+/// Writes to a pane already found, on the blocking pool: a shell that is not
+/// reading its input makes the write block.
+async fn write_to(state: &AppState, id: String, bytes: Vec<u8>) -> Result<Sent, WorkspaceError> {
     let pty = state.pty.clone();
     let writing = id.clone();
     // Timed, because a pane that takes no input is the complaint this path is
