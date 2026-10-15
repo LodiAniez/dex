@@ -11,36 +11,14 @@
 //! keeps the digest free of instructions. The kickoff prompt arrives as a real
 //! user turn, which is what makes the child start working without a human.
 
-use std::time::Duration;
-
 use dex_protocol::agent::{SpawnArgs, Spawned};
 
 use super::model::{Agent, AgentError};
-use super::{logic, store};
+use super::{launching, store};
 use crate::app::AppState;
 use crate::features::{context, repo, workspace};
 use crate::platform::config::AgentSettings;
-use crate::platform::pty::Answer;
 use crate::platform::{clock, ids};
-
-/// Exactly what is typed into the child's shell. A constant: no user text ever
-/// reaches a command line.
-const KICKOFF: &str = "Begin the task described in your workspace context.";
-
-/// How long to wait for the child's shell to exist before giving up on the
-/// launch. The pane's shell starts when the UI first shows it.
-const LAUNCH_WAIT: Duration = Duration::from_secs(30);
-const LAUNCH_POLL: Duration = Duration::from_millis(250);
-
-/// The confirm option of Claude Code's folder-trust dialog, which it shows the
-/// first time it runs anywhere — including in a worktree Dex has just made.
-const TRUST_PROMPT: &str = "Yes, I trust this folder";
-/// Down, then Enter: the dialog lists "No, exit" first and focuses it, and
-/// hides the index numbers, so there is no key that picks an option directly.
-const TRUST_KEYS: [&[u8]; 2] = [b"\x1b[B", b"\r"];
-/// How long to keep watching for the dialog. Generous: Claude Code has to
-/// start, and a cold start on a large repository is not quick.
-const TRUST_WAIT: Duration = Duration::from_secs(120);
 
 /// The longest brief a spawn takes: with the rest of the startup digest, it
 /// stays under what Claude Code shows an agent whole (`context::digest::CEILING`).
@@ -155,8 +133,8 @@ pub async fn spawn(state: &AppState, args: SpawnArgs) -> Result<Spawned, AgentEr
         })
         .await?;
 
-    // Step 6: launch, once the UI has started the pane's shell.
-    launch(Launch {
+    // Step 6: launch, once the window has started the pane's shell.
+    launching::launch(launching::Launch {
         state: state.clone(),
         pane: pane.clone(),
         agent_id: agent_id.clone(),
@@ -263,116 +241,9 @@ async fn repo_path(state: &AppState, target: &str) -> Result<String, AgentError>
         .ok_or_else(|| AgentError::NoSuchRepo(target.to_owned()))
 }
 
-/// Types the kickoff prompt once the pane's shell exists.
-///
-/// The shell starts when the UI first shows the pane, which has not happened
-/// when `spawn` returns, so this waits in the background rather than failing.
-/// Text and Enter go as separate writes: Claude Code's input box reads a
-/// carriage return arriving with the text as a pasted newline (ARCHITECTURE.md).
-///
-/// **The trust dialog.** Claude Code asks whether it may work in a directory
-/// the first time it runs there — and for the home directory, every time — so
-/// a spawned agent would sit at that dialog forever with nobody to answer it,
-/// which defeats the milestone (PRD §14 M7). Dex answers it for every child,
-/// because a child never lands anywhere the owner did not already choose: the
-/// parent's own folder (where the owner started Claude Code themselves), a
-/// repository they registered, or a worktree Dex made from one. This was first
-/// limited to worktrees; the first real use spawned into the parent's folder
-/// and three children stalled at the dialog. The settings-trust dialog is never
-/// answered: whether to run the hooks a project's config declares is a
-/// different question, and the owner's.
-fn launch(launch: Launch) {
-    tokio::spawn(async move {
-        let Launch {
-            state,
-            pane,
-            agent_id,
-            mode,
-            chrome,
-            answer_trust,
-        } = launch;
-        let deadline = tokio::time::Instant::now() + LAUNCH_WAIT;
-        while tokio::time::Instant::now() < deadline {
-            if state.pty.last_output_at(&pane).is_some() {
-                if answer_trust {
-                    // Armed before the command, so the watch is in place however
-                    // fast Claude Code reaches the dialog.
-                    state.pty.answer_once(
-                        &pane,
-                        Answer::new(
-                            TRUST_PROMPT,
-                            TRUST_KEYS.map(<[u8]>::to_vec).into(),
-                            TRUST_WAIT,
-                        ),
-                    );
-                }
-                let command = logic::launch_command(&mode, chrome, KICKOFF);
-                let pty = state.pty.clone();
-                let pane = pane.clone();
-                let _ =
-                    tokio::task::spawn_blocking(move || pty.write(&pane, command.as_bytes())).await;
-                return;
-            }
-            tokio::time::sleep(LAUNCH_POLL).await;
-        }
-        // No shell ever appeared, so no Claude Code was launched: the row must
-        // not sit `idle` counting toward the spawn limit as if it might still.
-        tracing::warn!(
-            agent = %agent_id,
-            "the spawned agent's pane never started a shell; ending it unlaunched"
-        );
-        let now = clock::now_millis();
-        let ended = state
-            .db
-            .call(move |conn| {
-                store::update_status(
-                    conn,
-                    &agent_id,
-                    dex_protocol::agent::AgentStatus::Dead,
-                    Some("never started"),
-                    now,
-                    Some(now),
-                )
-            })
-            .await;
-        if ended.is_ok() {
-            state.bus.publish("agents");
-        }
-    });
-}
-
-/// What `launch` needs once the pane's shell appears.
-struct Launch {
-    state: AppState,
-    pane: String,
-    agent_id: String,
-    /// The permission mode, taken from the same snapshot as the agent row's, so
-    /// the pane header and the command line can never disagree.
-    mode: String,
-    /// Whether the child may connect to Claude in Chrome (`agents.spawn_chrome`).
-    chrome: bool,
-    /// Whether to answer Claude Code's folder-trust dialog for this child.
-    /// Always, today; kept as a field so the reason is a decision in `spawn`
-    /// and not an accident of `launch`.
-    answer_trust: bool,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_kickoff_line_never_carries_the_brief() {
-        // The whole point of the fixed constant: no user text reaches a shell,
-        // so there is no quoting or length problem to get wrong (PRD §9.4).
-        assert!(!KICKOFF.contains('$'));
-        assert!(!KICKOFF.contains('`'));
-        assert!(!KICKOFF.contains('\n'));
-        assert_eq!(
-            KICKOFF,
-            "Begin the task described in your workspace context."
-        );
-    }
 
     #[test]
     fn spawned_agents_do_not_stop_for_approval_unless_configured_to() {
@@ -380,14 +251,6 @@ mod tests {
         // Dex does not ship it as the default.
         let shipped = AgentSettings::default();
         assert_eq!(shipped.spawn_permission_mode, "auto");
-    }
-
-    #[test]
-    fn the_trust_dialog_is_answered_with_down_then_enter() {
-        // It lists "No, exit" first and focuses it, and hides the index
-        // numbers, so Enter alone would quit and no digit selects anything.
-        assert_eq!(TRUST_KEYS[0], b"\x1b[B");
-        assert_eq!(TRUST_KEYS[1], b"\r");
     }
 
     #[test]

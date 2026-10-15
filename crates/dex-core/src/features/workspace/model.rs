@@ -73,7 +73,8 @@ pub enum WorkspaceError {
         /// Everything it matched, as "name (id)".
         candidates: Vec<String>,
     },
-    /// A pane whose shell has not started: shells start when a pane is first shown.
+    /// A pane with no live shell: one just created, whose window has not
+    /// started it yet, or one whose process has exited.
     #[error("pane {0} has no running shell yet")]
     PaneNotStarted(String),
     /// Writing to a pane's shell failed.

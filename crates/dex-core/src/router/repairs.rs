@@ -271,7 +271,7 @@ fn workspace_repair(err: &WorkspaceError) -> (ErrorCode, String) {
         }
         WorkspaceError::PaneNotStarted(_) => (
             ErrorCode::NoSuchPane,
-            "A pane's shell starts when the pane is first shown: switch to its workspace in Dex, then retry.",
+            "A pane's shell starts a moment after the pane does, so a brand-new pane is worth one retry. A pane open for longer has had its shell exit: close it and open another.",
         ),
         WorkspaceError::InvalidColor(_) => (
             ErrorCode::InvalidArgs,
