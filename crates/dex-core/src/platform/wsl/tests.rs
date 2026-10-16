@@ -144,3 +144,68 @@ fn a_resting_distro_is_not_asked() {
     );
     super::quiet::answered(distro);
 }
+
+#[test]
+fn what_a_distro_did_about_a_closed_pane_is_read_from_the_two_lines_it_prints() {
+    let both = parse_ended(" 183293 183295\n 183295\n");
+    assert_eq!(both.hung_up, vec![183293, 183295]);
+    assert_eq!(both.killed, vec![183295]);
+
+    // Everything went on the hang-up, which is the ordinary case.
+    let went = parse_ended(" 4001 4002\n\n");
+    assert_eq!(went.hung_up, vec![4001, 4002]);
+    assert!(went.killed.is_empty());
+
+    // A pane that left nothing behind, and a distro that said nothing at all.
+    assert_eq!(parse_ended("\n\n"), Ended::default());
+    assert_eq!(parse_ended(""), Ended::default());
+}
+
+/// Nothing is ended for a pane with no id: the script matches on the pane id,
+/// and an empty one would match every process in the distro that has none.
+#[test]
+fn a_pane_with_no_id_ends_nothing() {
+    let refused = end_pane_processes("dex-test-no-such-distro", "");
+    assert!(refused.is_err(), "{refused:?}");
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "needs WSL with a distro installed"]
+fn a_real_distro_ends_a_closed_panes_processes_and_leaves_the_others() {
+    let distro = distros().into_iter().next().expect("a distro");
+    // Two stand-ins, one per pane. `nohup` ignores the hang-up, so the one
+    // that is ended also exercises the kill after the grace.
+    let start = |pane: &str| {
+        std::process::Command::new("wsl.exe")
+            .args([
+                "-d",
+                &distro,
+                "--exec",
+                "env",
+                &format!("DEX_PANE_ID={pane}"),
+            ])
+            .args(["sh", "-c", "nohup sleep 120 >/dev/null 2>&1 & sleep 0.3"])
+            .status()
+            .unwrap()
+    };
+    start("dex-probe-closed");
+    start("dex-probe-staying");
+
+    let ended = end_pane_processes(&distro, "dex-probe-closed").expect("the distro answered");
+    let staying = pane_processes(&distro).expect("the distro answered");
+
+    let _ = end_pane_processes(&distro, "dex-probe-staying");
+    assert_eq!(ended.hung_up.len(), 1, "{ended:?}");
+    assert_eq!(ended.killed, ended.hung_up, "nohup ignores the hang-up");
+    assert_eq!(
+        staying.get("dex-probe-closed"),
+        None,
+        "the closed pane's process went"
+    );
+    assert_eq!(
+        staying.get("dex-probe-staying"),
+        Some(&1),
+        "the other pane's did not"
+    );
+}

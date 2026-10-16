@@ -7,16 +7,20 @@
 //! cross into Linux is the pane's identity: `WSLENV` names the variables
 //! `wsl.exe` passes in, and passes back out when Linux runs a Windows program.
 
+pub mod panes;
 pub mod quiet;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
 use std::fmt;
 use std::io::Read;
 use std::process::{Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+
+pub use panes::{
+    Ended, claude_panes, end_pane_processes, pane_processes, parse_counts, parse_ended, parse_panes,
+};
 
 /// Where a pane's processes run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,89 +198,6 @@ fn run_within(args: &[&str], wait: Duration) -> Option<Output> {
         stdout: stdout.join().unwrap_or_default(),
         stderr: stderr.join().unwrap_or_default(),
     })
-}
-
-/// Lists, for every process in the distro whose command line names Claude
-/// Code, the `DEX_PANE_ID` it was started with - so which Dex panes run
-/// Claude Code there, which Windows' process table cannot see. Itself left
-/// out: its own command line says "claude" too.
-const CLAUDE_PANES: &str = r#"for p in /proc/[0-9]*; do
-  [ "$p" = "/proc/$$" ] && continue
-  case "$(tr '\0' ' ' 2>/dev/null < "$p/cmdline")" in
-    *claude*) tr '\0' '\n' 2>/dev/null < "$p/environ" | sed -n 's/^DEX_PANE_ID=//p' ;;
-  esac
-done"#;
-
-/// Prints the `DEX_PANE_ID` of every process in the distro that has one, once
-/// per process: how many processes each Dex pane runs there. Itself left out.
-const PANE_PROCESSES: &str = r#"for p in /proc/[0-9]*; do
-  [ "$p" = "/proc/$$" ] && continue
-  tr '\0' '\n' 2>/dev/null < "$p/environ" | sed -n 's/^DEX_PANE_ID=//p'
-done"#;
-
-/// How many processes each pane runs, from what `PANE_PROCESSES` printed.
-pub fn parse_counts(printed: &str) -> HashMap<String, usize> {
-    let mut counts = HashMap::new();
-    for pane in printed
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-    {
-        *counts.entry(pane.to_owned()).or_insert(0) += 1;
-    }
-    counts
-}
-
-/// How many processes each Dex pane in `distro` runs. A pane whose count is
-/// its shell alone is a shell at its prompt. Blocking.
-pub fn pane_processes(distro: &str) -> Result<HashMap<String, usize>, String> {
-    let out = run(&["-d", distro, "--exec", "sh", "-c", PANE_PROCESSES])
-        .ok_or_else(|| format!("{distro} did not answer"))?;
-    if out.status.success() {
-        Ok(parse_counts(&String::from_utf8_lossy(&out.stdout)))
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
-    }
-}
-
-/// The pane ids `CLAUDE_PANES` printed, once each.
-pub fn parse_panes(printed: &str) -> Vec<String> {
-    let mut panes: Vec<String> = printed
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_owned)
-        .collect();
-    panes.sort();
-    panes.dedup();
-    panes
-}
-
-/// The Dex panes in `distro` that run Claude Code now. An error when the
-/// distro could not be asked, which is no evidence of anything. Blocking.
-///
-/// A distro that has stopped answering is not asked at all until its wait is
-/// over (`quiet`): the watchdog sweeps every fifteen seconds and the limit on
-/// one probe is fifteen seconds, so without that the sweep would spend its
-/// whole life inside this call and everything after it in the sweep would wait
-/// too (issue #73).
-pub fn claude_panes(distro: &str) -> Result<Vec<String>, String> {
-    let now = crate::platform::clock::now_millis();
-    if quiet::is_resting(distro, now) {
-        return Err(format!("{distro} is not answering; not asking again yet"));
-    }
-    let asked = run(&["-d", distro, "--exec", "sh", "-c", CLAUDE_PANES]);
-    let Some(out) = asked else {
-        let wait = quiet::went_quiet(distro, now);
-        tracing::warn!(%distro, wait_ms = wait, "the distro did not answer; leaving it alone");
-        return Err(format!("{distro} did not answer"));
-    };
-    quiet::answered(distro);
-    if out.status.success() {
-        Ok(parse_panes(&String::from_utf8_lossy(&out.stdout)))
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
-    }
 }
 
 /// The installed distros agents can run in; empty without WSL (or off Windows).
