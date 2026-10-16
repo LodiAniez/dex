@@ -22,6 +22,15 @@ pub(super) const ENTER_WAIT: Duration = Duration::from_millis(400);
 /// How often to look while waiting.
 const LOOK: Duration = Duration::from_millis(10);
 
+/// How long to wait for a pane's shell before writing to it anyway.
+///
+/// A pane's shell is started by the window holding its terminal, which hears
+/// about a new pane a moment after the daemon made it (issue #92), so
+/// `dex pane create` followed at once by `dex pane send` can arrive in
+/// between. Short, because the other pane with no shell is one whose process
+/// has exited, and that caller is waiting to be told so.
+pub(super) const SHELL_WAIT: Duration = Duration::from_millis(750);
+
 /// `pane.list`: panes of one workspace (by name/id, or the one holding a
 /// given pane), or of every workspace.
 pub async fn list_panes(state: &AppState, args: ListPanesArgs) -> Result<PaneList, WorkspaceError> {
@@ -111,9 +120,15 @@ pub(super) async fn took_the_text(
     before: Option<i64>,
     within: Duration,
 ) -> bool {
+    until(|| said() != before, within).await
+}
+
+/// Waits until `ready`, for up to `within`; false if it never was. It looks
+/// before it waits at all, so a caller with nothing to wait for pays nothing.
+async fn until(ready: impl Fn() -> bool, within: Duration) -> bool {
     let deadline = std::time::Instant::now() + within;
     loop {
-        if said() != before {
+        if ready() {
             return true;
         }
         if std::time::Instant::now() >= deadline {
@@ -173,5 +188,12 @@ async fn pane_to_write_to(state: &AppState, target: String) -> Result<String, Wo
         .db
         .call(move |conn| resolve_pane(conn, &target))
         .await??;
+    // The pane is there; its shell can be a moment younger than it is. Waited
+    // for here rather than refused, so a pane and a write to it can be two
+    // commands in a row (issue #92). A shell that never comes leaves the write
+    // itself to fail, as it always did, with the pane named.
+    if !until(|| state.pty.holds(&pane.id), SHELL_WAIT).await {
+        tracing::debug!(pane = %pane.id, "no shell appeared; writing anyway to say so");
+    }
     Ok(pane.id)
 }

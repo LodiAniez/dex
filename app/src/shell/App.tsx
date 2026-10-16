@@ -18,13 +18,14 @@ import {
 import type { WorkspaceView } from "../platform/generated/WorkspaceView";
 import { currentKeymap, useUiSettings, watchConfig } from "../platform/config";
 import { showError, showWarning } from "../platform/notices";
-import { focusTerminal, setShortcutFilter, suspendTerminalFocus } from "../platform/terminalRegistry";
+import { ensureShell, focusTerminal, setShortcutFilter, suspendTerminalFocus } from "../platform/terminalRegistry";
 import { watchUpdates } from "../platform/update";
 import { ACTIONS, appActionFor, type AppAction } from "./keybindings";
 import { WorkspaceLayout } from "./LayoutView";
 import { NoticeBar } from "./NoticeBar";
 import { neighborPane } from "./paneGeometry";
-import { bringForward, forgetDetached, getDetached, isDetached, watchPopouts } from "./popouts";
+import { bringForward, forgetDetached, getDetached, isDetached, useDetached, watchPopouts } from "./popouts";
+import { shellPanes } from "./shellPanes";
 import { useSetupDialogs } from "./useSetupDialogs";
 import { Sidebar } from "./Sidebar";
 import { chooseMode, modeOfAction, nextMode, rememberMode, showsPanes, storedMode, whenPanesHidden, type ViewMode } from "./viewMode";
@@ -83,6 +84,7 @@ function switchBy(offset: number): void {
 /** Window root: title bar, sidebar, and the active workspace's panes. */
 export function App() {
   const list = useWorkspaces();
+  const detached = useDetached();
   const [sidebarOpen, setSidebarOpen] = useState(readSidebarPref);
   const [creating, setCreating] = useState(false);
   const [zoomed, setZoomed] = useState<string | null>(null);
@@ -147,6 +149,14 @@ export function App() {
   useEffect(() => {
     if (list) forgetDetached(new Set(list.workspaces.flatMap((ws) => ws.panes.map((pane) => pane.id))));
   }, [list]);
+
+  // Every pane's shell starts as soon as Dex knows the pane exists, in
+  // whatever workspace it is: only the workspace on screen is ever mounted,
+  // and a pane with no shell takes no input and loses an agent spawned into it
+  // (issue #92). `ensureShell` is idempotent, so this runs on every change.
+  useEffect(() => {
+    for (const pane of shellPanes(list, detached)) ensureShell(pane.paneId, pane.cwd, pane.workspaceId, pane.runtime);
+  }, [list, detached]);
 
   // Toasts for agents that need attention in panes the user is not looking at.
   useEffect(() => watchAgentChanges((before, after) => notifyTransitions(before, after, locatePane, officeNameOf)), []);
@@ -322,8 +332,9 @@ export function App() {
           onCreatingChange={setCreating}
         />
         <main className="workspace-area">
-          {/* Always mounted: a pane's shell starts when its terminal first attaches,
-              so an agent hired from the office needs its pane to exist underneath. */}
+          {/* Always mounted, under whatever view is up: switching views is then
+              only a matter of what is on top, with no terminal detached and
+              attached again. The shells no longer wait for it (`shellPanes`). */}
           {active && <WorkspaceLayout workspace={active} zoomed={zoomedHere} />}
           {active && !showsPanes(mode) && (
             <div className="view-overlay" ref={overlay} tabIndex={-1}>

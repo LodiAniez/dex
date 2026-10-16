@@ -308,3 +308,45 @@ async fn a_spawn_with_nothing_to_do_or_no_repo_to_branch_is_refused() {
         Err(AgentError::WorktreeWithoutRepo)
     ));
 }
+
+/// A spawn that never got a shell is ended, and the ending is said out loud.
+///
+/// The thirty-second wait is not what this tests - it is what happens at the
+/// end of it. A dead agent is left out of `dex agent list` unless it is asked
+/// for, so the lead that spawned this one had nothing at all to go on until
+/// the log line (issue #92).
+#[tokio::test]
+async fn an_agent_whose_pane_never_got_a_shell_is_ended_and_said_to_be() {
+    let (_dir, state, first) = pane().await;
+    parent_agent(&state, &first, "parent").await;
+    let child = spawn(&state, brief("work nobody will ever start", &first))
+        .await
+        .unwrap();
+
+    super::super::launching::never_started(&state, &child.agent).await;
+
+    let ended = agents(&state)
+        .await
+        .into_iter()
+        .find(|agent| agent.id == child.agent)
+        .expect("the agent is still listed, dead");
+    assert_eq!(ended.status, dex_protocol::agent::AgentStatus::Dead);
+    assert_eq!(ended.status_detail.as_deref(), Some("never started"));
+
+    let log = context::events(
+        &state,
+        dex_protocol::context::ScopeArgs::for_caller(Caller {
+            pane: Some(first.clone()),
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap();
+    assert!(
+        log.events
+            .iter()
+            .any(|event| event.body.contains("never started")),
+        "the workspace log says it never started: {:?}",
+        log.events
+    );
+}

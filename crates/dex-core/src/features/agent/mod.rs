@@ -9,6 +9,7 @@
 mod asking;
 mod commands;
 mod identity;
+mod launching;
 mod listing;
 mod logic;
 mod model;

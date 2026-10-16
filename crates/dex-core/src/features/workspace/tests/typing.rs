@@ -9,6 +9,10 @@
 //! The test for that is not a timing: it is a pane the supervisor holds and
 //! the database has never heard of. If a write to it succeeds, the lookup was
 //! not consulted - there is nothing for it to have found.
+//!
+//! The other half of the same question is a pane the database knows and the
+//! supervisor does not: a pane whose shell has not started yet (issue #92).
+//! Those are at the bottom.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, channel};
@@ -18,7 +22,7 @@ use dex_protocol::pane::{LabelPaneArgs, SendArgs, SendKeyArgs};
 use dex_protocol::workspace::CreateWorkspaceArgs;
 
 use super::super::model::WorkspaceError;
-use super::super::pane_io::{ENTER_WAIT, took_the_text};
+use super::super::pane_io::{ENTER_WAIT, SHELL_WAIT, took_the_text};
 use super::super::{send, send_key};
 use crate::app::AppState;
 use crate::features::workspace;
@@ -393,4 +397,86 @@ async fn a_pty_that_echoes_for_the_child_gives_the_evidence_at_once() {
         "the Enter waited for evidence it already had: {waiting:?}"
     );
     state.pty.kill(pane).unwrap();
+}
+
+/// A pane with a row and no shell: what every pane is for the moment between
+/// being created and the window starting its shell (issue #92).
+async fn a_pane_with_no_shell(state: &AppState) -> String {
+    let list = workspace::create(state, CreateWorkspaceArgs::default())
+        .await
+        .unwrap();
+    list.workspaces[0].panes[0].id.clone()
+}
+
+/// `dex pane create` and `dex pane send` in two commands, one after the other.
+///
+/// The pane's shell is started by the window that holds its terminal, which
+/// hears about the pane a moment after the daemon made it, so a send can
+/// arrive between the two. It waits for the shell rather than refusing.
+#[tokio::test]
+async fn a_send_waits_out_the_moment_between_a_pane_and_its_shell() {
+    let (_dir, state) = AppState::for_tests();
+    let pane = a_pane_with_no_shell(&state).await;
+    assert!(
+        !state.pty.holds(&pane),
+        "the premise: the pane is there and nothing is running in it"
+    );
+    let starting = {
+        let (state, pane) = (state.clone(), pane.clone());
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            only_in_the_supervisor(&state, &pane);
+        })
+    };
+
+    let sent = send(
+        &state,
+        SendArgs {
+            pane: pane.clone(),
+            text: "echo hello".to_owned(),
+            enter: false,
+        },
+    )
+    .await;
+
+    starting.await.unwrap();
+    assert!(
+        matches!(&sent, Ok(sent) if sent.pane == pane),
+        "the shell arrived while it waited: {sent:?}"
+    );
+    state.pty.kill(&pane).unwrap();
+}
+
+/// And a pane whose shell is never coming - one whose process has exited - is
+/// told so, not held for ever.
+#[tokio::test]
+async fn a_pane_that_never_gets_a_shell_says_so() {
+    let (_dir, state) = AppState::for_tests();
+    let pane = a_pane_with_no_shell(&state).await;
+    let started = Instant::now();
+
+    let refused = send(
+        &state,
+        SendArgs {
+            pane: pane.clone(),
+            text: "echo hello".to_owned(),
+            enter: false,
+        },
+    )
+    .await;
+
+    assert!(
+        matches!(refused, Err(WorkspaceError::PaneNotStarted(ref id)) if id == &pane),
+        "{refused:?}"
+    );
+    assert!(
+        started.elapsed() >= SHELL_WAIT,
+        "it did wait for the shell: {:?}",
+        started.elapsed()
+    );
+    assert!(
+        started.elapsed() < SHELL_WAIT * 4,
+        "but not for much longer than it said: {:?}",
+        started.elapsed()
+    );
 }

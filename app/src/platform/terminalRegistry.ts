@@ -109,6 +109,25 @@ export function attachTerminal(paneId: string, host: HTMLElement): void {
   if (!entry.spawned) startShell(entry);
 }
 
+/**
+ * Gives the pane a terminal and a running shell wherever it is, on screen or
+ * not: only one workspace's layout is ever mounted, and a pane with no shell
+ * takes no input and loses an agent spawned into it (issue #92). The terminal
+ * waits in the parking host until something shows it.
+ *
+ * Idempotent, and it never starts a second shell: a pane whose shell has
+ * exited keeps its scrollback and stays exited, as it does on screen.
+ */
+export function ensureShell(paneId: string, cwd?: string, workspaceId?: string, runtime?: string): void {
+  openTerminal(paneId, cwd, workspaceId, runtime);
+  const entry = entries.get(paneId);
+  if (!entry || entry.spawned) return;
+  // Fitted to the parking host first, so a shell nobody has looked at yet
+  // still starts at a usable size; being shown refits it to the real one.
+  entry.fit.fit();
+  startShell(entry);
+}
+
 function startShell(entry: Entry): void {
   entry.spawned = true;
   entry.dead = false;
