@@ -150,16 +150,20 @@ async fn a_target_that_is_nothing_at_all_says_so_as_a_missing_pane() {
     );
 }
 
-/// A pane running a child that says nothing and reads nothing for a while.
+/// A pane running a child that says nothing and reads nothing.
+///
+/// Alive for far longer than the tests take, so a loaded machine cannot have
+/// the child exit mid-test and leave them measuring a pane that has gone
+/// (issue #97); it is killed at the end of each.
 fn a_silent_pane(state: &AppState, pane: &str, sink: OutputSink) {
     let (program, args) = if cfg!(windows) {
         // `ping` rather than `timeout`, which prints a countdown.
         (
             "cmd.exe",
-            vec!["/c".to_owned(), "ping -n 4 127.0.0.1 >nul".to_owned()],
+            vec!["/c".to_owned(), "ping -n 60 127.0.0.1 >nul".to_owned()],
         )
     } else {
-        ("/bin/sh", vec!["-c".to_owned(), "sleep 3".to_owned()])
+        ("/bin/sh", vec!["-c".to_owned(), "sleep 60".to_owned()])
     };
     state
         .pty

@@ -95,6 +95,28 @@ mod tests {
         }
     }
 
+    /// A child that never reads its input and stays alive for longer than a
+    /// test takes: `sleep` on a Unix pty, `ping` under cmd.exe on Windows,
+    /// which prints nothing with its output thrown away.
+    ///
+    /// The one the long write goes to. An interactive shell reads what is
+    /// typed at it as fast as the pty will carry it, so two megabytes could be
+    /// swallowed whole before the test ever looked, leaving nothing contended
+    /// and the premise failing on a fast machine (issue #97). A child that has
+    /// stopped reading is also the case the lock exists for: a Unix pty's
+    /// buffer fills within a few kilobytes and the write blocks there.
+    fn deaf(pane_id: &str) -> SpawnRequest {
+        if cfg!(windows) {
+            cmd(pane_id, "ping -n 30 127.0.0.1 >nul")
+        } else {
+            SpawnRequest {
+                program: PathBuf::from("/bin/sh"),
+                args: vec!["-c".into(), "sleep 30".into()],
+                ..cmd(pane_id, "")
+            }
+        }
+    }
+
     /// Issue #63: while one pane is being written to - slowly on Windows,
     /// blocked outright on a Unix pty whose child has stopped reading - every
     /// other pane must stay usable.
@@ -103,7 +125,7 @@ mod tests {
         let supervisor = PtySupervisor::new(FlowLimits::default());
         let (sink_slow, _slow_out) = collecting_sink();
         let (sink_busy, _busy_out) = collecting_sink();
-        supervisor.spawn(interactive("slow"), sink_slow).unwrap();
+        supervisor.spawn(deaf("slow"), sink_slow).unwrap();
         supervisor.spawn(interactive("busy"), sink_busy).unwrap();
 
         let writing = supervisor.clone();
@@ -111,7 +133,8 @@ mod tests {
         thread::spawn(move || {
             // Megabytes, so this is still going while we type into the other
             // pane: seconds at ConPTY's measured megabyte a second, and on a
-            // Unix pty it blocks within the first few kilobytes.
+            // Unix pty it blocks within the first few kilobytes of a child
+            // that is not reading (`deaf`).
             let _ = writing.write("slow", &vec![b'x'; 2 * 1024 * 1024]);
             let _ = finished.send(());
         });
@@ -128,7 +151,11 @@ mod tests {
             }
             thread::sleep(Duration::from_millis(10));
         }
-        assert!(under_way, "the long write never started");
+        assert!(
+            under_way,
+            "the long write never held the pane's writer; already over: {}",
+            has_finished.try_recv().is_ok()
+        );
 
         let typing = supervisor.clone();
         let (done, landed) = channel();
