@@ -135,6 +135,23 @@ pub fn wake_for_messages(
     started && newest_unread.is_some_and(|newest| newest > woken_at) && idle_at > woken_idle_at
 }
 
+/// Whether a person is typing in this pane, and so Dex must not type into it
+/// (issue #103). True until `quiet_ms` has passed since their last keystroke.
+///
+/// A nudge is typed into a pane as a prompt, so a pane with a half-written
+/// sentence in it takes the nudge into that sentence and sends both. Nothing
+/// is lost by waiting: the message stays in the inbox, the next sweep tries
+/// again, and a person typing at an agent is about to give it a turn - whose
+/// digest says how many messages are waiting anyway.
+///
+/// `last_typed` is 0 for a pane nobody has typed into. One ahead of `now` - a
+/// clock that went back between the keystroke and the sweep - counts as
+/// typing: between waiting a moment and cutting a sentence in half, waiting is
+/// the right way to be wrong.
+pub fn being_typed_in(last_typed: i64, now: i64, quiet_ms: i64) -> bool {
+    last_typed > 0 && now - last_typed < quiet_ms
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,5 +270,28 @@ mod tests {
         );
         assert_eq!(clean_tags(Some(" , ")), None);
         assert_eq!(clean_tags(None), None);
+    }
+
+    #[test]
+    fn a_pane_nobody_has_typed_in_is_not_being_typed_in() {
+        assert!(!being_typed_in(0, 10_000, 10_000));
+    }
+
+    #[test]
+    fn a_pane_typed_in_a_moment_ago_is_being_typed_in() {
+        assert!(being_typed_in(9_000, 10_000, 10_000), "one second ago");
+        assert!(being_typed_in(10_000, 10_000, 10_000), "this instant");
+    }
+
+    #[test]
+    fn a_pane_left_alone_for_the_quiet_window_is_free() {
+        assert!(!being_typed_in(1, 10_001, 10_000), "exactly the window");
+        assert!(!being_typed_in(1, 60_000, 10_000), "long after");
+    }
+
+    #[test]
+    fn a_clock_that_went_backwards_counts_as_typing() {
+        // Rather than reading as "typed in the far future, so never typed".
+        assert!(being_typed_in(20_000, 10_000, 10_000));
     }
 }

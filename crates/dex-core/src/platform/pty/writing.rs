@@ -20,6 +20,7 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use super::{Panes, PtyError};
+use crate::platform::clock;
 
 /// A pane's end of the PTY, behind its own lock.
 pub(super) type Writer = Arc<Mutex<Box<dyn Write + Send>>>;
@@ -27,6 +28,42 @@ pub(super) type Writer = Arc<Mutex<Box<dyn Write + Send>>>;
 /// Takes a freshly opened PTY's writer for its pane to hold.
 pub(super) fn hold(writer: Box<dyn Write + Send>) -> Writer {
     Arc::new(Mutex::new(writer))
+}
+
+/// Sends input a person typed, and marks the pane as one the owner is at.
+///
+/// Only the window's keystroke path comes here - `pty_write`, fed by xterm's
+/// `onData` - and what Dex types itself goes through `write_to`. So the mark
+/// says the owner was typing in this pane, not that something wrote to it,
+/// which is what lets a nudge for an agent's messages wait rather than land in
+/// the middle of a sentence they are writing (issue #103).
+///
+/// The mark is set before the write and not after: a write to a pane that is
+/// not reading blocks for as long as it likes, and the owner was typing either
+/// way.
+pub(super) fn by_hand(panes: &Panes, pane_id: &str, bytes: &[u8]) -> Result<(), PtyError> {
+    mark_typed(panes, pane_id);
+    write_to(panes, pane_id, bytes)
+}
+
+/// Records that someone typed into this pane just now. A pane that has gone is
+/// not an error here: the write that follows says so.
+fn mark_typed(panes: &Panes, pane_id: &str) {
+    let mut panes = panes
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(pane) = panes.get_mut(pane_id) {
+        pane.typed = clock::now_millis();
+    }
+}
+
+/// When a person last typed into this pane, unix millis (0 if never); `None`
+/// if the pane has no live process.
+pub(super) fn last_typed(panes: &Panes, pane_id: &str) -> Option<i64> {
+    let panes = panes
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    panes.get(pane_id).map(|pane| pane.typed)
 }
 
 /// A handle to the pane's writer, with the map released before the caller
@@ -282,5 +319,54 @@ mod tests {
         let here = super::failure(&supervisor.panes, "here", broke());
         assert!(matches!(here, PtyError::Io(_)), "{here:?}");
         supervisor.kill("here").ok();
+    }
+
+    /// Issue #103: the mark says the owner typed here, so only their path may
+    /// set it. Dex's own writes must leave it alone, or a nudge would defer
+    /// behind the nudge before it and no agent would ever be woken.
+    #[test]
+    fn only_typing_by_hand_marks_a_pane_as_the_owners() {
+        let supervisor = PtySupervisor::new(FlowLimits::default());
+        let (sink, _rx) = collecting_sink();
+        supervisor.spawn(interactive("marked"), sink).unwrap();
+
+        assert_eq!(
+            supervisor.last_typed_at("marked"),
+            Some(0),
+            "a pane nobody has typed into"
+        );
+
+        supervisor.write("marked", b"dex typed this\r").unwrap();
+        assert_eq!(
+            supervisor.last_typed_at("marked"),
+            Some(0),
+            "Dex's own write is not the owner typing"
+        );
+
+        supervisor
+            .write_by_hand("marked", b"the owner typed this")
+            .unwrap();
+        let marked = supervisor.last_typed_at("marked").expect("a live pane");
+        assert!(marked > 0, "typing by hand marks the pane: {marked}");
+
+        supervisor.write("marked", b"\r").unwrap();
+        assert_eq!(
+            supervisor.last_typed_at("marked"),
+            Some(marked),
+            "and a later write by Dex does not move the mark"
+        );
+
+        supervisor.kill("marked").unwrap();
+    }
+
+    #[test]
+    fn a_pane_that_has_gone_has_no_mark_and_is_not_an_error() {
+        let supervisor = PtySupervisor::new(FlowLimits::default());
+        assert_eq!(supervisor.last_typed_at("never-lived"), None);
+        // The write is what reports it, as it always did.
+        assert!(matches!(
+            supervisor.write_by_hand("never-lived", b"x"),
+            Err(PtyError::NoSuchPane(_))
+        ));
     }
 }

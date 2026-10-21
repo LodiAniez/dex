@@ -2,6 +2,7 @@
 //! Windows, a Unix PTY and /bin/sh elsewhere.
 
 use std::sync::mpsc::{Receiver, channel};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use super::*;
@@ -306,7 +307,7 @@ fn a_pane_does_not_inherit_the_identity_of_a_claude_session_dex_was_started_from
     cmd.env("CLAUDE_CONFIG_DIR", "D:/claude");
     cmd.env("ANTHROPIC_MODEL", "opus");
 
-    super::forget_claude_session(&mut cmd);
+    super::session_env::forget_claude_session(&mut cmd);
 
     for name in [
         "CLAUDECODE",

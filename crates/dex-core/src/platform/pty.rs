@@ -14,6 +14,7 @@
 //! `PSEUDOCONSOLE_INHERIT_CURSOR`), and it renders nothing until answered.
 //! xterm.js answers; any other driver (tests, a headless consumer) must too.
 
+mod building;
 mod kill;
 mod reader;
 #[cfg(any(unix, test))]
@@ -30,15 +31,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::sync_channel;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 
-use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use portable_pty::{ChildKiller, MasterPty, native_pty_system};
 use thiserror::Error;
 
+use building::{cell_size, command, pty_err, spawn_named};
 use reader::Flow;
 use relay::Relay;
-use session_env::forget_claude_session;
 pub use shell::{resolve_shell, shell_args};
 pub use watch::Answer;
 
@@ -141,6 +141,11 @@ struct Pane {
     relay: Arc<Relay>,
     /// The shell's process id, where the platform reports one.
     pid: Option<u32>,
+    /// When a person last typed into this pane, unix millis; 0 if never.
+    ///
+    /// Only `write_by_hand` sets it, so it says the owner was at this pane and
+    /// not that Dex wrote to it (issue #103).
+    typed: i64,
 }
 
 /// The live panes, shared by every clone of the supervisor.
@@ -224,6 +229,7 @@ impl PtySupervisor {
                 pid,
                 flow,
                 relay,
+                typed: 0,
             },
         );
 
@@ -250,6 +256,18 @@ impl PtySupervisor {
     /// Sends input bytes to a pane's process.
     pub fn write(&self, pane_id: &str, bytes: &[u8]) -> Result<(), PtyError> {
         writing::write_to(&self.panes, pane_id, bytes)
+    }
+
+    /// Sends input a person typed, marking the pane as theirs for a moment
+    /// (`writing::by_hand`, issue #103).
+    pub fn write_by_hand(&self, pane_id: &str, bytes: &[u8]) -> Result<(), PtyError> {
+        writing::by_hand(&self.panes, pane_id, bytes)
+    }
+
+    /// When a person last typed into this pane, unix millis (0 if never);
+    /// `None` if the pane has no live process.
+    pub fn last_typed_at(&self, pane_id: &str) -> Option<i64> {
+        writing::last_typed(&self.panes, pane_id)
     }
 
     /// Wraps a pane's sink so an armed answer sees the output on its way past.
@@ -369,33 +387,4 @@ impl PtySupervisor {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
-}
-
-fn command(request: &SpawnRequest) -> CommandBuilder {
-    let mut cmd = CommandBuilder::new(&request.program);
-    cmd.args(&request.args);
-    cmd.cwd(&request.cwd);
-    forget_claude_session(&mut cmd);
-    for (key, value) in &request.env {
-        cmd.env(key, value);
-    }
-    cmd
-}
-
-fn cell_size(cols: u16, rows: u16) -> PtySize {
-    PtySize {
-        rows: rows.max(1),
-        cols: cols.max(1),
-        pixel_width: 0,
-        pixel_height: 0,
-    }
-}
-
-fn pty_err(err: impl std::fmt::Display) -> PtyError {
-    PtyError::Pty(err.to_string())
-}
-
-fn spawn_named(name: String, body: impl FnOnce() + Send + 'static) -> Result<(), PtyError> {
-    thread::Builder::new().name(name).spawn(body)?;
-    Ok(())
 }

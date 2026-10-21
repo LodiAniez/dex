@@ -20,6 +20,7 @@ use super::logic;
 use super::store;
 use crate::app::AppState;
 use crate::features::workspace;
+use crate::platform::clock;
 
 /// Typed into an idle agent's pane. Unlike a digest this is a prompt, so it
 /// may say what to do; it says why it is there, because the agent sees only
@@ -30,6 +31,16 @@ pub const NUDGE: &str = "Another agent has sent you a message. Read it with mess
 /// reading its input blocks the write (`workspace/pane_io.rs`), and the
 /// watchdog waits on every nudge before it can sweep again.
 const TYPING: Duration = Duration::from_secs(2);
+
+/// How long after the owner's last keystroke a pane still counts as theirs
+/// (issue #103).
+///
+/// Generous, because pausing mid-sentence to think is ordinary and the two
+/// costs are not equal: waiting leaves a message unread a little longer, where
+/// not waiting sends half of what somebody was writing as another agent's
+/// prompt. An agent is woken on the next sweep, and if the owner presses Enter
+/// first the turn they start carries the unread count in its digest.
+const QUIET: Duration = Duration::from_secs(10);
 
 /// A wake claimed for one agent: which pane to type into, and what its mark
 /// said before, so a nudge that never lands can be given back.
@@ -85,6 +96,8 @@ enum Typed {
     Landed,
     /// Nothing was written - the pane has no shell to write to.
     Refused,
+    /// Nothing was written - the owner is typing in that pane.
+    Busy,
     /// The write is still out there, in a pane that is not reading it.
     TimedOut,
 }
@@ -100,7 +113,7 @@ enum Typed {
 pub async fn wake_up(state: &AppState, wake: Wake) -> bool {
     match nudge(state, &wake.pane).await {
         Typed::Landed => true,
-        Typed::Refused => {
+        Typed::Refused | Typed::Busy => {
             give_back(state, wake).await;
             false
         }
@@ -109,6 +122,15 @@ pub async fn wake_up(state: &AppState, wake: Wake) -> bool {
 }
 
 async fn nudge(state: &AppState, pane: &str) -> Typed {
+    // The owner's own typing comes first: the nudge is written into the pane
+    // as a prompt, so it would be taken into whatever they have half written
+    // and both would be sent on its Enter (issue #103). The wake goes back and
+    // the next sweep tries again.
+    let typed = state.pty.last_typed_at(pane).unwrap_or_default();
+    if logic::being_typed_in(typed, clock::now_millis(), QUIET.as_millis() as i64) {
+        tracing::debug!(%pane, "not waking the agent yet: the owner is typing in its pane");
+        return Typed::Busy;
+    }
     let typing = workspace::send(
         state,
         SendArgs {
