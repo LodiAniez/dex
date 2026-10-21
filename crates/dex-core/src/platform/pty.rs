@@ -15,6 +15,7 @@
 //! xterm.js answers; any other driver (tests, a headless consumer) must too.
 
 mod building;
+mod by_hand;
 mod kill;
 mod reader;
 #[cfg(any(unix, test))]
@@ -258,16 +259,20 @@ impl PtySupervisor {
         writing::write_to(&self.panes, pane_id, bytes)
     }
 
-    /// Sends input a person typed, marking the pane as theirs for a moment
-    /// (`writing::by_hand`, issue #103).
+    /// Sends input from the window, marking the pane as the owner's while they
+    /// are typing in it (`by_hand`, issue #103).
+    ///
+    /// The window's keystroke path uses this and nothing else does: what Dex
+    /// types itself goes through `write`. The terminal's own answers come down
+    /// the same path and are told apart there, not here.
     pub fn write_by_hand(&self, pane_id: &str, bytes: &[u8]) -> Result<(), PtyError> {
-        writing::by_hand(&self.panes, pane_id, bytes)
+        by_hand::write(&self.panes, pane_id, bytes)
     }
 
     /// When a person last typed into this pane, unix millis (0 if never);
     /// `None` if the pane has no live process.
     pub fn last_typed_at(&self, pane_id: &str) -> Option<i64> {
-        writing::last_typed(&self.panes, pane_id)
+        by_hand::last_typed(&self.panes, pane_id)
     }
 
     /// Wraps a pane's sink so an armed answer sees the output on its way past.
