@@ -208,9 +208,12 @@ pub async fn pty_write(
     pane_id: String,
     data: String,
 ) -> Result<(), String> {
+    // By hand, not `write`: this command is fed by xterm's `onData` and so is
+    // the owner typing. Dex's own typing must not mark the pane as theirs, or
+    // a nudge would defer behind the last nudge (issue #103).
     state
         .pty
-        .write(&pane_id, data.as_bytes())
+        .write_by_hand(&pane_id, data.as_bytes())
         .map_err(|err| err.to_string())
 }
 

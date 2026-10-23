@@ -160,6 +160,66 @@ async fn an_agent_at_its_prompt_is_woken_as_the_message_is_sent() {
 }
 
 #[tokio::test]
+async fn an_agent_whose_pane_the_owner_is_typing_in_is_not_woken_yet() {
+    // Issue #103: the nudge is typed into the pane as a prompt, so a pane with
+    // a half-written sentence in it would send that sentence as part of it.
+    let (_root, _dir, state, lead, child) = pair().await;
+    with_shell(&state, &child);
+    turn(&state, &child, "prompt", 10).await;
+    turn(&state, &child, "stop", 20).await;
+    // The owner, mid-sentence: no Enter, so this is a line sitting in the box.
+    state
+        .pty
+        .write_by_hand(&child, b"what did you mean by")
+        .unwrap();
+    assert!(
+        state.pty.last_typed_at(&child).is_some_and(|at| at > 0),
+        "the premise: the pane is marked as the owner's"
+    );
+
+    assert_eq!(
+        send(&state, &lead, &child, "the requirement changed")
+            .await
+            .delivery,
+        Delivery::NextTurn,
+        "the message waits for the turn the owner is about to start"
+    );
+    assert!(
+        agent::wake_waiting(&state).await.unwrap().is_empty(),
+        "and the sweep leaves the pane alone too"
+    );
+
+    // Nothing is lost: the wake is back for the sweep after the owner stops.
+    let id = agent_in(&state, &child).await.id;
+    let again = state
+        .db
+        .call(move |conn| Ok(take_wake(conn, &id, "p".to_owned(), true, 20)?.is_some()))
+        .await
+        .unwrap();
+    assert!(again, "the wake was given back");
+    state.pty.kill(&child).unwrap();
+}
+
+#[tokio::test]
+async fn an_agent_whose_pane_dex_typed_into_is_still_woken() {
+    // The mark must be the owner's keystrokes alone. If Dex's own writing set
+    // it, the first nudge would mark the pane and every later one would defer.
+    let (_root, _dir, state, lead, child) = pair().await;
+    with_shell(&state, &child);
+    turn(&state, &child, "prompt", 10).await;
+    turn(&state, &child, "stop", 20).await;
+    state.pty.write(&child, b"dex typed this\r").unwrap();
+
+    assert_eq!(
+        send(&state, &lead, &child, "the requirement changed")
+            .await
+            .delivery,
+        Delivery::Woken
+    );
+    state.pty.kill(&child).unwrap();
+}
+
+#[tokio::test]
 async fn a_nudge_that_never_lands_is_tried_again_next_sweep() {
     // This pane has no shell, so every nudge fails. A wake spent on typing
     // that never happened would leave the message unread for ever.
