@@ -16,12 +16,19 @@ use std::path::PathBuf;
 
 use dex_core::app::AppState;
 use dex_core::platform::auth::Token;
-use dex_core::platform::{job, log, paths, pipe};
+use dex_core::platform::{clock, job, junctions, log, paths, pipe};
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 fn main() {
     start_logging();
+
+    // Before the job below, and before anything a second copy would need:
+    // a Dex the installer started cannot follow directory junctions, and
+    // neither can its panes (issue #102).
+    if clean_start() == junctions::Start::SteppingAside {
+        return;
+    }
 
     // Before any child is spawned: every descendant inherits the job, so if
     // this process dies for any reason, Windows kills the whole tree. The
@@ -138,6 +145,27 @@ fn main() {
             app.state::<AppState>().pty.end_all();
         }
     });
+}
+
+/// Whether a process here can follow a directory junction, and a clean copy
+/// started through the shell if it cannot (`platform/junctions.rs`).
+///
+/// At the top of `main`, before the job: this process is about to end, and its
+/// kill-on-close job would take the hand-off to the shell with it. Before the
+/// pipe, the token and the database too, all of which the copy now starting
+/// needs free - and none of which this process has touched yet.
+///
+/// Anything unknown here is a reason to go on starting, not to stop: without a
+/// data directory there is nowhere to make the check, and without our own path
+/// there is nothing to ask the shell to start.
+fn clean_start() -> junctions::Start {
+    let Ok(dir) = paths::app_data_dir() else {
+        return junctions::Start::CarryOn;
+    };
+    let Ok(exe) = std::env::current_exe() else {
+        return junctions::Start::CarryOn;
+    };
+    junctions::clean_start(&dir, &exe, clock::now_millis())
 }
 
 /// The daemon's own words, into `<data dir>/dex.log` and to stdout as well for
